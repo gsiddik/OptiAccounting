@@ -10,13 +10,15 @@ class PlatformAuditController extends PlatformController
 {
     public function index(Request $request): JsonResponse
     {
-        $rows = $this->context->withoutTenantScope(function () use ($request) {
+        $filters = $request->validate(['tenant_id' => ['nullable', 'uuid'], 'action' => ['nullable', 'string', 'max:100']]);
+
+        $rows = $this->context->withoutTenantScope(function () use ($filters) {
             $query = AuditLog::query()->orderByDesc('occurred_at');
-            if ($tenant = $request->query('tenant_id')) {
+            if ($tenant = $filters['tenant_id'] ?? null) {
                 $query->where('tenant_id', $tenant);
             }
-            if ($action = $request->query('action')) {
-                $query->where('action', 'like', $action.'%');
+            if ($action = $filters['action'] ?? null) {
+                $query->where('action', 'like', addcslashes($action, '%_\\').'%');
             }
 
             return $query->paginate(50);

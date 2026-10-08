@@ -108,6 +108,11 @@ trait Fixtures
         // The test application outlives a request: drop the cached guard user and the request-scoped tenant context.
         $this->app['auth']->forgetGuards();
         $this->app->forgetScopedInstances();
+        // A real request builds its controller (and the request-scoped services injected into it) anew;
+        // the router would otherwise keep the first request's instances for the rest of the test.
+        foreach ($this->app['router']->getRoutes() as $route) {
+            $route->flushController();
+        }
         $this->flushHeaders();
 
         return $this->withToken($token);

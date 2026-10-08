@@ -49,7 +49,8 @@ class MembershipService
                 if (empty($person['password'])) {
                     throw new DomainException('A password is required for a new user.', 'PASSWORD_REQUIRED');
                 }
-                $user = new User(['name' => $person['name'], 'email' => $person['email'], 'password' => $person['password']]);
+                $user = new User(['name' => $person['name'], 'email' => $person['email']]);
+                $user->password = $person['password']; // hashed by the cast; never mass-assigned
                 $user->status = User::ACTIVE;
                 $user->save();
             } elseif (TenantUser::query()->where('user_id', $user->id)->exists()) {

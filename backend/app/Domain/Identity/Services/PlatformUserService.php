@@ -28,7 +28,8 @@ class PlatformUserService
                 throw new DomainException('A user with this e-mail already exists.', 'EMAIL_TAKEN');
             }
 
-            $user = new User(['name' => $person['name'], 'email' => $person['email'], 'password' => $person['password']]);
+            $user = new User(['name' => $person['name'], 'email' => $person['email']]);
+            $user->password = $person['password']; // hashed by the cast; never mass-assigned
             $user->status = User::ACTIVE;
             $user->save();
 

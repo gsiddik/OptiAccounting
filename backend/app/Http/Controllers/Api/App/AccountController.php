@@ -82,9 +82,10 @@ class AccountController extends AppController
 
     public function audit(Request $request): JsonResponse
     {
+        $filters = $request->validate(['action' => ['nullable', 'string', 'max:100']]);
         $query = AuditLog::query()->orderByDesc('occurred_at');
-        if ($action = $request->query('action')) {
-            $query->where('action', 'like', $action.'%');
+        if ($action = $filters['action'] ?? null) {
+            $query->where('action', 'like', addcslashes($action, '%_\\').'%');
         }
 
         return response()->json($query->paginate(50));

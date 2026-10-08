@@ -19,11 +19,12 @@ class TenantController extends PlatformController
 
     public function index(Request $request): JsonResponse
     {
+        $filters = $request->validate(['status' => ['nullable', 'string', 'max:20'], 'search' => ['nullable', 'string', 'max:100']]);
         $query = Tenant::query()->orderBy('name');
-        if ($status = $request->query('status')) {
+        if ($status = $filters['status'] ?? null) {
             $query->where('status', $status);
         }
-        if ($search = trim((string) $request->query('search'))) {
+        if ($search = trim($filters['search'] ?? '')) {
             $query->where(fn ($q) => $q->where('name', 'ilike', "%{$search}%")->orWhere('code', 'ilike', "%{$search}%"));
         }
 

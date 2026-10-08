@@ -51,7 +51,8 @@ class BootstrapPlatformAdmin extends Command
                 return self::FAILURE;
             }
 
-            $user = new User(['name' => (string) $this->option('name'), 'email' => $email, 'password' => $password]);
+            $user = new User(['name' => (string) $this->option('name'), 'email' => $email]);
+            $user->password = $password; // hashed by the cast
             $user->status = User::ACTIVE;
             $user->save();
         }

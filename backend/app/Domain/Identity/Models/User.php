@@ -19,7 +19,7 @@ class User extends Authenticatable
 
     public const SUSPENDED = 'SUSPENDED';
 
-    protected $fillable = ['name', 'email', 'password'];
+    protected $fillable = ['name', 'email'];
 
     protected $hidden = ['password'];
 

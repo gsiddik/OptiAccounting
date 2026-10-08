@@ -85,7 +85,7 @@ class SubscriptionService
             $subscription->save();
 
             if (in_array($to, [Subscription::EXPIRED, Subscription::CANCELLED], true)) {
-                $this->endProvisionedEntitlements($subscription);
+                $this->endProvisionedEntitlements($subscription, $from === Subscription::PENDING);
             }
 
             $this->cache->touchTenant($subscription->tenant_id);
@@ -143,8 +143,12 @@ class SubscriptionService
         }
     }
 
-    /** Close the windows this subscription provisioned (history stays); a window that has not begun is disabled. */
-    private function endProvisionedEntitlements(Subscription $subscription): void
+    /**
+     * Close the windows this subscription provisioned. Windows that took effect stay as history (ended yesterday, or
+     * disabled for the day they began). Windows that never took effect (the subscription was still PENDING, or the
+     * window starts after today) are removed so they cannot block a replacement subscription for the same dates.
+     */
+    private function endProvisionedEntitlements(Subscription $subscription, bool $neverEffective): void
     {
         $tenant = Tenant::query()->findOrFail($subscription->tenant_id);
         $today = $tenant->businessDate();
@@ -153,21 +157,27 @@ class SubscriptionService
         $moduleIds = $modules->pluck('module_id')->all();
 
         foreach ($modules as $row) {
-            $this->endWindow($row, $today);
+            $this->endWindow($row, $today, $neverEffective);
         }
 
         if ($moduleIds !== []) {
             $features = TenantFeatureEntitlement::query()->where('source', 'BUNDLE')
                 ->whereHas('feature', fn ($q) => $q->whereIn('module_id', $moduleIds))->get();
             foreach ($features as $row) {
-                $this->endWindow($row, $today);
+                $this->endWindow($row, $today, $neverEffective);
             }
         }
     }
 
-    private function endWindow(TenantModuleEntitlement|TenantFeatureEntitlement $row, string $today): void
+    private function endWindow(TenantModuleEntitlement|TenantFeatureEntitlement $row, string $today, bool $neverEffective): void
     {
         if ($row->effective_until !== null && $row->effective_until->toDateString() < $today) {
+            return;
+        }
+
+        if ($neverEffective || $row->effective_from->toDateString() > $today) {
+            $row->delete();
+
             return;
         }
 

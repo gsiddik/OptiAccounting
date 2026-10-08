@@ -25,10 +25,14 @@ class AuthController extends Controller
         $user = $this->auth->attempt($request->string('email')->toString(), $request->string('password')->toString());
 
         if (! $user) {
+            $this->audit->record('auth.login_failed', 'user', null, null, ['email' => strtolower($request->string('email')->toString()), 'reason' => 'INVALID_CREDENTIALS']);
+
             return response()->json(['message' => 'These credentials do not match our records.', 'code' => 'INVALID_CREDENTIALS'], 422);
         }
 
         if (! $user->isActive()) {
+            $this->audit->record('auth.login_failed', 'user', $user->id, null, ['email' => $user->email, 'reason' => 'USER_INACTIVE']);
+
             return response()->json(['message' => 'This user account is not active.', 'code' => 'USER_INACTIVE'], 403);
         }
 

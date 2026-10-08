@@ -20,11 +20,12 @@ class MemberController extends AppController
 
     public function index(Request $request): JsonResponse
     {
+        $filters = $request->validate(['status' => ['nullable', 'string', 'max:20'], 'search' => ['nullable', 'string', 'max:100']]);
         $query = TenantUser::query()->with(['user:id,name,email,status', 'roles:id,name', 'dataScopes'])->orderByDesc('created_at');
-        if ($status = $request->query('status')) {
+        if ($status = $filters['status'] ?? null) {
             $query->where('status', $status);
         }
-        if ($search = trim((string) $request->query('search'))) {
+        if ($search = trim($filters['search'] ?? '')) {
             $query->whereHas('user', fn ($q) => $q->where('name', 'ilike', "%{$search}%")->orWhere('email', 'ilike', "%{$search}%"));
         }
 

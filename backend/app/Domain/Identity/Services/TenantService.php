@@ -94,7 +94,8 @@ class TenantService
             if (empty($admin['password'])) {
                 throw new DomainException('A password is required for a new administrator.', 'PASSWORD_REQUIRED');
             }
-            $user = new User(['name' => $admin['name'], 'email' => $admin['email'], 'password' => $admin['password']]);
+            $user = new User(['name' => $admin['name'], 'email' => $admin['email']]);
+            $user->password = $admin['password']; // hashed by the cast; never mass-assigned
             $user->status = User::ACTIVE;
             $user->save();
         }
