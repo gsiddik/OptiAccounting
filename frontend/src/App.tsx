@@ -6,6 +6,7 @@ import { homePath, useAuth } from './lib/auth'
 import { CapabilityProvider, useCapabilities } from './lib/capabilities'
 import ChooseAccess from './pages/ChooseAccess'
 import Login from './pages/Login'
+import SsoCallback from './pages/SsoCallback'
 import PlatformAudit from './pages/platform/Audit'
 import Bundles from './pages/platform/Bundles'
 import PlatformDashboard from './pages/platform/Dashboard'
@@ -89,6 +90,7 @@ export default function App() {
     <Routes>
         <Route path="/" element={<Landing />} />
         <Route path="/login" element={<Login />} />
+        <Route path="/sso/callback" element={<SsoCallback />} />
         <Route path="/pilih-akses" element={<ChooseAccess />} />
 
         <Route path="/platform" element={<RequireScope scope="platform"><Portal scope="platform" items={PLATFORM_NAV} /></RequireScope>}>

@@ -21,9 +21,16 @@ export const platformMe = { user: { id: 'u-p', name: 'Admin Platform', email: 'p
 
 export const tenantMe = { user: { id: 'u-t', name: 'Budi Santoso', email: 'admin@majujaya.demo.test' }, scope: 'tenant', tenant_id: 't-1', tenants: [{ id: 't-1', code: 'maju-jaya', name: 'PT Maju Jaya' }], platform_access: false }
 
-export function tenantCaps(over: { permissions?: string[]; subscriptionMode?: 'FULL' | 'READ_ONLY' } = {}) {
+export const identityInfo = (mode: 'standalone' | 'optinexus' = 'standalone') => ({ mode, managed_externally: mode === 'optinexus' })
+
+export function platformCaps(permissions: string[], mode: 'standalone' | 'optinexus' = 'standalone') {
+  return { scope: 'platform', permissions, identity: identityInfo(mode) }
+}
+
+export function tenantCaps(over: { permissions?: string[]; subscriptionMode?: 'FULL' | 'READ_ONLY'; mode?: 'standalone' | 'optinexus' } = {}) {
   return {
     scope: 'tenant',
+    identity: identityInfo(over.mode),
     tenant: { id: 't-1', code: 'maju-jaya', name: 'PT Maju Jaya', status: 'ACTIVE', timezone: 'Asia/Jakarta', default_currency: 'IDR' },
     permissions: over.permissions ?? [],
     subscription: { status: over.subscriptionMode === 'READ_ONLY' ? 'PAST_DUE' : 'ACTIVE', mode: over.subscriptionMode ?? 'FULL', starts_on: '2026-01-01', ends_on: '2026-12-31' },

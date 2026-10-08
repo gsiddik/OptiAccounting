@@ -38,11 +38,11 @@ class AccessCache
     }
 
     /** Remember a tenant-scoped value under a key that embeds tenant id and version. */
-    public function rememberForTenant(string $tenantId, string $name, callable $compute): mixed
+    public function rememberForTenant(string $tenantId, string $name, callable $compute, int $ttl = self::TTL_SECONDS): mixed
     {
         $key = "t:{$tenantId}:v{$this->tenantVersion($tenantId)}:{$name}";
 
-        return Cache::remember($key, self::TTL_SECONDS, $compute);
+        return Cache::remember($key, min($ttl, self::TTL_SECONDS), $compute);
     }
 
     public function rememberForPlatform(string $name, callable $compute): mixed

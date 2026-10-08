@@ -16,7 +16,13 @@ export type Me = {
   platform_access: boolean
 }
 
-export type LoginResponse = Me & { token: string; expires_at: string | null }
+export type LoginResponse = Me & { token: string; expires_at: string | null; sso?: { logout_url: string | null } }
+
+/** Which doors the login page offers (public endpoint; no secrets). */
+export type SsoStatus = { identity_mode: 'standalone' | 'optinexus'; sso_enabled: boolean; password_login: boolean }
+
+/** Who owns users, roles and subscriptions in this installation. */
+export type IdentityInfo = { mode: 'standalone' | 'optinexus'; managed_externally: boolean }
 
 export type TenantStatus = 'DRAFT' | 'ACTIVE' | 'SUSPENDED' | 'INACTIVE' | 'TERMINATED'
 
@@ -50,9 +56,10 @@ export type Subscription = {
 export type EffectiveSubscription = { status: string | null; mode: Mode; starts_on: string | null; ends_on: string | null }
 
 export type Capabilities =
-  | { scope: 'platform'; permissions: string[] }
+  | { scope: 'platform'; permissions: string[]; identity: IdentityInfo }
   | {
       scope: 'tenant'
+      identity: IdentityInfo
       tenant: { id: string; code: string; name: string; status: TenantStatus; timezone: string; default_currency: string }
       permissions: string[]
       subscription: EffectiveSubscription

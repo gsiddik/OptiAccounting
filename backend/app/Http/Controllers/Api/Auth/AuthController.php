@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Auth;
 use App\Domain\Audit\Services\AuditService;
 use App\Domain\Identity\Services\AuthService;
 use App\Domain\Identity\Services\MembershipService;
+use App\Domain\Integration\Optinexus\OptinexusSettings;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\LoginRequest;
 use App\Support\TenantContext;
@@ -34,6 +35,13 @@ class AuthController extends Controller
             $this->audit->record('auth.login_failed', 'user', $user->id, null, ['email' => $user->email, 'reason' => 'USER_INACTIVE']);
 
             return response()->json(['message' => 'This user account is not active.', 'code' => 'USER_INACTIVE'], 403);
+        }
+
+        // In optinexus mode people sign in at OptiNexus; a local password is only the operators' break-glass.
+        if (OptinexusSettings::active() && (! config('optiaccounting.optinexus.break_glass_login') || ! $this->auth->hasPlatformAccess($user))) {
+            $this->audit->record('auth.login_failed', 'user', $user->id, null, ['email' => $user->email, 'reason' => 'LOCAL_LOGIN_DISABLED']);
+
+            return response()->json(['message' => 'Sign in with OptiNexus.', 'code' => 'LOCAL_LOGIN_DISABLED'], 403);
         }
 
         $user->forceFill(['last_login_at' => now()])->save();

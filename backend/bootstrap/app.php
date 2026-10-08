@@ -3,6 +3,7 @@
 use App\Domain\Shared\DomainException;
 use App\Http\Middleware\AssignRequestId;
 use App\Http\Middleware\RequireAccess;
+use App\Http\Middleware\RequireLocalIdentity;
 use App\Http\Middleware\ResolveContext;
 use Illuminate\Contracts\Session\Middleware\AuthenticatesSessions;
 use Illuminate\Foundation\Application;
@@ -22,6 +23,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'request.id' => AssignRequestId::class,
             'context' => ResolveContext::class,
             'access' => RequireAccess::class,
+            'local.identity' => RequireLocalIdentity::class,
         ]);
 
         // Route-model binding goes through the tenant scope, so the tenant context (and the access check)

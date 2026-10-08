@@ -30,7 +30,7 @@ class TenantUser extends Model
 
     protected function casts(): array
     {
-        return ['joined_at' => 'datetime'];
+        return ['joined_at' => 'datetime', 'optinexus_deactivated_at' => 'datetime'];
     }
 
     public function isActive(): bool

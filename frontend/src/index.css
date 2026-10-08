@@ -245,6 +245,11 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .auth { min-height: 100%; display: flex; align-items: center; justify-content: center; padding: 24px 16px; }
 .auth-card { width: 100%; max-width: 420px; padding: 28px; display: flex; flex-direction: column; gap: 18px; }
 .auth-card .brand { padding: 0; }
+.auth-form { display: flex; flex-direction: column; gap: 18px; }
+.btn-block { width: 100%; min-height: 44px; }
+.auth-alt { border-top: 1px solid var(--border); padding-top: 14px; }
+.auth-alt summary { cursor: pointer; color: var(--muted); font-weight: 600; }
+.auth-alt[open] summary { margin-bottom: 14px; }
 .choice { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; padding: 14px 16px; text-align: left; cursor: pointer; background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius-sm); }
 .choice:hover:not(:disabled) { border-color: var(--brand); background: var(--brand-weak); }
 .choice small { display: block; color: var(--muted); }

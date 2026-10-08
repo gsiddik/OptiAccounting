@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { DataTable } from '../../components/DataTable'
+import { ManagedNotice } from '../../components/ManagedNotice'
 import { FormModal } from '../../components/Modal'
 import { Button, Card, EmptyState, ErrorNotice, Field, Loading, PageHeader, Pagination, StatusBadge } from '../../components/ui'
 import { api } from '../../lib/api'
@@ -11,7 +12,7 @@ import { useAction, useDebounced, useResource } from '../../lib/hooks'
 import type { Paginated, Tenant } from '../../lib/types'
 
 export default function Tenants() {
-  const { can } = useCapabilities()
+  const { canEdit } = useCapabilities()
   const [page, setPage] = useState(1)
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState('')
@@ -28,8 +29,9 @@ export default function Tenants() {
       <PageHeader
         title="Tenant"
         description="Organisasi pelanggan, status siklus hidup, dan langganannya."
-        actions={can('platform.tenant.create') && <Button variant="primary" onClick={() => setCreating(true)}>Tenant baru</Button>}
+        actions={canEdit('platform.tenant.create') && <Button variant="primary" onClick={() => setCreating(true)}>Tenant baru</Button>}
       />
+      <ManagedNotice>Tenant baru dihubungkan dari OptiNexus saat pengguna pertamanya masuk. Tenant tidak dibuat di sini.</ManagedNotice>
       <Card flush>
         <div className="card-head">
           <div className="toolbar">
@@ -43,7 +45,7 @@ export default function Tenants() {
           </div>
         </div>
         {loading && !data ? <Loading /> : error ? <ErrorNotice error={error} onRetry={reload} /> : data && data.data.length === 0 ? (
-          <EmptyState title="Tidak ada tenant" action={can('platform.tenant.create') ? <Button onClick={() => setCreating(true)}>Buat tenant pertama</Button> : undefined}>
+          <EmptyState title="Tidak ada tenant" action={canEdit('platform.tenant.create') ? <Button onClick={() => setCreating(true)}>Buat tenant pertama</Button> : undefined}>
             Ubah filter atau buat tenant baru.
           </EmptyState>
         ) : data ? (

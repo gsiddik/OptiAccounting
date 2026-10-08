@@ -2,7 +2,9 @@
 
 use App\Http\Controllers\Api\App;
 use App\Http\Controllers\Api\Auth\AuthController;
+use App\Http\Controllers\Api\Auth\SsoController;
 use App\Http\Controllers\Api\HealthController;
+use App\Http\Controllers\Api\Integration;
 use App\Http\Controllers\Api\Platform;
 use Illuminate\Support\Facades\Route;
 
@@ -22,6 +24,14 @@ Route::prefix('v1')->middleware('request.id')->group(function () {
     Route::prefix('auth')->group(function () {
         Route::post('login', [AuthController::class, 'login'])->middleware('throttle:login');
 
+        // OptiNexus single sign-on (identity mode `optinexus`; refused otherwise).
+        Route::prefix('sso')->middleware('throttle:sso')->group(function () {
+            Route::get('status', [SsoController::class, 'status']);
+            Route::get('redirect', [SsoController::class, 'redirect']);
+            Route::get('callback', [SsoController::class, 'callback']);
+            Route::post('exchange', [SsoController::class, 'exchange']);
+        });
+
         Route::middleware(['auth:sanctum', 'context:session'])->group(function () {
             Route::get('me', [AuthController::class, 'me']);
             Route::post('switch-tenant', [AuthController::class, 'switchTenant']);
@@ -31,12 +41,17 @@ Route::prefix('v1')->middleware('request.id')->group(function () {
         });
     });
 
+    // ------------------------------------------------------------- integration (machine to machine)
+    Route::prefix('integration/optinexus')->middleware('throttle:backchannel')->group(function () {
+        Route::post('backchannel-logout', [Integration\OptinexusController::class, 'backchannelLogout']);
+    });
+
     // ---------------------------------------------------------------- platform
     Route::prefix('platform')->middleware(['auth:sanctum', 'context:platform'])->group(function () {
         Route::get('capabilities', Platform\CapabilityController::class);
 
         Route::get('tenants', [Platform\TenantController::class, 'index'])->middleware('access:platform.tenant.view');
-        Route::post('tenants', [Platform\TenantController::class, 'store'])->middleware('access:platform.tenant.create');
+        Route::post('tenants', [Platform\TenantController::class, 'store'])->middleware(['local.identity', 'access:platform.tenant.create']);
         Route::get('tenants/{tenant}', [Platform\TenantController::class, 'show'])->middleware('access:platform.tenant.view');
         Route::patch('tenants/{tenant}', [Platform\TenantController::class, 'update'])->middleware('access:platform.tenant.update');
         Route::post('tenants/{tenant}/status', [Platform\TenantController::class, 'transition'])->middleware('access:platform.tenant.status.manage');
@@ -58,16 +73,16 @@ Route::prefix('v1')->middleware('request.id')->group(function () {
         Route::patch('bundles/{bundle}', [Platform\BundleController::class, 'update'])->middleware('access:platform.bundle.manage');
 
         Route::get('tenants/{tenant}/subscriptions', [Platform\SubscriptionController::class, 'index'])->middleware('access:platform.subscription.view');
-        Route::post('tenants/{tenant}/subscriptions', [Platform\SubscriptionController::class, 'store'])->middleware('access:platform.subscription.manage');
-        Route::post('tenants/{tenant}/subscriptions/{subscription}/status', [Platform\SubscriptionController::class, 'transition'])->middleware('access:platform.subscription.manage');
-        Route::patch('tenants/{tenant}/subscriptions/{subscription}', [Platform\SubscriptionController::class, 'reschedule'])->middleware('access:platform.subscription.manage');
+        Route::post('tenants/{tenant}/subscriptions', [Platform\SubscriptionController::class, 'store'])->middleware(['local.identity', 'access:platform.subscription.manage']);
+        Route::post('tenants/{tenant}/subscriptions/{subscription}/status', [Platform\SubscriptionController::class, 'transition'])->middleware(['local.identity', 'access:platform.subscription.manage']);
+        Route::patch('tenants/{tenant}/subscriptions/{subscription}', [Platform\SubscriptionController::class, 'reschedule'])->middleware(['local.identity', 'access:platform.subscription.manage']);
 
         Route::get('tenants/{tenant}/entitlements', [Platform\EntitlementController::class, 'show'])->middleware('access:platform.entitlement.view');
-        Route::post('tenants/{tenant}/entitlements/modules', [Platform\EntitlementController::class, 'grantModule'])->middleware('access:platform.entitlement.manage');
-        Route::patch('tenants/{tenant}/entitlements/modules/{entitlement}', [Platform\EntitlementController::class, 'updateModule'])->middleware('access:platform.entitlement.manage');
-        Route::post('tenants/{tenant}/entitlements/features', [Platform\EntitlementController::class, 'grantFeature'])->middleware('access:platform.entitlement.manage');
-        Route::patch('tenants/{tenant}/entitlements/features/{entitlement}', [Platform\EntitlementController::class, 'updateFeature'])->middleware('access:platform.entitlement.manage');
-        Route::put('tenants/{tenant}/capacity/{limitCode}', [Platform\EntitlementController::class, 'setCapacity'])->middleware('access:platform.entitlement.manage');
+        Route::post('tenants/{tenant}/entitlements/modules', [Platform\EntitlementController::class, 'grantModule'])->middleware(['local.identity', 'access:platform.entitlement.manage']);
+        Route::patch('tenants/{tenant}/entitlements/modules/{entitlement}', [Platform\EntitlementController::class, 'updateModule'])->middleware(['local.identity', 'access:platform.entitlement.manage']);
+        Route::post('tenants/{tenant}/entitlements/features', [Platform\EntitlementController::class, 'grantFeature'])->middleware(['local.identity', 'access:platform.entitlement.manage']);
+        Route::patch('tenants/{tenant}/entitlements/features/{entitlement}', [Platform\EntitlementController::class, 'updateFeature'])->middleware(['local.identity', 'access:platform.entitlement.manage']);
+        Route::put('tenants/{tenant}/capacity/{limitCode}', [Platform\EntitlementController::class, 'setCapacity'])->middleware(['local.identity', 'access:platform.entitlement.manage']);
 
         Route::get('users', [Platform\PlatformAccessController::class, 'users'])->middleware('access:platform.user.view');
         Route::post('users', [Platform\PlatformAccessController::class, 'storeUser'])->middleware('access:platform.user.manage');
@@ -96,15 +111,15 @@ Route::prefix('v1')->middleware('request.id')->group(function () {
         Route::post('business-units/{businessUnit}/status', [App\OrganizationController::class, 'businessUnitStatus'])->middleware('access:organization.manage');
 
         Route::get('users', [App\MemberController::class, 'index'])->middleware('access:access.user.view');
-        Route::post('users', [App\MemberController::class, 'store'])->middleware('access:access.user.manage');
-        Route::post('users/{member}/status', [App\MemberController::class, 'status'])->middleware('access:access.user.manage');
-        Route::put('users/{member}/roles', [App\MemberController::class, 'roles'])->middleware('access:access.user.manage');
+        Route::post('users', [App\MemberController::class, 'store'])->middleware(['local.identity', 'access:access.user.manage']);
+        Route::post('users/{member}/status', [App\MemberController::class, 'status'])->middleware(['local.identity', 'access:access.user.manage']);
+        Route::put('users/{member}/roles', [App\MemberController::class, 'roles'])->middleware(['local.identity', 'access:access.user.manage']);
         Route::put('users/{member}/data-scopes', [App\MemberController::class, 'scopes'])->middleware('access:access.scope.manage');
 
         Route::get('roles', [App\RoleController::class, 'index'])->middleware('access:access.role.view');
-        Route::post('roles', [App\RoleController::class, 'store'])->middleware('access:access.role.manage');
-        Route::patch('roles/{role}', [App\RoleController::class, 'update'])->middleware('access:access.role.manage');
-        Route::delete('roles/{role}', [App\RoleController::class, 'destroy'])->middleware('access:access.role.manage');
+        Route::post('roles', [App\RoleController::class, 'store'])->middleware(['local.identity', 'access:access.role.manage']);
+        Route::patch('roles/{role}', [App\RoleController::class, 'update'])->middleware(['local.identity', 'access:access.role.manage']);
+        Route::delete('roles/{role}', [App\RoleController::class, 'destroy'])->middleware(['local.identity', 'access:access.role.manage']);
         Route::get('permissions', [App\RoleController::class, 'permissions'])->middleware('access:access.permission.view');
 
         Route::get('account/subscription', [App\AccountController::class, 'subscription'])->middleware('access:account.subscription.view');

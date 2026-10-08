@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import { setToken } from './lib/api'
 import { mockApi, page } from './test/fakeApi'
-import { platformMe, renderApp, tenantCaps, tenantMe } from './test/render'
+import { platformCaps, platformMe, renderApp, tenantCaps, tenantMe } from './test/render'
 
 const nav = () => within(screen.getByRole('navigation', { name: /Menu/ }))
 
@@ -27,6 +27,7 @@ describe('routing and guards', () => {
 describe('sign-in', () => {
   it('lets a user with several organisations choose, then lands in that organisation', async () => {
     const calls = mockApi({
+      'GET /auth/sso/status': { data: { identity_mode: 'standalone', sso_enabled: false, password_login: true } },
       'POST /auth/login': { data: { token: 'identity-token', expires_at: null, user: tenantMe.user, scope: 'identity', tenant_id: null, tenants: [{ id: 't-1', code: 'maju-jaya', name: 'PT Maju Jaya' }, { id: 't-2', code: 'sinar-abadi', name: 'CV Sinar Abadi' }], platform_access: false } },
       'POST /auth/switch-tenant': { data: { token: 'tenant-token' } },
       'GET /auth/me': { data: tenantMe },
@@ -46,7 +47,10 @@ describe('sign-in', () => {
   })
 
   it('shows the API refusal in Indonesian and does not keep the password', async () => {
-    mockApi({ 'POST /auth/login': { status: 401, data: { message: 'Invalid', code: 'INVALID_CREDENTIALS' } } })
+    mockApi({
+      'GET /auth/sso/status': { data: { identity_mode: 'standalone', sso_enabled: false, password_login: true } },
+      'POST /auth/login': { status: 401, data: { message: 'Invalid', code: 'INVALID_CREDENTIALS' } },
+    })
     renderApp('/login')
 
     await userEvent.type(await screen.findByLabelText('E-mail'), 'x@demo.test')
@@ -61,7 +65,7 @@ describe('sign-in', () => {
 describe('capability driven UI (permissions, never role names)', () => {
   const platformRoutes = (permissions: string[]) => ({
     'GET /auth/me': { data: platformMe },
-    'GET /platform/capabilities': { data: { scope: 'platform', permissions } },
+    'GET /platform/capabilities': { data: platformCaps(permissions) },
   })
 
   it('shows only the navigation the operator holds permissions for', async () => {

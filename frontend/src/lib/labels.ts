@@ -113,6 +113,36 @@ const ERRORS: Record<string, string> = {
   DEPENDENCY_MISSING: 'Modul yang dibutuhkan belum aktif untuk tenant ini.',
   ACTIVE_DEPENDENTS: 'Modul ini masih dibutuhkan modul lain yang aktif.',
   ENTITLEMENT_OVERLAP: 'Periode hak akses bertabrakan dengan periode yang sudah ada.',
+  MANAGED_BY_OPTINEXUS: 'Data ini dikelola di OptiNexus dan tidak dapat diubah di sini.',
+  IDENTITY_PROVIDER_UNAVAILABLE: 'OptiNexus sedang tidak dapat dihubungi. Coba lagi sebentar lagi.',
+  LOCAL_LOGIN_DISABLED: 'Masuk dengan kata sandi dinonaktifkan untuk akun ini. Gunakan OptiNexus.',
+  INVALID_TICKET: 'Tautan masuk tidak valid atau sudah kedaluwarsa. Silakan masuk kembali.',
+}
+
+/** Why a sign-in through OptiNexus was turned away (the `sso_error` the API puts on the login URL). */
+const SSO_ERRORS: Record<string, string> = {
+  access_denied: 'Masuk dibatalkan atau ditolak di OptiNexus.',
+  sso_disabled: 'Masuk melalui OptiNexus belum diaktifkan di instalasi ini.',
+  sso_unavailable: 'OptiNexus sedang tidak dapat dihubungi. Coba lagi sebentar lagi.',
+  sso_failed: 'Masuk melalui OptiNexus gagal. Silakan coba lagi.',
+  state_invalid: 'Sesi masuk sudah kedaluwarsa. Silakan mulai masuk kembali.',
+  token_exchange_failed: 'OptiNexus tidak dapat menyelesaikan proses masuk. Silakan coba lagi.',
+  id_token_invalid: 'Jawaban OptiNexus tidak dapat diverifikasi. Silakan coba lagi.',
+  tenant_not_linked: 'Organisasi Anda belum terhubung ke OptiAccounting. Hubungi administrator OptiNexus.',
+  tenant_not_entitled: 'Organisasi Anda belum berlangganan OptiAccounting di OptiNexus.',
+  tenant_inactive: 'Organisasi ini sedang tidak aktif.',
+  no_permissions: 'Anda belum diberi izin apa pun untuk OptiAccounting di OptiNexus. Hubungi administrator organisasi Anda.',
+  capacity_exceeded: 'Batas jumlah pengguna organisasi ini tercapai. Hubungi administrator.',
+  email_not_verified: 'E-mail akun OptiNexus Anda belum diverifikasi.',
+  email_required: 'Akun OptiNexus Anda tidak memiliki e-mail.',
+  account_conflict: 'E-mail ini sudah terhubung ke identitas OptiNexus lain. Hubungi administrator.',
+  user_inactive: 'Akun ini tidak aktif.',
+  membership_inactive: 'Keanggotaan Anda di organisasi ini tidak aktif.',
+}
+
+export function describeSsoError(code: string | null | undefined): string | null {
+  if (!code) return null
+  return SSO_ERRORS[code] ?? SSO_ERRORS.sso_failed
 }
 
 /** A message a person can act on, from any thrown value. */

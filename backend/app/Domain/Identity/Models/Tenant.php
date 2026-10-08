@@ -35,6 +35,11 @@ class Tenant extends Model
         'contact_name', 'contact_email', 'contact_phone',
     ];
 
+    protected function casts(): array
+    {
+        return ['optinexus_deactivated_at' => 'datetime', 'optinexus_synced_at' => 'datetime'];
+    }
+
     public function isActive(): bool
     {
         return $this->status === self::ACTIVE;

@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { api, currentToken, setToken, setUnauthorizedHandler } from './api'
+import { navigation } from './navigation'
 import type { LoginResponse, Me } from './types'
 
 type AuthState = { status: 'loading' } | { status: 'anonymous' } | { status: 'ready'; me: Me }
@@ -9,11 +10,37 @@ export type EnterTarget = { kind: 'tenant'; tenantId: string } | { kind: 'platfo
 type AuthValue = {
   state: AuthState
   login: (email: string, password: string) => Promise<Me>
+  /** Redeems the one-time ticket the API put on /sso/callback after a successful OptiNexus sign-in. */
+  signInWithTicket: (ticket: string) => Promise<Me>
   enter: (target: EnterTarget) => Promise<Me>
   logout: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthValue | null>(null)
+
+const SSO_LOGOUT_KEY = 'oa.sso.logout'
+
+/** Where to end the OptiNexus session too, remembered for this tab only. Only http(s) addresses are ever followed. */
+const ssoLogout = {
+  get(): string | null {
+    try {
+      const url = sessionStorage.getItem(SSO_LOGOUT_KEY)
+      return url && /^https?:\/\//i.test(url) ? url : null
+    } catch {
+      return null
+    }
+  },
+  set(url: string | null): void {
+    try {
+      if (url) sessionStorage.setItem(SSO_LOGOUT_KEY, url)
+      else sessionStorage.removeItem(SSO_LOGOUT_KEY)
+    } catch {
+      /* storage blocked: logout then ends only this application's session */
+    }
+  },
+}
+
+const toMe = (data: LoginResponse): Me => ({ user: data.user, scope: data.scope, tenant_id: data.tenant_id, tenants: data.tenants, platform_access: data.platform_access })
 
 /**
  * Who is signed in and in which scope. The scope and tenant come from the server (token abilities);
@@ -45,7 +72,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = useCallback(async (email: string, password: string) => {
     const { data } = await api.post<LoginResponse>('/auth/login', { email, password })
     setToken(data.token)
-    const me: Me = { user: data.user, scope: data.scope, tenant_id: data.tenant_id, tenants: data.tenants, platform_access: data.platform_access }
+    ssoLogout.set(null)
+    const me = toMe(data)
+    setState({ status: 'ready', me })
+    return me
+  }, [])
+
+  const signInWithTicket = useCallback(async (ticket: string) => {
+    const { data } = await api.post<LoginResponse>('/auth/sso/exchange', { ticket })
+    setToken(data.token)
+    ssoLogout.set(data.sso?.logout_url ?? null)
+    const me = toMe(data)
     setState({ status: 'ready', me })
     return me
   }, [])
@@ -68,9 +105,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     setToken(null)
     setState({ status: 'anonymous' })
+    const end = ssoLogout.get()
+    ssoLogout.set(null)
+    if (end) navigation.go(end)
   }, [])
 
-  const value = useMemo(() => ({ state, login, enter, logout }), [state, login, enter, logout])
+  const value = useMemo(() => ({ state, login, signInWithTicket, enter, logout }), [state, login, signInWithTicket, enter, logout])
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
 

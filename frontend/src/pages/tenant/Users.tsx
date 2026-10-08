@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { DataTable } from '../../components/DataTable'
 import { ConfirmDialog, FormModal } from '../../components/Modal'
 import { RoleChecklist } from '../../components/RoleChecklist'
+import { ManagedNotice } from '../../components/ManagedNotice'
 import { ScopeEditor } from '../../components/ScopeEditor'
 import { useToast } from '../../components/Toast'
 import { Badge, Banner, Button, Card, EmptyState, ErrorNotice, Field, Loading, PageHeader, Pagination, StatusBadge } from '../../components/ui'
@@ -25,7 +26,7 @@ function useOrganizationLists(enabled: boolean) {
 }
 
 export default function Users() {
-  const { can } = useCapabilities()
+  const { can, canEdit } = useCapabilities()
   const { state } = useAuth()
   const myId = state.status === 'ready' ? state.me.user.id : null
   const toast = useToast()
@@ -37,7 +38,7 @@ export default function Users() {
   const [rolesFor, setRolesFor] = useState<Member | null>(null)
   const [scopeFor, setScopeFor] = useState<Member | null>(null)
   const [change, setChange] = useState<{ member: Member; status: NextStatus } | null>(null)
-  const canManage = can('access.user.manage')
+  const canManage = canEdit('access.user.manage')
   const canScope = can('access.scope.manage')
   const org = useOrganizationLists(can('organization.view'))
 
@@ -59,6 +60,7 @@ export default function Users() {
         description="Siapa yang boleh masuk ke organisasi ini, dengan peran apa, dan data mana yang boleh dijangkau."
         actions={canManage && <Button variant="primary" onClick={() => setCreating(true)}>Pengguna baru</Button>}
       />
+      <ManagedNotice>Pengguna, peran, dan status keanggotaan dikelola di OptiNexus dan disinkronkan ke sini. Cakupan data tetap diatur di halaman ini.</ManagedNotice>
       <Card flush>
         <div className="card-head">
           <div className="toolbar">

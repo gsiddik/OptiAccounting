@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { DataTable } from '../../components/DataTable'
+import { ManagedNotice } from '../../components/ManagedNotice'
 import { ConfirmDialog, FormModal } from '../../components/Modal'
 import { useToast } from '../../components/Toast'
 import { Badge, Banner, Button, EmptyState, ErrorNotice, Field, Loading, Meter, StatusBadge } from '../../components/ui'
@@ -92,13 +93,13 @@ const NEXT_HINT: Partial<Record<SubscriptionStatus, string>> = {
 }
 
 export function SubscriptionTab({ tenant }: { tenant: Tenant }) {
-  const { can } = useCapabilities()
+  const { canEdit } = useCapabilities()
   const toast = useToast()
   const subs = useResource(async () => (await api.get<{ data: Subscription[] }>(`/platform/tenants/${tenant.id}/subscriptions`)).data.data, [tenant.id])
   const [creating, setCreating] = useState(false)
   const [moving, setMoving] = useState<Subscription | null>(null)
   const [rescheduling, setRescheduling] = useState<Subscription | null>(null)
-  const canManage = can('platform.subscription.manage')
+  const canManage = canEdit('platform.subscription.manage')
 
   if (subs.loading && !subs.data) return <Loading />
   if (subs.error || !subs.data) return <ErrorNotice error={subs.error} onRetry={subs.reload} />
@@ -106,6 +107,7 @@ export function SubscriptionTab({ tenant }: { tenant: Tenant }) {
 
   return (
     <>
+      <ManagedNotice>Langganan, modul, fitur, dan kapasitas tenant ini disinkronkan dari OptiNexus dan diubah di sana.</ManagedNotice>
       <div className="card-head">
         <span className="muted">Satu tenant hanya boleh memiliki satu langganan yang berjalan. Riwayat tidak dihapus.</span>
         {canManage && <Button variant="primary" size="sm" disabled={live} onClick={() => setCreating(true)}>Langganan baru</Button>}
@@ -225,12 +227,12 @@ function useEntitlements(tenantId: string) {
 }
 
 export function ModuleTab({ tenant }: { tenant: Tenant }) {
-  const { can } = useCapabilities()
+  const { canEdit } = useCapabilities()
   const toast = useToast()
   const ent = useEntitlements(tenant.id)
   const [granting, setGranting] = useState(false)
   const [editing, setEditing] = useState<ModuleEntitlement | null>(null)
-  const canManage = can('platform.entitlement.manage')
+  const canManage = canEdit('platform.entitlement.manage')
 
   if (ent.loading && !ent.data) return <Loading />
   if (ent.error || !ent.data) return <ErrorNotice error={ent.error} onRetry={ent.reload} />
@@ -238,6 +240,7 @@ export function ModuleTab({ tenant }: { tenant: Tenant }) {
 
   return (
     <>
+      <ManagedNotice>Langganan, modul, fitur, dan kapasitas tenant ini disinkronkan dari OptiNexus dan diubah di sana.</ManagedNotice>
       <div className="card-head">
         <span className="muted">Keadaan efektif per {formatDate(data.effective.date)} · langganan: <StatusBadge status={data.effective.subscription.mode} /></span>
         {canManage && <Button variant="primary" size="sm" onClick={() => setGranting(true)}>Beri modul</Button>}
@@ -326,18 +329,19 @@ function EditModule({ tenant, row, onClose, onDone }: { tenant: Tenant; row: Mod
 /* ----------------------------------------------------------------- features */
 
 export function FeatureTab({ tenant }: { tenant: Tenant }) {
-  const { can } = useCapabilities()
+  const { canEdit } = useCapabilities()
   const toast = useToast()
   const ent = useEntitlements(tenant.id)
   const [granting, setGranting] = useState(false)
   const [editing, setEditing] = useState<FeatureEntitlement | null>(null)
-  const canManage = can('platform.entitlement.manage')
+  const canManage = canEdit('platform.entitlement.manage')
 
   if (ent.loading && !ent.data) return <Loading />
   if (ent.error || !ent.data) return <ErrorNotice error={ent.error} onRetry={ent.reload} />
 
   return (
     <>
+      <ManagedNotice>Langganan, modul, fitur, dan kapasitas tenant ini disinkronkan dari OptiNexus dan diubah di sana.</ManagedNotice>
       <div className="card-head">
         <span className="muted">Fitur mengikuti modul induknya: fitur aktif tidak dapat dipakai bila modulnya tidak tersedia.</span>
         {canManage && <Button variant="primary" size="sm" onClick={() => setGranting(true)}>Beri fitur</Button>}
@@ -419,17 +423,18 @@ function EditFeature({ tenant, row, onClose, onDone }: { tenant: Tenant; row: Fe
 /* ----------------------------------------------------------------- capacity */
 
 export function CapacityTab({ tenant }: { tenant: Tenant }) {
-  const { can } = useCapabilities()
+  const { canEdit } = useCapabilities()
   const toast = useToast()
   const ent = useEntitlements(tenant.id)
   const [editing, setEditing] = useState<{ code: string; limit: number | null } | null>(null)
-  const canManage = can('platform.entitlement.manage')
+  const canManage = canEdit('platform.entitlement.manage')
 
   if (ent.loading && !ent.data) return <Loading />
   if (ent.error || !ent.data) return <ErrorNotice error={ent.error} onRetry={ent.reload} />
 
   return (
     <>
+      <ManagedNotice>Langganan, modul, fitur, dan kapasitas tenant ini disinkronkan dari OptiNexus dan diubah di sana.</ManagedNotice>
       <div className="card-head"><span className="muted">Batas diperiksa saat membuat pengguna, cabang, atau unit bisnis. Menurunkan batas tidak menghapus data yang sudah ada.</span></div>
       <DataTable
         caption="Kapasitas"
