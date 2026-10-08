@@ -1,6 +1,6 @@
 # OA0-N Status — OptiNexus identity adapter
 
-Branch: `claude/project-thread-b9jx47`. Status: **COMMIT READY (PR open)**. OA1 not started on this branch.
+Branch: `claude/project-thread-b9jx47`. Status: **COMMIT READY (CI green, PR #2)**. OA1 not started on this branch.
 Design: `docs/architecture/OPTINEXUS_ADAPTER.md`. Operations: `docs/integration/OPTINEXUS_ONBOARDING.md`.
 **OptiNexus was not modified** (it was run from a scratch copy for the E2E below).
 
@@ -46,7 +46,7 @@ Tenant only from the verified `tenant_id` claim; state/nonce/verifier server-sid
 | – central logout (`force-logout`): token 401, other users untouched; access removal: token 401, account INACTIVE + marker; access restored + sign-in: ACTIVE, marker cleared | PASS |
 | – sign-out in the SPA: ends the OptiNexus session, returns to `/login`, next sign-in asks for a password | PASS |
 | Docker image build / `compose up` | NOT RUN (unchanged from OA0: sandbox proxy TLS) |
-| CI workflow | NOT RUN (first run on the PR) |
+| CI workflow on the PR (backend + frontend) | PASS on 31d819b (first run, 4b9679e, failed on a PHPUnit data-provider arity warning that local output hid; fixed) |
 | Real OptiNexus: permission revocation waiting out the cache TTL, tenant picker for a person in several tenants, Back-Channel retry after downtime | NOT RUN (covered only by in-memory tests) |
 
 E2E caveat: the sandbox has PHP 8.3 while OptiNexus's lock needs 8.4, so the scratch copy re-resolved its dependencies (`composer update`); OptiNexus code itself was unchanged.
