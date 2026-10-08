@@ -1,6 +1,6 @@
 # OA1 Status — Accounting Core & General Ledger
 
-Branch: `claude/project-thread-b9jx47`. Status: **COMMIT READY** (PR open, merge only on owner request; CI result recorded below).
+Branch: `claude/project-thread-b9jx47`. Status: **COMMIT READY** (PR #3 open, CI green; merge only on owner request).
 Brief: `docs/specs/OA1.md`. Design: `docs/architecture/ACCOUNTING_CORE.md`. Gate traceability: `docs/status/oa1-qa/GATE_TRACEABILITY.md`.
 OptiNexus and OptiFleet-v2 were not modified. OA2 has not been started.
 
@@ -46,7 +46,7 @@ event posting idempotent on `(source_type, source_id, purpose)` · GL/TB only fr
 | `migrate:fresh --seed` ×2, DemoSeeder, re-seed | PASS |
 | Docker image build / `compose up` | NOT RUN (sandbox proxy TLS, unchanged from OA0) |
 | Load / volume benchmark of GL and trial balance | NOT RUN (only a query-count guard exists) |
-| CI workflow on the PR | PENDING (first run on the PR) |
+| CI workflow on the PR | PASS on d0fc234 (backend 4 min, frontend 24 s; first run) |
 
 Concurrency cases: double post, gapless numbers, failed posting returns its number, post vs cancel, duplicate event, two contents for one fact,
 concurrent reversals, close waits for an in-flight posting, posting during a close is refused, close vs 6 postings, two closes, opening vs
