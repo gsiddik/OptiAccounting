@@ -59,4 +59,6 @@ API on `http://localhost:8000`, SPA on `http://localhost:5173`.
 
 `OPTIACCOUNTING_IDENTITY_MODE=standalone` (default, local users/roles) or
 `optinexus` (OptiNexus manages tenants, users, roles, permissions and events).
-See `docs/architecture/SAAS_ARCHITECTURE.md`.
+See `docs/architecture/SAAS_ARCHITECTURE.md`, the adapter design in
+`docs/architecture/OPTINEXUS_ADAPTER.md` and, to connect an installation to
+OptiNexus, `docs/integration/OPTINEXUS_ONBOARDING.md`.

@@ -40,6 +40,7 @@ class ManifestAndCommandsTest extends OptinexusTestCase
         $this->assertSame(['https://api.test/api/v1/auth/sso/callback'], $manifest['oidc_client']['redirect_uris']);
         $this->assertStringEndsWith('/api/v1/integration/optinexus/backchannel-logout', $manifest['oidc_client']['backchannel_logout_uri']);
         $this->assertSame(self::FRONTEND, $manifest['oidc_client']['launch_url']);
+        $this->assertSame([self::FRONTEND.'/login'], $manifest['oidc_client']['post_logout_redirect_uris']);
     }
 
     public function test_the_manifest_command_prints_json_and_never_a_secret(): void

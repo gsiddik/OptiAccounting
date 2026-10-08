@@ -350,6 +350,16 @@ class SsoSignInTest extends TestCase
 
     // ------------------------------------------------------------------ ticket
 
+    public function test_the_session_carries_an_end_session_address_that_returns_to_the_login_page(): void
+    {
+        $logout = (string) $this->nexusSignIn()->assertOk()->json('sso.logout_url');
+
+        $this->assertStringStartsWith(self::NEXUS_URL.'/oidc/logout?', $logout);
+        parse_str((string) parse_url($logout, PHP_URL_QUERY), $q);
+        $this->assertSame('oa-client', $q['client_id']);
+        $this->assertSame(self::FRONTEND.'/login', $q['post_logout_redirect_uri']);
+    }
+
     public function test_a_ticket_is_single_use_and_short_lived(): void
     {
         $callback = $this->nexusCallback();

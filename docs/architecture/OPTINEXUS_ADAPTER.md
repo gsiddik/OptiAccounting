@@ -30,6 +30,15 @@ lands in the one tenant named by the verified `tenant_id` claim.
 Local password login stays only for users with platform access (break-glass,
 `OPTINEXUS_BREAK_GLASS_LOGIN`, default on); tenant users cannot use it.
 
+The SPA (`/login`) asks the public `GET /auth/sso/status` which doors exist:
+"Masuk dengan OptiNexus" first, the password form collapsed under "Masuk sebagai
+operator platform" only when allowed; if the status call fails it falls back to
+the password form (the API stays the authority). `/sso/callback` redeems the
+ticket once. Sign-out calls the local logout, then the OptiNexus
+`end_session_endpoint` with `post_logout_redirect_uri` = SPA `/login` (honoured
+only when registered on the OIDC client; otherwise OptiNexus shows its own
+"signed out" page). Only `http(s)` end-session addresses are followed.
+
 ## 3. Linking (never from an unverified claim)
 
 - **Tenant** `tenants.optinexus_tenant_id`. Unknown tenants are provisioned on
@@ -79,7 +88,12 @@ limit keys, `unlimited` → null). Runs at sign-in when older than
 `optiaccounting:nexus:sync-entitlements`. If OptiNexus is down the last
 projection stays (`tenants.optinexus_synced_at` shows its age); the
 subscription end date still bounds it. Manual subscription and entitlement
-edits answer `409 MANAGED_BY_OPTINEXUS`.
+edits answer `409 MANAGED_BY_OPTINEXUS`. When OptiNexus returns no live
+subscription the subscription row ends (module access stops) but capacity limits
+are **not** touched: no subscription says nothing about limits, so the last known
+ones stay (fail closed). The UI hides the manage buttons through
+`useCapabilities().canEdit()` (a central set of externally managed permissions)
+and shows a "dikelola di OptiNexus" notice.
 
 ## 6. Back-Channel Logout
 
@@ -89,7 +103,10 @@ signature, `typ`, `iss`, `aud`, `iat`/`exp` with skew, `events`, `sub`, no
 `access-revoked` also deactivates the account (`scope=user`) or the membership
 of the named tenant (`scope=tenant`) and sets `optinexus_deactivated_at`; the
 next successful sign-in reverses exactly such a deactivation. Unknown users are
-answered `200`; invalid tokens `400`.
+answered `200`; invalid tokens `400`. Observed against a real OptiNexus: removing
+a person's access to the application sends `scope=user` (OptiNexus sets no
+tenant), so the whole local account is deactivated until the next sign-in; tenant
+removal and tenant suspension send `scope=tenant`.
 
 ## 7. Outbox and relay
 

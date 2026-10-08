@@ -104,7 +104,10 @@ class EntitlementProjector
             $subscriptionId = $this->projectSubscription($tenant, $desired['subscription'], $date, $changes);
             $this->projectModules($tenant, $desired['modules'], $subscriptionId, $date, $changes);
             $this->projectFeatures($tenant, $desired['features'], $date, $changes);
-            $this->projectCapacity($tenant, $desired['capacity'], $changes);
+            // No live subscription says nothing about limits; keeping the last known ones is the fail-closed choice.
+            if ($desired['subscription'] !== null) {
+                $this->projectCapacity($tenant, $desired['capacity'], $changes);
+            }
             $this->mirrorTenantStatus($tenant, (string) ($context['tenant_status'] ?? 'ACTIVE'), $changes);
 
             DB::table('tenants')->where('id', $tenant->id)->update(['optinexus_synced_at' => now()]);

@@ -46,6 +46,7 @@ class OptinexusManifest
             'service_account' => ['scopes' => explode(' ', NexusApi::SCOPES)],
             'oidc_client' => [
                 'redirect_uris' => [OptinexusSettings::redirectUri()],
+                'post_logout_redirect_uris' => [$frontend.'/login'],
                 'backchannel_logout_uri' => url('/api/v1/integration/optinexus/backchannel-logout'),
                 'launch_url' => $frontend,
                 'scopes' => ['openid', 'profile', 'email'],

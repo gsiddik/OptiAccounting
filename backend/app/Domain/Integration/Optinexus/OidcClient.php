@@ -154,7 +154,11 @@ class OidcClient
     {
         $endpoint = $this->discovery()['end_session_endpoint'] ?? null;
 
-        return $endpoint ? $endpoint.'?'.http_build_query(['client_id' => OptinexusSettings::clientId()]) : null;
+        // OptiNexus only honours the return address when it is registered on the client (manifest: post_logout_redirect_uris).
+        return $endpoint ? $endpoint.'?'.http_build_query([
+            'client_id' => OptinexusSettings::clientId(),
+            'post_logout_redirect_uri' => rtrim((string) config('optiaccounting.optinexus.sso.frontend_url'), '/').'/login',
+        ]) : null;
     }
 
     /** @return array<string,mixed> */

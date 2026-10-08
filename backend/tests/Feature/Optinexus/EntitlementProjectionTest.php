@@ -11,8 +11,10 @@ use App\Domain\Identity\Models\Tenant;
 use App\Domain\Identity\Services\TenantService;
 use App\Domain\Integration\Optinexus\EntitlementProjector;
 use App\Domain\Integration\Optinexus\IdentityProviderUnavailable;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Symfony\Component\Console\Output\BufferedOutput;
 
 /** OA0-N: OptiNexus's commercial state is projected into the local entitlement rows (source OPTINEXUS). */
 class EntitlementProjectionTest extends OptinexusTestCase
@@ -195,6 +197,37 @@ class EntitlementProjectionTest extends OptinexusTestCase
         $result = $projector->sync($tenant);
         $this->assertContains('capacity USER_LIMIT: 3 -> unlimited', $result['changes']);
         $this->assertNull(DB::table('tenant_capacity_limits')->where('tenant_id', $tenant->id)->where('limit_code', 'USER_LIMIT')->value('limit_value'));
+    }
+
+    public function test_a_lapsed_subscription_does_not_lift_the_capacity_limits(): void
+    {
+        $tenant = $this->linkedTenant();
+        $projector = app(EntitlementProjector::class);
+        $this->nexusTenant(['entitlements' => [$this->capability('ACCOUNTING_CORE'), $this->limit('user_limit', 3.0)]]);
+        $projector->sync($tenant);
+
+        $this->nexusTenant(['applications' => []]);
+        $result = $projector->sync($tenant);
+
+        $this->assertContains('subscription: ACTIVE -> EXPIRED', $result['changes']);
+        $this->assertSame(3, DB::table('tenant_capacity_limits')->where('tenant_id', $tenant->id)->where('limit_code', 'USER_LIMIT')->value('limit_value'), 'no subscription is not "unlimited"');
+    }
+
+    public function test_the_sync_command_reports_one_line_per_tenant_with_counted_switches(): void
+    {
+        $this->linkedTenant();
+        $this->nexusTenant(['entitlements' => [$this->capability('ACCOUNTING_CORE'), $this->capability('JOURNAL'), $this->capability('GENERAL_LEDGER')]]);
+        $buffer = new BufferedOutput;
+
+        $this->assertSame(0, Artisan::call('optiaccounting:nexus:sync-entitlements', [], $buffer));
+        $lines = array_values(array_filter(explode("\n", trim($buffer->fetch()))));
+
+        $this->assertCount(1, $lines, 'a long projection must not flood the console');
+        $this->assertMatchesRegularExpression('/^acme-id: .*\d+ modules? .*; \d+ features? /', $lines[0]);
+
+        $buffer = new BufferedOutput;
+        Artisan::call('optiaccounting:nexus:sync-entitlements', [], $buffer);
+        $this->assertStringContainsString('acme-id: no change', $buffer->fetch());
     }
 
     public function test_tenant_status_follows_optinexus_but_an_operators_own_suspension_is_respected(): void

@@ -28,6 +28,8 @@ Design rules:
   (membership, permissions, entitlements) come from, behind an
   `IdentityDirectory` / `EntitlementSource` pair with a `Local` and an
   `Optinexus` implementation. Accounting data is identical in both modes.
+  Implemented by OA0-N as `PermissionSource` (`Local`/`Optinexus`) plus a projection
+  of OptiNexus entitlements into the local rows; see `OPTINEXUS_ADAPTER.md`.
 - In `optinexus` mode OptiNexus being down must not corrupt accounting data:
   existing sessions keep working until token/permission cache expiry; new
   logins fail closed; nothing is posted on behalf of OptiNexus.
