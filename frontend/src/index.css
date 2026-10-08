@@ -318,3 +318,16 @@ button, input, select, textarea { font: inherit; color: inherit; }
   .filters .input, .filters .select { flex: 1 1 100%; width: 100%; }
   .filters .inline-field { flex: 1 1 100%; justify-content: space-between; }
 }
+@media (min-width: 641px) { .table td.cell-primary { min-width: 200px; } }
+/* wide numeric tables (trial balance) stay tables on phones and scroll sideways */
+@media (max-width: 640px) {
+  .keep-table .table { display: table; width: max-content; min-width: 100%; }
+  .keep-table .table thead { display: table-header-group; }
+  .keep-table .table tbody { display: table-row-group; }
+  .keep-table .table tr { display: table-row; padding: 0; }
+  .keep-table .table td { display: table-cell; width: auto; text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  .keep-table .table td.num { text-align: right; }
+  .keep-table .table td::before { content: none; }
+  .keep-table .table td.cell-primary { white-space: normal; min-width: 120px; max-width: 150px; position: sticky; left: 0; background: var(--surface); box-shadow: 1px 0 0 var(--border); z-index: 1; }
+  .keep-table .table th:first-child { position: sticky; left: 0; background: var(--surface); z-index: 1; }
+}

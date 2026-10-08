@@ -66,6 +66,7 @@ export default function TrialBalance() {
               <>
                 <DataTable
                   caption="Neraca saldo"
+                  scroll
                   rows={r.data}
                   rowKey={(row) => row.account_id}
                   columns={[

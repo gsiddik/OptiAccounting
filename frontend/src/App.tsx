@@ -50,7 +50,7 @@ const TENANT_NAV: NavItem[] = [
   { to: '/app/pengguna', label: 'Pengguna', icon: 'users', permission: 'access.user.view', group: 'Pengaturan' },
   { to: '/app/peran', label: 'Peran & izin', icon: 'shield', permission: 'access.role.view', group: 'Pengaturan' },
   // Accounting Core: shown only while ACCOUNTING_CORE is entitled and the user holds the permission (cosmetic; the API enforces both).
-  { to: '/app/akuntansi', label: 'Ringkasan', icon: 'book', permission: 'accounting.journal.view', module: 'ACCOUNTING_CORE', group: 'Akuntansi', end: true },
+  { to: '/app/akuntansi', label: 'Ringkasan', icon: 'chart', permission: 'accounting.journal.view', module: 'ACCOUNTING_CORE', group: 'Akuntansi', end: true },
   { to: '/app/akuntansi/jurnal', label: 'Jurnal', icon: 'list', permission: 'accounting.journal.view', module: 'ACCOUNTING_CORE', group: 'Akuntansi' },
   { to: '/app/akuntansi/buku-besar', label: 'Buku besar', icon: 'book', permission: 'accounting.gl.view', module: 'ACCOUNTING_CORE', group: 'Akuntansi' },
   { to: '/app/akuntansi/neraca-saldo', label: 'Neraca saldo', icon: 'scale', permission: 'accounting.trial_balance.view', module: 'ACCOUNTING_CORE', group: 'Akuntansi' },

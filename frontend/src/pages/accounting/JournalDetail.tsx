@@ -77,7 +77,7 @@ export default function JournalDetail() {
   return (
     <>
       <PageHeader
-        title={j.journal_number ?? 'Draf jurnal'}
+        title={j.journal_number ?? (j.status === 'DRAFT' ? 'Draf jurnal' : 'Jurnal belum bernomor')}
         description={<>{journalTypeLabels[j.journal_type] ?? j.journal_type} · <StatusBadge status={j.status} /></>}
         actions={<><Link to="/app/akuntansi/jurnal" className="btn btn-ghost">Kembali ke daftar</Link>{buttons}</>}
       />

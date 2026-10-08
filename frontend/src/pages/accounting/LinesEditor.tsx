@@ -100,7 +100,7 @@ export function LinesEditor({
         <div className="totals" role="status" aria-live="polite">
           <span>Debit <strong className="money">{formatAmount(amountToApi(totals.debit))}</strong></span>
           <span>Kredit <strong className="money">{formatAmount(amountToApi(totals.credit))}</strong></span>
-          <span className={totals.balanced ? 'balance-ok' : 'balance-bad'}>
+          <span className={totals.balanced ? 'balance-ok' : totals.debit === 0n && totals.credit === 0n ? 'muted' : 'balance-bad'}>
             {totals.balanced ? 'Seimbang' : totals.debit === 0n && totals.credit === 0n ? 'Belum ada jumlah' : `Selisih ${formatAmount(amountToApi(diff))}`}
           </span>
         </div>
