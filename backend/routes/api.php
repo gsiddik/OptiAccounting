@@ -241,6 +241,11 @@ Route::prefix('v1')->middleware('request.id')->group(function () {
             Route::post('ap-invoices/{invoice}/post', [Payables\ApInvoiceController::class, 'post'])->middleware($ap('accounting.ap_invoice.post', $inv));
             Route::post('ap-invoices/{invoice}/reverse', [Payables\ApInvoiceController::class, 'reverse'])->middleware($ap('accounting.ap_invoice.reverse', $inv));
 
+            // AP aging and AP-to-GL reconciliation (feature AP_AGING).
+            Route::get('ap-aging', [Payables\ApReportController::class, 'aging'])->middleware($ap('accounting.ap_aging.view', 'AP_AGING'));
+            Route::get('ap-aging/export', [Payables\ApReportController::class, 'exportAging'])->middleware($ap('accounting.report.export', 'AP_AGING'));
+            Route::get('reconciliation/ap', [Payables\ApReportController::class, 'reconciliation'])->middleware($ap('accounting.reconciliation.ap.view', 'AP_AGING'));
+
             // Vendor payments and allocations (ACCOUNTING_AP, feature AP_PAYMENT).
             $pay = 'AP_PAYMENT';
             Route::get('vendor-payments', [Payables\VendorPaymentController::class, 'index'])->middleware($ap('accounting.ap_payment.view', $pay));

@@ -87,6 +87,7 @@ return new class extends Migration
             (status = 'REVERSED') = (reversal_journal_id IS NOT NULL AND reversed_at IS NOT NULL AND reversal_posting_date IS NOT NULL))");
         DB::statement('CREATE UNIQUE INDEX vendor_payments_number_unique ON vendor_payments (tenant_id, document_number) WHERE document_number IS NOT NULL');
         DB::statement('CREATE UNIQUE INDEX vendor_payments_journal_unique ON vendor_payments (tenant_id, journal_entry_id) WHERE journal_entry_id IS NOT NULL');
+        DB::statement('CREATE INDEX vendor_payments_reversal_journal ON vendor_payments (tenant_id, reversal_journal_id) WHERE reversal_journal_id IS NOT NULL');
 
         // A posted payment carries the posted journal of exactly its amount; a reversed one the posted reversal of that journal.
         DB::unprepared(<<<'SQL'

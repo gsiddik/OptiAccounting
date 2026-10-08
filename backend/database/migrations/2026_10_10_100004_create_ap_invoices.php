@@ -105,6 +105,7 @@ return new class extends Migration
         DB::statement('ALTER TABLE ap_invoices ADD CONSTRAINT ap_invoices_override_check CHECK ((duplicate_override_by IS NULL) = (duplicate_override_reason IS NULL))');
         DB::statement('CREATE UNIQUE INDEX ap_invoices_number_unique ON ap_invoices (tenant_id, document_number) WHERE document_number IS NOT NULL');
         DB::statement('CREATE UNIQUE INDEX ap_invoices_journal_unique ON ap_invoices (tenant_id, journal_entry_id) WHERE journal_entry_id IS NOT NULL');
+        DB::statement('CREATE INDEX ap_invoices_reversal_journal ON ap_invoices (tenant_id, reversal_journal_id) WHERE reversal_journal_id IS NOT NULL');
         // Duplicate control: one live document per vendor and vendor invoice number, unless an authorized user recorded an explicit override.
         DB::statement("CREATE UNIQUE INDEX ap_invoices_vendor_number_unique ON ap_invoices (tenant_id, vendor_id, vendor_invoice_key)
             WHERE status IN ('DRAFT','SUBMITTED','APPROVED','POSTED') AND duplicate_override_by IS NULL");
