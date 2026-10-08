@@ -221,6 +221,7 @@ class AccessMatrixTest extends TestCase
             'POST opening-balance/cancel' => 'accounting.opening_balance.manage',
             'POST opening-balance/post' => 'accounting.opening_balance.post',
             'GET operational-rules' => 'accounting.posting_rule.view',
+            'GET operational-summary' => 'accounting.journal.view',
             'POST operational-rules/defaults' => 'accounting.posting_rule.manage',
             'POST periods/{period}/close' => 'accounting.period.close',
             'POST periods/{period}/open' => 'accounting.period.manage',

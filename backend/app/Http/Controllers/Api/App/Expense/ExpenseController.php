@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\App\Expense;
 
 use App\Domain\Accounting\Services\DocumentScope;
+use App\Domain\Accounting\Support\ListFilters;
 use App\Domain\Expense\Models\Expense;
 use App\Domain\Expense\Services\ExpenseService;
 use App\Domain\Payables\Models\VendorPayment;
@@ -15,8 +16,6 @@ use Illuminate\Validation\Rule;
 /** Expenses. Thin: validation here, every rule in ExpenseService. An expense outside the user's data scope is a 404. */
 class ExpenseController extends AppController
 {
-    private const STATUSES = ['DRAFT', 'SUBMITTED', 'APPROVED', 'REJECTED', 'POSTED', 'CANCELLED', 'REVERSED'];
-
     public function __construct(TenantContext $context, private readonly ExpenseService $expenses, private readonly DocumentScope $scope)
     {
         parent::__construct($context);
@@ -24,14 +23,7 @@ class ExpenseController extends AppController
 
     public function index(Request $request): JsonResponse
     {
-        $filter = $request->validate([
-            'status' => ['nullable', Rule::in(self::STATUSES)], 'settlement' => ['nullable', Rule::in([Expense::PAYABLE, Expense::DIRECT_PAID])],
-            'vendor_id' => ['nullable', 'uuid'], 'expense_category_id' => ['nullable', 'uuid'], 'cash_bank_account_id' => ['nullable', 'uuid'],
-            'branch_id' => ['nullable', 'uuid'], 'business_unit_id' => ['nullable', 'uuid'], 'cost_center_id' => ['nullable', 'uuid'],
-            'expense_from' => ['nullable', 'date_format:Y-m-d'], 'expense_to' => ['nullable', 'date_format:Y-m-d'],
-            'posting_from' => ['nullable', 'date_format:Y-m-d'], 'posting_to' => ['nullable', 'date_format:Y-m-d'],
-            'q' => ['nullable', 'string', 'max:100'], 'mine' => ['nullable', 'boolean'], 'per_page' => ['nullable', 'integer', 'between:1,100'],
-        ]);
+        $filter = $request->validate(ListFilters::expenses());
         $filter['mine'] = $request->boolean('mine');
 
         return response()->json($this->expenses->query($filter)->paginate($filter['per_page'] ?? 25));

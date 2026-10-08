@@ -3,9 +3,9 @@
 namespace App\Http\Controllers\Api\App\CashBank;
 
 use App\Domain\Accounting\Services\DocumentScope;
+use App\Domain\Accounting\Support\ListFilters;
 use App\Domain\CashBank\Models\CashTransaction;
 use App\Domain\CashBank\Services\CashTransactionService;
-use App\Domain\Payables\Models\ApInvoice;
 use App\Http\Controllers\Api\App\AppController;
 use App\Support\TenantContext;
 use Illuminate\Http\JsonResponse;
@@ -25,14 +25,7 @@ class CashTransactionController extends AppController
 
     public function index(Request $request): JsonResponse
     {
-        $filter = $request->validate([
-            'status' => ['nullable', Rule::in([ApInvoice::DRAFT, ApInvoice::POSTED, ApInvoice::CANCELLED, ApInvoice::REVERSED])],
-            'cash_bank_account_id' => ['nullable', 'uuid'], 'counter_account_id' => ['nullable', 'uuid'],
-            'branch_id' => ['nullable', 'uuid'], 'business_unit_id' => ['nullable', 'uuid'], 'cost_center_id' => ['nullable', 'uuid'],
-            'transaction_from' => ['nullable', 'date_format:Y-m-d'], 'transaction_to' => ['nullable', 'date_format:Y-m-d'],
-            'posting_from' => ['nullable', 'date_format:Y-m-d'], 'posting_to' => ['nullable', 'date_format:Y-m-d'],
-            'q' => ['nullable', 'string', 'max:100'], 'mine' => ['nullable', 'boolean'], 'per_page' => ['nullable', 'integer', 'between:1,100'],
-        ]);
+        $filter = $request->validate(ListFilters::cashTransactions());
         $filter['mine'] = $request->boolean('mine');
 
         return response()->json($this->transactions->query($this->kind($request), $filter)->paginate($filter['per_page'] ?? 25));

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\App\Payables;
 
+use App\Domain\Accounting\Support\ListFilters;
 use App\Domain\Payables\Models\PaymentTerm;
 use App\Domain\Payables\Models\Vendor;
 use App\Domain\Payables\Services\PaymentTermService;
@@ -22,10 +23,7 @@ class VendorController extends AppController
 
     public function index(Request $request): JsonResponse
     {
-        $filter = $request->validate([
-            'status' => ['nullable', Rule::in([Vendor::ACTIVE, Vendor::INACTIVE])], 'payment_term_id' => ['nullable', 'uuid'],
-            'q' => ['nullable', 'string', 'max:100'], 'per_page' => ['nullable', 'integer', 'between:1,200'],
-        ]);
+        $filter = $request->validate(ListFilters::vendors());
 
         return response()->json($this->vendors->query($filter)->paginate($filter['per_page'] ?? 25));
     }

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\App\Payables;
 
 use App\Domain\Accounting\Services\DocumentScope;
+use App\Domain\Accounting\Support\ListFilters;
 use App\Domain\Accounting\Support\Money;
 use App\Domain\Payables\Models\Vendor;
 use App\Domain\Payables\Models\VendorPayment;
@@ -17,8 +18,6 @@ use Illuminate\Validation\Rule;
 /** Vendor payments and their allocations. Thin: validation here, every rule in VendorPaymentService. A payment outside the user's data scope is a 404. */
 class VendorPaymentController extends AppController
 {
-    private const STATUSES = ['DRAFT', 'SUBMITTED', 'APPROVED', 'REJECTED', 'POSTED', 'CANCELLED', 'REVERSED'];
-
     public function __construct(TenantContext $context, private readonly VendorPaymentService $payments, private readonly ApSubledgerService $subledger, private readonly DocumentScope $scope)
     {
         parent::__construct($context);
@@ -26,13 +25,7 @@ class VendorPaymentController extends AppController
 
     public function index(Request $request): JsonResponse
     {
-        $filter = $request->validate([
-            'status' => ['nullable', Rule::in(self::STATUSES)], 'vendor_id' => ['nullable', 'uuid'], 'cash_bank_account_id' => ['nullable', 'uuid'],
-            'branch_id' => ['nullable', 'uuid'], 'business_unit_id' => ['nullable', 'uuid'], 'cost_center_id' => ['nullable', 'uuid'],
-            'payment_from' => ['nullable', 'date_format:Y-m-d'], 'payment_to' => ['nullable', 'date_format:Y-m-d'],
-            'posting_from' => ['nullable', 'date_format:Y-m-d'], 'posting_to' => ['nullable', 'date_format:Y-m-d'],
-            'q' => ['nullable', 'string', 'max:100'], 'mine' => ['nullable', 'boolean'], 'per_page' => ['nullable', 'integer', 'between:1,100'],
-        ]);
+        $filter = $request->validate(ListFilters::payments());
         $filter['mine'] = $request->boolean('mine');
 
         return response()->json($this->payments->query($filter)->paginate($filter['per_page'] ?? 25));

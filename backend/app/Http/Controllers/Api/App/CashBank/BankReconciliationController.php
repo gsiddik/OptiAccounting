@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\App\CashBank;
 
 use App\Domain\Accounting\Services\DocumentScope;
+use App\Domain\Accounting\Support\ListFilters;
 use App\Domain\CashBank\Models\BankStatement;
 use App\Domain\CashBank\Models\BankStatementItem;
 use App\Domain\CashBank\Models\CashBankAccount;
@@ -37,10 +38,7 @@ class BankReconciliationController extends AppController
     public function transactions(Request $request, CashBankAccount $cashBankAccount): JsonResponse
     {
         $this->scope->authorize($cashBankAccount);
-        $filter = $request->validate([
-            'from' => ['nullable', 'date_format:Y-m-d'], 'to' => ['nullable', 'date_format:Y-m-d'], 'matched' => ['nullable', 'boolean'], 'direction' => ['nullable', Rule::in(['IN', 'OUT'])],
-            'q' => ['nullable', 'string', 'max:100'], 'per_page' => ['nullable', 'integer', 'between:1,200'], 'page' => ['nullable', 'integer', 'min:1'],
-        ]);
+        $filter = $request->validate(ListFilters::accountMovements());
         $filter['matched'] = $request->has('matched') ? $request->boolean('matched') : null;
 
         return response()->json($this->ledger->lines($cashBankAccount, $filter, (int) ($filter['per_page'] ?? 50), (int) ($filter['page'] ?? 1)));

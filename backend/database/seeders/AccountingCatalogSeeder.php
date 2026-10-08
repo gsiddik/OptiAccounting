@@ -81,6 +81,9 @@ class AccountingCatalogSeeder extends Seeder
         ['6900', 'Beban Umum dan Administrasi', '6000', 'EXPENSE', true, false, 'EXPENSE'],
     ];
 
+    /** role code => the only event types whose posting rules may use the role */
+    private const RESTRICTED_ROLES = ['ACCOUNTS_PAYABLE' => ['AP_INVOICE_RECOGNIZED', 'VENDOR_PAYMENT', 'EXPENSE_RECOGNIZED']];
+
     public function run(): void
     {
         DB::transaction(function () {
@@ -94,6 +97,12 @@ class AccountingCatalogSeeder extends Seeder
             foreach (self::ACCOUNT_ROLES as $code => $name) {
                 DB::table('account_roles')->insertOrIgnore(['code' => $code, 'name' => $name, 'status' => 'ACTIVE', 'sort_order' => $order, 'created_at' => $now, 'updated_at' => $now]);
                 $order += 10;
+            }
+
+            // A subledger control role may only be used by the events of its own subledger. Set here as well as by the migration that introduced the
+            // column: on a fresh install the migration runs before this seeder has created the role, so only the seeder can apply it.
+            foreach (self::RESTRICTED_ROLES as $code => $events) {
+                DB::table('account_roles')->where('code', $code)->update(['restricted_events' => json_encode($events)]);
             }
 
             foreach (self::DOCUMENT_ROLES as $code => $name) {

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\App\Payables;
 
 use App\Domain\Accounting\Services\DocumentScope;
+use App\Domain\Accounting\Support\ListFilters;
 use App\Domain\Payables\Models\ApInvoice;
 use App\Domain\Payables\Services\ApInvoiceService;
 use App\Http\Controllers\Api\App\AppController;
@@ -14,8 +15,6 @@ use Illuminate\Validation\Rule;
 /** Vendor invoices. Thin: validation here, every rule in ApInvoiceService. An invoice outside the user's data scope is a 404. */
 class ApInvoiceController extends AppController
 {
-    private const STATUSES = ['DRAFT', 'SUBMITTED', 'APPROVED', 'REJECTED', 'POSTED', 'CANCELLED', 'REVERSED'];
-
     public function __construct(TenantContext $context, private readonly ApInvoiceService $invoices, private readonly DocumentScope $scope)
     {
         parent::__construct($context);
@@ -23,16 +22,7 @@ class ApInvoiceController extends AppController
 
     public function index(Request $request): JsonResponse
     {
-        $filter = $request->validate([
-            'status' => ['nullable', Rule::in(self::STATUSES)], 'origin' => ['nullable', Rule::in(['INVOICE', 'EXPENSE'])], 'vendor_id' => ['nullable', 'uuid'],
-            'branch_id' => ['nullable', 'uuid'], 'business_unit_id' => ['nullable', 'uuid'], 'cost_center_id' => ['nullable', 'uuid'],
-            'document_from' => ['nullable', 'date_format:Y-m-d'], 'document_to' => ['nullable', 'date_format:Y-m-d'],
-            'posting_from' => ['nullable', 'date_format:Y-m-d'], 'posting_to' => ['nullable', 'date_format:Y-m-d'],
-            'due_from' => ['nullable', 'date_format:Y-m-d'], 'due_to' => ['nullable', 'date_format:Y-m-d'],
-            'payment_status' => ['nullable', Rule::in(['UNPAID', 'PARTIALLY_PAID', 'PAID'])], 'open' => ['nullable', 'boolean'], 'overdue' => ['nullable', 'boolean'],
-            'due_within' => ['nullable', 'integer', 'between:1,365'],
-            'q' => ['nullable', 'string', 'max:100'], 'mine' => ['nullable', 'boolean'], 'per_page' => ['nullable', 'integer', 'between:1,100'],
-        ]);
+        $filter = $request->validate(ListFilters::invoices());
         $filter['mine'] = $request->boolean('mine');
         $filter['open'] = $request->boolean('open');
         $filter['overdue'] = $request->boolean('overdue');

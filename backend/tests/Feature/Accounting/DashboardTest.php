@@ -21,7 +21,7 @@ class DashboardTest extends TestCase
         $year = now()->year;
         $tenant = $this->accountingTenant('alpha', "{$year}-01-01");
         $other = $this->accountingTenant('beta', "{$year}-01-01");
-        $today = now()->toDateString();
+        $today = $tenant->businessDate(); // the tenant's own calendar day, which differs from the UTC day for part of every day
         $this->postedJournal($other, ['document_date' => $today, 'posting_date' => $today]);
         $this->postedJournal($tenant, ['document_date' => $today, 'posting_date' => $today]);
         $client = $this->signedIn($tenant);
@@ -29,11 +29,10 @@ class DashboardTest extends TestCase
         $submitted = $this->draft($tenant, ['document_date' => $today, 'posting_date' => $today])['id'];
         $client->postJson("/api/v1/app/accounting/journals/{$submitted}/submit")->assertOk();
 
-        DB::table('tenants')->where('id', $tenant->id)->update(['timezone' => 'UTC']);
         $body = $this->getJson(self::URL)->assertOk()->json();
 
         $this->assertSame("FY{$year}", $body['fiscal_year']['code']);
-        $this->assertSame(now('UTC')->format('Y-m'), $body['period']['code']);
+        $this->assertSame(substr($today, 0, 7), $body['period']['code']);
         $this->assertSame('OPEN', $body['period']['status']);
         $this->assertSame(['draft' => 1, 'pending_approval' => 1, 'awaiting_posting' => 0], $body['journals']);
         $this->assertCount(1, $body['recent_posted']);
