@@ -4,7 +4,7 @@ namespace App\Domain\AccessControl\Services;
 
 use App\Domain\AccessControl\Models\DataScope;
 use App\Domain\Organization\Models\BusinessUnit;
-use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Contracts\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
 
 /**

@@ -32,6 +32,16 @@ final class EventCatalog
                 'description' => 'A membership was deactivated because OptiNexus revoked the user\'s access to the organization.',
                 'payload_schema' => ['required' => ['user_subject', 'reason'], 'properties' => ['user_subject' => ['type' => 'string'], 'reason' => ['type' => 'string']]],
             ],
+            [
+                'event_key' => $p.'journal.posted', 'name' => 'Journal posted', 'schema_version' => '1',
+                'description' => 'A journal was posted to the general ledger of an organization.',
+                'payload_schema' => ['required' => ['journal_id', 'journal_number', 'posting_date'], 'properties' => ['journal_id' => ['type' => 'string'], 'journal_number' => ['type' => 'string'], 'journal_type' => ['type' => 'string'], 'posting_date' => ['type' => 'string'], 'total' => ['type' => 'string'], 'currency' => ['type' => 'string']]],
+            ],
+            [
+                'event_key' => $p.'journal.reversed', 'name' => 'Journal reversed', 'schema_version' => '1',
+                'description' => 'A posted journal was reversed by a new journal.',
+                'payload_schema' => ['required' => ['journal_id', 'reversal_id'], 'properties' => ['journal_id' => ['type' => 'string'], 'journal_number' => ['type' => 'string'], 'reversal_id' => ['type' => 'string'], 'reversal_number' => ['type' => 'string'], 'posting_date' => ['type' => 'string']]],
+            ],
         ];
     }
 

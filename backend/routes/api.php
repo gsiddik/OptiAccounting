@@ -157,6 +157,19 @@ Route::prefix('v1')->middleware('request.id')->group(function () {
             Route::get('coa-templates', [Accounting\ChartOfAccountsController::class, 'templates'])->middleware($gate('accounting.coa.view', $config));
             Route::post('coa-templates/apply', [Accounting\ChartOfAccountsController::class, 'applyTemplate'])->middleware($gate('accounting.coa.manage', $config));
 
+            $journal = 'JOURNAL';
+            Route::get('journals', [Accounting\JournalController::class, 'index'])->middleware($gate('accounting.journal.view', $journal));
+            Route::post('journals', [Accounting\JournalController::class, 'store'])->middleware($gate('accounting.journal.create', $journal));
+            Route::get('journals/{journal}', [Accounting\JournalController::class, 'show'])->middleware($gate('accounting.journal.view', $journal));
+            Route::patch('journals/{journal}', [Accounting\JournalController::class, 'update'])->middleware($gate('accounting.journal.update', $journal));
+            Route::post('journals/{journal}/submit', [Accounting\JournalController::class, 'submit'])->middleware($gate('accounting.journal.submit', $journal));
+            Route::post('journals/{journal}/approve', [Accounting\JournalController::class, 'approve'])->middleware($gate('accounting.journal.approve', $journal));
+            Route::post('journals/{journal}/reject', [Accounting\JournalController::class, 'reject'])->middleware($gate('accounting.journal.approve', $journal));
+            Route::post('journals/{journal}/reopen', [Accounting\JournalController::class, 'reopen'])->middleware($gate('accounting.journal.update', $journal));
+            Route::post('journals/{journal}/cancel', [Accounting\JournalController::class, 'cancel'])->middleware($gate('accounting.journal.update', $journal));
+            Route::post('journals/{journal}/post', [Accounting\JournalController::class, 'post'])->middleware($gate('accounting.journal.post', $journal));
+            Route::post('journals/{journal}/reverse', [Accounting\JournalController::class, 'reverse'])->middleware($gate('accounting.journal.reverse', $journal));
+
             Route::get('dimension-types', [Accounting\DimensionController::class, 'types'])->middleware($gate('accounting.dimension.view', $config));
             Route::get('cost-centers', [Accounting\DimensionController::class, 'costCenters'])->middleware($gate('accounting.dimension.view', $config));
             Route::post('cost-centers', [Accounting\DimensionController::class, 'storeCostCenter'])->middleware($gate('accounting.dimension.manage', $config));

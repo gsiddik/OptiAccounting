@@ -5,10 +5,14 @@ namespace Tests\Support;
 use App\Domain\Accounting\Models\Account;
 use App\Domain\Accounting\Models\AccountingPeriod;
 use App\Domain\Accounting\Models\FiscalYear;
+use App\Domain\Accounting\Models\JournalEntry;
 use App\Domain\Accounting\Services\AccountingProfileService;
 use App\Domain\Accounting\Services\ChartOfAccountsService;
 use App\Domain\Accounting\Services\FiscalCalendarService;
+use App\Domain\Accounting\Services\JournalService;
+use App\Domain\Accounting\Services\PostingEngine;
 use App\Domain\Identity\Models\Tenant;
+use App\Domain\Identity\Models\User;
 use App\Support\TenantContext;
 
 /** Test helpers for the Accounting Core; combine with Fixtures. */
@@ -54,5 +58,51 @@ trait AccountingFixtures
     protected function fiscalYear(Tenant $tenant, string $code): FiscalYear
     {
         return $this->inTenant($tenant, fn () => FiscalYear::query()->where('code', $code)->firstOrFail());
+    }
+
+    /** @return list<array<string,mixed>> a balanced two-line journal body: cash (debit) against revenue (credit) unless told otherwise */
+    protected function lines(Tenant $tenant, string $amount = '100000', string $debit = '1110', string $credit = '4100', array $dimensions = []): array
+    {
+        return [
+            ['account_id' => $this->account($tenant, $debit)->id, 'debit' => $amount, 'description' => 'Debit'] + $dimensions,
+            ['account_id' => $this->account($tenant, $credit)->id, 'credit' => $amount, 'description' => 'Kredit'] + $dimensions,
+        ];
+    }
+
+    protected function journalBody(Tenant $tenant, array $override = []): array
+    {
+        return $override + [
+            'document_date' => '2026-03-10', 'posting_date' => '2026-03-10', 'description' => 'Penjualan tunai', 'reference' => 'INV-001',
+            'lines' => $this->lines($tenant),
+        ];
+    }
+
+    /** Create a draft journal through the API as the already-authenticated client and return its JSON. */
+    protected function draft(Tenant $tenant, array $override = []): array
+    {
+        return $this->postJson('/api/v1/app/accounting/journals', $this->journalBody($tenant, $override))->assertCreated()->json();
+    }
+
+    /** A signed-in client for a member holding exactly $permissions (null = all). */
+    protected function signedIn(Tenant $tenant, ?array $permissions = null, ?User $user = null, string $scope = 'TENANT'): static
+    {
+        [$user] = $this->member($tenant, $permissions, user: $user, scope: $scope);
+
+        return $this->as($this->tenantToken($user, $tenant));
+    }
+
+    /** Post a journal as system-trusted code (tests that need posted data, not the workflow itself). Returns the posted JournalEntry. */
+    protected function postedJournal(Tenant $tenant, array $override = [], ?User $actor = null): JournalEntry
+    {
+        return $this->inTenant($tenant, function () use ($tenant, $override, $actor) {
+            $actor ??= $this->member($tenant)[0];
+            $service = app(JournalService::class);
+            $profile = $service->profile();
+            $body = $this->journalBody($tenant, $override);
+            $journal = $service->newDraft($body, JournalEntry::SYSTEM, $profile, $actor->id);
+            $service->writeLines($journal, $body['lines'], $profile, $actor->id, enforceScope: false);
+
+            return app(PostingEngine::class)->post($journal, null);
+        });
     }
 }

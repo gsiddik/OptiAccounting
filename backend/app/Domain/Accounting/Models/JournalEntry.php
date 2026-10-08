@@ -2,9 +2,11 @@
 
 namespace App\Domain\Accounting\Models;
 
+use App\Domain\Identity\Models\User;
 use App\Domain\Shared\BelongsToTenant;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class JournalEntry extends Model
@@ -51,6 +53,11 @@ class JournalEntry extends Model
             'submitted_at' => 'datetime', 'approved_at' => 'datetime', 'rejected_at' => 'datetime', 'posted_at' => 'datetime', 'cancelled_at' => 'datetime',
             'posting_snapshot' => 'array',
         ];
+    }
+
+    public function creator(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'created_by')->select(['id', 'name']);
     }
 
     public function lines(): HasMany
