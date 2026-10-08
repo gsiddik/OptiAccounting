@@ -200,6 +200,7 @@ Route::prefix('v1')->middleware('request.id')->group(function () {
             Route::get('accounts-export', [Accounting\LedgerReportController::class, 'exportAccounts'])->middleware($gate('accounting.report.export', $config));
 
             Route::get('dimension-types', [Accounting\DimensionController::class, 'types'])->middleware($gate('accounting.dimension.view', $config));
+            Route::get('dimensions', [Accounting\DimensionController::class, 'catalog'])->middleware($gate('accounting.dimension.view', $config));
             Route::get('cost-centers', [Accounting\DimensionController::class, 'costCenters'])->middleware($gate('accounting.dimension.view', $config));
             Route::post('cost-centers', [Accounting\DimensionController::class, 'storeCostCenter'])->middleware($gate('accounting.dimension.manage', $config));
             Route::patch('cost-centers/{costCenter}', [Accounting\DimensionController::class, 'updateCostCenter'])->middleware($gate('accounting.dimension.manage', $config));

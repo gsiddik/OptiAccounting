@@ -159,7 +159,7 @@ class JournalController extends AppController
     /** Journal with its lines, history and what the signed-in user may still do under the segregation-of-duties policy. */
     private function present(JournalEntry $journal): array
     {
-        $journal->load(['creator', 'lines.account:id,code,name,normal_balance', 'lines.branch', 'lines.businessUnit', 'lines.costCenter', 'lines.dimensions', 'transitions']);
+        $journal->load(['creator', 'lines.account:id,code,name,normal_balance', 'lines.branch', 'lines.businessUnit', 'lines.costCenter', 'lines.dimensions', 'transitions.actor']);
         $profile = $this->journals->profile();
 
         return $journal->toArray() + ['sod' => $this->sod->allowed($journal, $this->scope->userId() ?? '', $profile), 'approval_required' => $profile->approval_required];
