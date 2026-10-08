@@ -115,3 +115,26 @@ The missing events are OptiFleet-side work (outbox entries) agreed per event
 type at OA6. Payments recorded in OptiFleet are operational records; whether
 they post cash directly or wait for bank confirmation in OptiAccounting is a
 tenant policy (default: post, reconcile in bank reconciliation).
+
+### 7.1 Owner decision (2026-10-08): direct path, OptiNexus unchanged
+
+- OptiNexus is **not modified** for this integration. OptiFleet-v2 and OptiAccounting talk directly.
+  OptiFleet's existing outbox events to OptiNexus are unaffected; OptiAccounting's own outbound
+  events for OptiNexus remain a separate OA0-N matter.
+- **Chosen shape: OptiAccounting pulls from OptiFleet-v2 on a schedule** (OA6). Reasons:
+  1. Smallest OptiFleet change: a read-only feed endpoint in new, isolated files; no consumer
+     secret, webhook receiver or retry logic inside OptiFleet.
+  2. Failure isolation: an OptiFleet outage only delays the next pull; manual accounting never blocks.
+  3. Idempotent by design: monotonic sequence cursor per connection, at-least-once delivery,
+     dedupe on `(source_system, event_id)`, "sync now" for urgent cases.
+  Trade-off: latency equals the schedule interval (minutes, not seconds).
+- Draft feed contract: `GET /api/v1/integration/accounting-feed?after=<cursor>&limit=<n>` returns canonical
+  envelope events ordered by a monotonic sequence (never by timestamp). Authentication is a read-only
+  machine credential issued by OptiFleet and scoped to one tenant mapping. Events missing today
+  (vendor invoice/payment, goods receipt, stock issue, spare part sale) are added to the feed as
+  additive entries, agreed per event type.
+- **Conflict protocol before touching OptiFleet-v2:** (1) list open PRs, branches and recent `main` commits;
+  (2) list the files they change; (3) put the work in new files only (controller, route file/section,
+  service, migration with its own timestamp, tests), with at most one registration line in a shared
+  file; (4) branch from the latest `main`, small draft PR; (5) report the check result to the owner
+  before opening the PR; never merge. Nothing in OptiFleet-v2 is changed during OA0.
