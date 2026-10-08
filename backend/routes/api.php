@@ -158,6 +158,7 @@ Route::prefix('v1')->middleware('request.id')->group(function () {
             Route::post('coa-templates/apply', [Accounting\ChartOfAccountsController::class, 'applyTemplate'])->middleware($gate('accounting.coa.manage', $config));
 
             $journal = 'JOURNAL';
+            Route::get('dashboard', [Accounting\DashboardController::class, 'show'])->middleware($gate('accounting.journal.view', $journal));
             Route::get('journals', [Accounting\JournalController::class, 'index'])->middleware($gate('accounting.journal.view', $journal));
             Route::post('journals', [Accounting\JournalController::class, 'store'])->middleware($gate('accounting.journal.create', $journal));
             Route::get('journals/{journal}', [Accounting\JournalController::class, 'show'])->middleware($gate('accounting.journal.view', $journal));
@@ -190,6 +191,13 @@ Route::prefix('v1')->middleware('request.id')->group(function () {
             Route::put('opening-balance', [Accounting\OpeningBalanceController::class, 'save'])->middleware($gate('accounting.opening_balance.manage', $opening));
             Route::post('opening-balance/cancel', [Accounting\OpeningBalanceController::class, 'cancel'])->middleware($gate('accounting.opening_balance.manage', $opening));
             Route::post('opening-balance/post', [Accounting\OpeningBalanceController::class, 'post'])->middleware($gate('accounting.opening_balance.post', $opening));
+
+            $ledger = 'GENERAL_LEDGER';
+            Route::get('general-ledger', [Accounting\LedgerReportController::class, 'generalLedger'])->middleware($gate('accounting.gl.view', $ledger));
+            Route::get('general-ledger/export', [Accounting\LedgerReportController::class, 'exportGeneralLedger'])->middleware($gate('accounting.report.export', $ledger));
+            Route::get('trial-balance', [Accounting\LedgerReportController::class, 'trialBalance'])->middleware($gate('accounting.trial_balance.view', $ledger));
+            Route::get('trial-balance/export', [Accounting\LedgerReportController::class, 'exportTrialBalance'])->middleware($gate('accounting.report.export', $ledger));
+            Route::get('accounts-export', [Accounting\LedgerReportController::class, 'exportAccounts'])->middleware($gate('accounting.report.export', $config));
 
             Route::get('dimension-types', [Accounting\DimensionController::class, 'types'])->middleware($gate('accounting.dimension.view', $config));
             Route::get('cost-centers', [Accounting\DimensionController::class, 'costCenters'])->middleware($gate('accounting.dimension.view', $config));
