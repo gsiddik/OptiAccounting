@@ -93,18 +93,18 @@ class BackchannelLogoutTest extends OptinexusTestCase
         $this->logout($this->nexusLogoutToken(accessRevoked: true, revoked: ['scope' => 'tenant', 'tenant_id' => 'ffffffff-0000-4000-8000-000000000009']))->assertOk();
     }
 
-    /** @return array<string,array{0:string,1:array<string,mixed>,2:bool}> */
+    /** @return array<string,array{0:string,1:array<string,mixed>}> */
     public static function badTokens(): array
     {
         return [
-            'another audience' => ['aud', ['aud' => 'someone-else'], false],
-            'another issuer' => ['iss', ['iss' => 'https://evil.test'], false],
-            'issued long ago' => ['iat', ['iat' => 1000, 'exp' => 1120], false],
-            'expired' => ['exp', ['exp' => 1000], false],
-            'no subject' => ['sub', ['sub' => ''], false],
-            'no jti' => ['jti', ['jti' => ''], false],
-            'with a nonce' => ['nonce', ['nonce' => 'abc'], false],
-            'without the logout event' => ['events', ['events' => ['x' => 1]], false],
+            'another audience' => ['aud', ['aud' => 'someone-else']],
+            'another issuer' => ['iss', ['iss' => 'https://evil.test']],
+            'issued long ago' => ['iat', ['iat' => 1000, 'exp' => 1120]],
+            'expired' => ['exp', ['exp' => 1000]],
+            'no subject' => ['sub', ['sub' => '']],
+            'no jti' => ['jti', ['jti' => '']],
+            'with a nonce' => ['nonce', ['nonce' => 'abc']],
+            'without the logout event' => ['events', ['events' => ['x' => 1]]],
         ];
     }
 
