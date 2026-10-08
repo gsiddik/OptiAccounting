@@ -58,7 +58,7 @@ class EntitlementProjector
     }
 
     /**
-     * @return array{changed:bool,changes:list<string>}
+     * @return array{changed:bool,changes:list<string>,skipped?:string}
      *
      * @throws IdentityProviderUnavailable
      */
@@ -79,7 +79,7 @@ class EntitlementProjector
      * Applies an already fetched context. Pure database work; safe to call concurrently (tenant row lock).
      *
      * @param  array<string,mixed>  $context
-     * @return array{changed:bool,changes:list<string>}
+     * @return array{changed:bool,changes:list<string>,skipped?:string}
      */
     public function project(Tenant $tenant, array $context): array
     {
@@ -89,6 +89,16 @@ class EntitlementProjector
 
             $changes = [];
             $date = $tenant->businessDate();
+
+            // Leftover local commercial data (a mode switch without its migration): never mix it with the projection.
+            $local = DB::table('subscriptions')->where('tenant_id', $tenant->id)->whereIn('status', ['PENDING', 'ACTIVE', 'PAST_DUE', 'SUSPENDED'])->where('source', '<>', 'OPTINEXUS')->first();
+            if ($local) {
+                Log::warning('optinexus: a live subscription that is not from OptiNexus blocks the projection', ['tenant_id' => $tenant->id, 'subscription_id' => $local->id]);
+                DB::table('tenants')->where('id', $tenant->id)->update(['optinexus_synced_at' => now()]);
+
+                return ['skipped' => 'local subscription'];
+            }
+
             $desired = $this->desired($context);
 
             $subscriptionId = $this->projectSubscription($tenant, $desired['subscription'], $date, $changes);
@@ -108,6 +118,10 @@ class EntitlementProjector
         });
 
         $tenant->refresh();
+
+        if (isset($changes['skipped'])) {
+            return ['changed' => false, 'changes' => [], 'skipped' => $changes['skipped']];
+        }
 
         return ['changed' => $changes !== [], 'changes' => $changes];
     }
@@ -196,13 +210,6 @@ class EntitlementProjector
     {
         $live = DB::table('subscriptions')->where('tenant_id', $tenant->id)->whereIn('status', ['PENDING', 'ACTIVE', 'PAST_DUE', 'SUSPENDED'])->first();
 
-        if ($live && $live->source !== 'OPTINEXUS') {
-            // A local subscription in an OptiNexus installation is leftover data of a mode switch: leave it alone, say so.
-            Log::warning('optinexus: a live subscription that is not from OptiNexus blocks the projection', ['tenant_id' => $tenant->id, 'subscription_id' => $live->id]);
-
-            return $live->id;
-        }
-
         if ($desired === null) {
             if ($live) {
                 DB::table('subscriptions')->where('id', $live->id)->update([
@@ -249,6 +256,9 @@ class EntitlementProjector
             $row = $rows->get($ids[$code]);
 
             if (! $row) {
+                if ($on && $this->blockedByLocalRow('tenant_module_entitlements', 'module_id', $tenant->id, $ids[$code], $date)) {
+                    continue;
+                }
                 if ($on) {
                     DB::table('tenant_module_entitlements')->insert([
                         'id' => (string) Str::uuid7(), 'tenant_id' => $tenant->id, 'module_id' => $ids[$code], 'state' => 'ACTIVE', 'source' => 'OPTINEXUS',
@@ -279,6 +289,9 @@ class EntitlementProjector
             $row = $rows->get($ids[$code]);
 
             if (! $row) {
+                if ($on && $this->blockedByLocalRow('tenant_feature_entitlements', 'feature_id', $tenant->id, $ids[$code], $date)) {
+                    continue;
+                }
                 if ($on) {
                     DB::table('tenant_feature_entitlements')->insert([
                         'id' => (string) Str::uuid7(), 'tenant_id' => $tenant->id, 'feature_id' => $ids[$code], 'state' => 'ACTIVE', 'source' => 'OPTINEXUS',
@@ -291,6 +304,19 @@ class EntitlementProjector
                 $changes[] = "feature {$code}: {$row->state} -> {$state}";
             }
         }
+    }
+
+    /** A non-OptiNexus entitlement window that is still open would overlap the new row (database exclusion constraint). */
+    private function blockedByLocalRow(string $table, string $column, string $tenantId, string $id, string $date): bool
+    {
+        $blocked = DB::table($table)->where('tenant_id', $tenantId)->where($column, $id)->where('source', '<>', 'OPTINEXUS')
+            ->where(fn ($q) => $q->whereNull('effective_until')->orWhere('effective_until', '>=', $date))->exists();
+
+        if ($blocked) {
+            Log::warning('optinexus: a local entitlement window blocks the projection', ['tenant_id' => $tenantId, 'table' => $table, 'id' => $id]);
+        }
+
+        return $blocked;
     }
 
     /**

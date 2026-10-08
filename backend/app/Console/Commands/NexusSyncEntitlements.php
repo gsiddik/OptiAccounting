@@ -28,7 +28,7 @@ class NexusSyncEntitlements extends Command
         foreach ($tenants as $tenant) {
             try {
                 $result = $projector->sync($tenant);
-                $this->line("{$tenant->code}: ".($result['changed'] ? implode('; ', $result['changes']) : 'no change'));
+                $this->line("{$tenant->code}: ".(isset($result['skipped']) ? "skipped, {$result['skipped']} present (migrate it first)" : ($result['changed'] ? implode('; ', $result['changes']) : 'no change')));
             } catch (IdentityProviderUnavailable $e) {
                 $failed++;
                 $this->components->warn("{$tenant->code}: OptiNexus unavailable (".($e->details['reason'] ?? '').'); the last projection stays.');

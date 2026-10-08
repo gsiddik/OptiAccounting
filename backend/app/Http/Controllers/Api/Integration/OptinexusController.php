@@ -28,8 +28,10 @@ class OptinexusController extends Controller
             return response()->json(['error' => 'sso_disabled'], 400, $headers);
         }
 
+        $token = $request->input('logout_token');
+
         try {
-            $claims = $this->oidc->verifyLogoutToken((string) $request->input('logout_token'));
+            $claims = $this->oidc->verifyLogoutToken(is_string($token) ? $token : '');
         } catch (SsoException $e) {
             return response()->json(['error' => 'invalid_request', 'error_description' => $e->getMessage()], 400, $headers);
         } catch (IdentityProviderUnavailable) {
