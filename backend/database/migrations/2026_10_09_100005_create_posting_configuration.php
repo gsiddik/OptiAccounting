@@ -26,6 +26,7 @@ return new class extends Migration
             $table->string('code', 40)->primary();
             $table->string('name');
             $table->string('description', 500)->nullable();
+            $table->jsonb('components')->default('[]'); // the amount keys a payload of this event type carries (a rule line may name only these)
             $table->string('status', 10)->default('ACTIVE');
             $table->unsignedInteger('sort_order')->default(0);
             $table->timestampsTz();
@@ -126,6 +127,7 @@ return new class extends Migration
             $table->string('status', 10)->default('PENDING');
             $table->date('posting_date');
             $table->jsonb('payload');
+            $table->char('payload_hash', 64); // same source fact + different content is a conflict, not a silent replay
             $table->uuid('journal_entry_id')->nullable();
             $table->uuid('posting_rule_id')->nullable();
             $table->string('failure_code', 60)->nullable();

@@ -2,6 +2,7 @@
 
 namespace App\Domain\Accounting\Services;
 
+use App\Domain\Accounting\Models\AccountingEvent;
 use App\Domain\Accounting\Models\FiscalYear;
 use App\Domain\Accounting\Models\JournalEntry;
 use App\Domain\Accounting\Models\JournalLine;
@@ -10,8 +11,10 @@ use App\Domain\Audit\Services\AuditService;
 use App\Domain\Identity\Models\User;
 use App\Domain\Integration\Services\OutboxPublisher;
 use App\Domain\Shared\DomainException;
+use App\Support\TenantContext;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 /**
  * The single posting core. Manual journals, the opening balance, reversals and accounting events all end here, so
@@ -41,7 +44,126 @@ class PostingEngine
         private readonly JournalService $journals,
         private readonly AuditService $audit,
         private readonly OutboxPublisher $outbox,
+        private readonly PostingRuleService $rules,
+        private readonly TenantContext $context,
     ) {}
+
+    /**
+     * Post a business fact (accounting event) with system authority: resolve the rule effective on the posting date,
+     * resolve every role through the tenant's account mappings, build a SYSTEM journal and post it through post().
+     *
+     * Idempotent on (source_type, source_id, purpose): a replay returns the original event; the same key with different
+     * content is a conflict. A failure leaves a FAILED event row (written outside the rolled-back posting) and no journal.
+     * The resolved rule version and role -> account facts are stored on the journal (`posting_snapshot`), so later rule or
+     * mapping changes never reinterpret it.
+     *
+     * @param  array<string,mixed>  $payload  amount components (decimal strings) named by the event type
+     * @param  array{branch_id?:?string,business_unit_id?:?string,cost_center_id?:?string}  $dimensions
+     */
+    public function postEvent(string $eventType, string $sourceType, string $sourceId, string $postingDate, array $payload, array $dimensions = [], string $purpose = 'POST', ?string $description = null, ?string $reference = null): AccountingEvent
+    {
+        $hash = $this->fingerprint($eventType, $postingDate, $payload, $dimensions);
+
+        try {
+            return DB::transaction(function () use ($eventType, $sourceType, $sourceId, $postingDate, $payload, $dimensions, $purpose, $description, $reference, $hash) {
+                $event = $this->claimEvent($eventType, $sourceType, $sourceId, $purpose, $postingDate, $payload, $hash);
+                if ($event->status === 'POSTED') {
+                    if ($event->payload_hash !== $hash) {
+                        throw new DomainException('This business fact was already posted with different content.', 'ACCOUNTING_EVENT_CONFLICT', 409, ['source_type' => $sourceType, 'source_id' => $sourceId]);
+                    }
+
+                    return $event; // idempotent replay
+                }
+
+                $profile = $this->journals->profile();
+                $rule = $this->rules->resolve($eventType, $postingDate);
+                $built = $this->rules->build($rule, $payload, $dimensions, (int) $profile->currency_scale);
+                if ($built['lines'] === []) {
+                    throw new DomainException('The event produced no journal lines.', 'EVENT_EMPTY', 422);
+                }
+
+                $label = DB::table('accounting_event_types')->where('code', $eventType)->value('name');
+                $journal = $this->journals->newDraft([
+                    'document_date' => $postingDate, 'posting_date' => $postingDate, 'description' => mb_substr($description ?? "{$label} {$sourceId}", 0, 500),
+                    'reference' => $reference ?? $sourceId, 'source_type' => $sourceType, 'source_id' => $sourceId, 'posting_purpose' => $purpose,
+                    'posting_snapshot' => [
+                        'event_type' => $eventType, 'payload' => $payload, 'dimensions' => $dimensions,
+                        'rule' => ['id' => $rule->id, 'code' => $rule->code, 'version' => $rule->version, 'effective_from' => $rule->effective_from->toDateString()],
+                        'lines' => $built['trace'],
+                    ],
+                ], JournalEntry::SYSTEM, $profile, null);
+                $this->journals->writeLines($journal, $built['lines'], $profile, null, enforceScope: false);
+                $this->journals->transition($journal, null, JournalEntry::DRAFT, null);
+                $posted = $this->post($journal, null);
+
+                DB::table('accounting_events')->where('id', $event->id)->update([
+                    'status' => 'POSTED', 'journal_entry_id' => $posted->id, 'posting_rule_id' => $rule->id, 'failure_code' => null, 'failure_message' => null,
+                    'attempts' => DB::raw('attempts + 1'), 'processed_at' => now(), 'updated_at' => now(),
+                ]);
+
+                return AccountingEvent::query()->findOrFail($event->id);
+            });
+        } catch (\Throwable $e) {
+            if (! ($e instanceof DomainException && $e->errorCode === 'ACCOUNTING_EVENT_CONFLICT')) {
+                $this->recordFailure($eventType, $sourceType, $sourceId, $purpose, $postingDate, $payload, $hash, $e);
+            }
+            throw $e;
+        }
+    }
+
+    /** The event row of this business fact, created on first sight and locked for the rest of the transaction. */
+    private function claimEvent(string $eventType, string $sourceType, string $sourceId, string $purpose, string $postingDate, array $payload, string $hash): AccountingEvent
+    {
+        DB::table('accounting_events')->insertOrIgnore([
+            'id' => (string) Str::uuid7(), 'tenant_id' => $this->context->tenantId(), 'event_type' => $eventType, 'source_type' => $sourceType, 'source_id' => $sourceId,
+            'posting_purpose' => $purpose, 'status' => 'PENDING', 'posting_date' => $postingDate, 'payload' => json_encode($payload), 'payload_hash' => $hash,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $event = AccountingEvent::query()->lockForUpdate()->where('source_type', $sourceType)->where('source_id', $sourceId)->where('posting_purpose', $purpose)->firstOrFail();
+
+        if ($event->status !== 'POSTED') { // a retried failure may carry a corrected fact
+            DB::table('accounting_events')->where('id', $event->id)->update([
+                'event_type' => $eventType, 'posting_date' => $postingDate, 'payload' => json_encode($payload), 'payload_hash' => $hash, 'updated_at' => now(),
+            ]);
+            $event->refresh();
+        }
+
+        return $event;
+    }
+
+    private function recordFailure(string $eventType, string $sourceType, string $sourceId, string $purpose, string $postingDate, array $payload, string $hash, \Throwable $e): void
+    {
+        $code = $e instanceof DomainException ? $e->errorCode : 'POSTING_ERROR';
+        $message = $e instanceof DomainException ? $e->getMessage() : 'Unexpected error while posting the event.';
+
+        try {
+            $inserted = DB::table('accounting_events')->insertOrIgnore([
+                'id' => (string) Str::uuid7(), 'tenant_id' => $this->context->tenantId(), 'event_type' => $eventType, 'source_type' => $sourceType, 'source_id' => $sourceId,
+                'posting_purpose' => $purpose, 'status' => 'FAILED', 'posting_date' => $postingDate, 'payload' => json_encode($payload), 'payload_hash' => $hash,
+                'failure_code' => $code, 'failure_message' => mb_substr($message, 0, 500), 'attempts' => 1, 'created_at' => now(), 'updated_at' => now(),
+            ]);
+            if ($inserted === 0) { // a retried fact: keep the one row, count the attempt, never touch a POSTED one
+                DB::table('accounting_events')->where('tenant_id', $this->context->tenantId())->where('source_type', $sourceType)->where('source_id', $sourceId)
+                    ->where('posting_purpose', $purpose)->where('status', '!=', 'POSTED')
+                    ->update(['status' => 'FAILED', 'failure_code' => $code, 'failure_message' => mb_substr($message, 0, 500), 'payload' => json_encode($payload), 'payload_hash' => $hash,
+                        'attempts' => DB::raw('attempts + 1'), 'updated_at' => now()]);
+            }
+        } catch (\Throwable) {
+            // The failure record is best effort; the original error is what the caller needs.
+        }
+    }
+
+    /** Stable content hash: key order and int/string form of the same value do not matter. */
+    private function fingerprint(string $eventType, string $postingDate, array $payload, array $dimensions): string
+    {
+        $sort = function (array $a) use (&$sort): array {
+            ksort($a);
+
+            return array_map(fn ($v) => is_array($v) ? $sort($v) : (is_scalar($v) ? (string) $v : $v), $a);
+        };
+
+        return hash('sha256', json_encode(['t' => $eventType, 'd' => $postingDate, 'p' => $sort($payload), 'x' => $sort(array_filter($dimensions))]));
+    }
 
     /**
      * Post a journal that is APPROVED (or a DRAFT whose type/policy allows posting without approval).

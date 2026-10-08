@@ -170,6 +170,21 @@ Route::prefix('v1')->middleware('request.id')->group(function () {
             Route::post('journals/{journal}/post', [Accounting\JournalController::class, 'post'])->middleware($gate('accounting.journal.post', $journal));
             Route::post('journals/{journal}/reverse', [Accounting\JournalController::class, 'reverse'])->middleware($gate('accounting.journal.reverse', $journal));
 
+            Route::get('event-types', [Accounting\PostingConfigurationController::class, 'eventTypes'])->middleware($gate('accounting.posting_rule.view', $config));
+            Route::get('posting-rules', [Accounting\PostingConfigurationController::class, 'rules'])->middleware($gate('accounting.posting_rule.view', $config));
+            Route::post('posting-rules', [Accounting\PostingConfigurationController::class, 'storeRule'])->middleware($gate('accounting.posting_rule.manage', $config));
+            Route::get('posting-rules/{rule}', [Accounting\PostingConfigurationController::class, 'showRule'])->middleware($gate('accounting.posting_rule.view', $config));
+            Route::patch('posting-rules/{rule}', [Accounting\PostingConfigurationController::class, 'updateRule'])->middleware($gate('accounting.posting_rule.manage', $config));
+            Route::delete('posting-rules/{rule}', [Accounting\PostingConfigurationController::class, 'destroyRule'])->middleware($gate('accounting.posting_rule.manage', $config));
+            Route::post('posting-rules/{rule}/new-version', [Accounting\PostingConfigurationController::class, 'newVersion'])->middleware($gate('accounting.posting_rule.manage', $config));
+            Route::post('posting-rules/{rule}/publish', [Accounting\PostingConfigurationController::class, 'publishRule'])->middleware($gate('accounting.posting_rule.manage', $config));
+            Route::post('posting-rules/{rule}/archive', [Accounting\PostingConfigurationController::class, 'archiveRule'])->middleware($gate('accounting.posting_rule.manage', $config));
+            Route::post('posting-rules/{rule}/simulate', [Accounting\PostingConfigurationController::class, 'simulate'])->middleware($gate('accounting.posting_rule.view', $config));
+            Route::get('account-mappings', [Accounting\PostingConfigurationController::class, 'mappings'])->middleware($gate('accounting.account_mapping.view', $config));
+            Route::put('account-mappings', [Accounting\PostingConfigurationController::class, 'saveMapping'])->middleware($gate('accounting.account_mapping.manage', $config));
+            Route::post('account-mappings/{mapping}/deactivate', [Accounting\PostingConfigurationController::class, 'deactivateMapping'])->middleware($gate('accounting.account_mapping.manage', $config));
+            Route::get('accounting-events', [Accounting\PostingConfigurationController::class, 'events'])->middleware($gate('accounting.posting_rule.view', $config));
+
             Route::get('dimension-types', [Accounting\DimensionController::class, 'types'])->middleware($gate('accounting.dimension.view', $config));
             Route::get('cost-centers', [Accounting\DimensionController::class, 'costCenters'])->middleware($gate('accounting.dimension.view', $config));
             Route::post('cost-centers', [Accounting\DimensionController::class, 'storeCostCenter'])->middleware($gate('accounting.dimension.manage', $config));

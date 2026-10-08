@@ -22,12 +22,13 @@ class AccountingCatalogSeeder extends Seeder
         'TAX_RECEIVABLE' => 'Pajak dibayar di muka / PPN masukan', 'TAX_PAYABLE' => 'Utang pajak / PPN keluaran', 'RETAINED_EARNINGS' => 'Laba ditahan',
     ];
 
+    /** code => [name, description, components]. The components are the only amount keys a posting rule line may use. */
     private const EVENT_TYPES = [
-        'EXPENSE_RECOGNIZED' => ['Beban diakui', 'Komponen umum: net, tax, total.'],
-        'AP_INVOICE_RECOGNIZED' => ['Faktur vendor diakui', 'Komponen umum: net, tax, total. Diaktifkan oleh OA2.'],
-        'VENDOR_PAYMENT' => ['Pembayaran vendor', 'Komponen umum: amount. Diaktifkan oleh OA2.'],
-        'AR_INVOICE_RECOGNIZED' => ['Faktur pelanggan diakui', 'Komponen umum: net, tax, total. Diaktifkan oleh OA3.'],
-        'CUSTOMER_RECEIPT' => ['Penerimaan pelanggan', 'Komponen umum: amount. Diaktifkan oleh OA3.'],
+        'EXPENSE_RECOGNIZED' => ['Beban diakui', 'Komponen: net, tax, total.', ['net', 'tax', 'total']],
+        'AP_INVOICE_RECOGNIZED' => ['Faktur vendor diakui', 'Komponen: net, tax, total. Diaktifkan oleh OA2.', ['net', 'tax', 'total']],
+        'VENDOR_PAYMENT' => ['Pembayaran vendor', 'Komponen: amount. Diaktifkan oleh OA2.', ['amount']],
+        'AR_INVOICE_RECOGNIZED' => ['Faktur pelanggan diakui', 'Komponen: net, tax, total. Diaktifkan oleh OA3.', ['net', 'tax', 'total']],
+        'CUSTOMER_RECEIPT' => ['Penerimaan pelanggan', 'Komponen: amount. Diaktifkan oleh OA3.', ['amount']],
     ];
 
     /** code, name, parent, type, postable, control, role */
@@ -87,8 +88,8 @@ class AccountingCatalogSeeder extends Seeder
             }
 
             $order = 10;
-            foreach (self::EVENT_TYPES as $code => [$name, $description]) {
-                DB::table('accounting_event_types')->insertOrIgnore(['code' => $code, 'name' => $name, 'description' => $description, 'status' => 'ACTIVE', 'sort_order' => $order, 'created_at' => $now, 'updated_at' => $now]);
+            foreach (self::EVENT_TYPES as $code => [$name, $description, $components]) {
+                DB::table('accounting_event_types')->insertOrIgnore(['code' => $code, 'name' => $name, 'description' => $description, 'components' => json_encode($components), 'status' => 'ACTIVE', 'sort_order' => $order, 'created_at' => $now, 'updated_at' => $now]);
                 $order += 10;
             }
 
