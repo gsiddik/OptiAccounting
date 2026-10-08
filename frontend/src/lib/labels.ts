@@ -1,4 +1,5 @@
 import { ApiError } from './api'
+import { ACCOUNTING_ERRORS, ACCOUNTING_STATUS } from './accountingLabels'
 
 // Indonesian UI strings for statuses, codes and API refusals (UI is Indonesian-only for now).
 
@@ -23,7 +24,7 @@ const STATUS: Record<string, [string, Tone]> = {
 
 export function statusLabel(status: string | null | undefined): [string, Tone] {
   if (!status) return ['—', 'neutral']
-  return STATUS[status] ?? [status, 'neutral']
+  return STATUS[status] ?? ACCOUNTING_STATUS[status] ?? [status, 'neutral']
 }
 
 export const scopeLabels: Record<string, string> = {
@@ -64,6 +65,7 @@ export const groupLabels: Record<string, string> = {
 }
 
 const ERRORS: Record<string, string> = {
+  ...ACCOUNTING_ERRORS,
   INVALID_CREDENTIALS: 'E-mail atau kata sandi salah.',
   USER_INACTIVE: 'Akun ini tidak aktif.',
   TENANT_NOT_ENTERABLE: 'Anda tidak dapat masuk ke organisasi ini.',

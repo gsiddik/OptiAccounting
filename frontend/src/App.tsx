@@ -21,6 +21,18 @@ import Roles from './pages/tenant/Roles'
 import Subscription from './pages/tenant/Subscription'
 import Usage from './pages/tenant/Usage'
 import Users from './pages/tenant/Users'
+import AccountMappings from './pages/accounting/AccountMappings'
+import AccountingHome from './pages/accounting/AccountingHome'
+import ChartOfAccounts from './pages/accounting/ChartOfAccounts'
+import FiscalCalendar from './pages/accounting/FiscalCalendar'
+import GeneralLedger from './pages/accounting/GeneralLedger'
+import JournalDetail from './pages/accounting/JournalDetail'
+import JournalEditor from './pages/accounting/JournalEditor'
+import Journals from './pages/accounting/Journals'
+import OpeningBalancePage from './pages/accounting/OpeningBalance'
+import PostingRules from './pages/accounting/PostingRules'
+import Profile from './pages/accounting/Profile'
+import TrialBalance from './pages/accounting/TrialBalance'
 
 // Navigation is declarative: an item shows only when the user holds its permission (cosmetic; the API enforces).
 const PLATFORM_NAV: NavItem[] = [
@@ -37,6 +49,17 @@ const TENANT_NAV: NavItem[] = [
   { to: '/app/organisasi', label: 'Organisasi', icon: 'building', permission: 'organization.view', group: 'Pengaturan' },
   { to: '/app/pengguna', label: 'Pengguna', icon: 'users', permission: 'access.user.view', group: 'Pengaturan' },
   { to: '/app/peran', label: 'Peran & izin', icon: 'shield', permission: 'access.role.view', group: 'Pengaturan' },
+  // Accounting Core: shown only while ACCOUNTING_CORE is entitled and the user holds the permission (cosmetic; the API enforces both).
+  { to: '/app/akuntansi', label: 'Ringkasan', icon: 'chart', permission: 'accounting.journal.view', module: 'ACCOUNTING_CORE', group: 'Akuntansi', end: true },
+  { to: '/app/akuntansi/jurnal', label: 'Jurnal', icon: 'list', permission: 'accounting.journal.view', module: 'ACCOUNTING_CORE', group: 'Akuntansi' },
+  { to: '/app/akuntansi/buku-besar', label: 'Buku besar', icon: 'book', permission: 'accounting.gl.view', module: 'ACCOUNTING_CORE', group: 'Akuntansi' },
+  { to: '/app/akuntansi/neraca-saldo', label: 'Neraca saldo', icon: 'scale', permission: 'accounting.trial_balance.view', module: 'ACCOUNTING_CORE', group: 'Akuntansi' },
+  { to: '/app/akuntansi/saldo-awal', label: 'Saldo awal', icon: 'box', permission: 'accounting.opening_balance.view', module: 'ACCOUNTING_CORE', group: 'Akuntansi' },
+  { to: '/app/akuntansi/profil', label: 'Profil akuntansi', icon: 'cog', permission: 'accounting.profile.view', module: 'ACCOUNTING_CORE', group: 'Konfigurasi akuntansi' },
+  { to: '/app/akuntansi/periode', label: 'Tahun fiskal & periode', icon: 'calendar', permission: 'accounting.period.view', module: 'ACCOUNTING_CORE', group: 'Konfigurasi akuntansi' },
+  { to: '/app/akuntansi/akun', label: 'Bagan akun', icon: 'grid', permission: 'accounting.coa.view', module: 'ACCOUNTING_CORE', group: 'Konfigurasi akuntansi' },
+  { to: '/app/akuntansi/aturan-posting', label: 'Aturan posting', icon: 'tag', permission: 'accounting.posting_rule.view', module: 'ACCOUNTING_CORE', group: 'Konfigurasi akuntansi' },
+  { to: '/app/akuntansi/pemetaan-akun', label: 'Pemetaan akun', icon: 'key', permission: 'accounting.account_mapping.view', module: 'ACCOUNTING_CORE', group: 'Konfigurasi akuntansi' },
   { to: '/app/langganan', label: 'Langganan', icon: 'card', permission: 'account.subscription.view', group: 'Akun' },
   { to: '/app/penggunaan', label: 'Penggunaan & batas', icon: 'chart', permission: 'account.subscription.view', group: 'Akun' },
   { to: '/app/audit', label: 'Audit', icon: 'log', permission: 'audit.view', group: 'Akun' },
@@ -64,8 +87,9 @@ function Portal({ scope, items }: { scope: 'platform' | 'tenant'; items: NavItem
 }
 
 /** Page-level guard: a direct URL without the permission shows a refusal instead of a failing request. */
-function Guard({ permission, children }: { permission: string; children: ReactNode }) {
-  const { can } = useCapabilities()
+function Guard({ permission, module, children }: { permission: string; module?: string; children: ReactNode }) {
+  const { can, moduleMode } = useCapabilities()
+  if (module && moduleMode(module) === 'NONE') return <EmptyState title="Modul tidak tersedia">Modul ini tidak termasuk dalam langganan organisasi Anda.</EmptyState>
   if (!can(permission)) return <EmptyState title="Akses ditolak">Anda tidak memiliki izin untuk membuka halaman ini.</EmptyState>
   return <>{children}</>
 }
@@ -109,6 +133,21 @@ export default function App() {
           <Route path="organisasi" element={<Guard permission="organization.view"><Organization /></Guard>} />
           <Route path="pengguna" element={<Guard permission="access.user.view"><Users /></Guard>} />
           <Route path="peran" element={<Guard permission="access.role.view"><Roles /></Guard>} />
+          <Route path="akuntansi">
+            <Route index element={<Guard permission="accounting.journal.view" module="ACCOUNTING_CORE"><AccountingHome /></Guard>} />
+            <Route path="jurnal" element={<Guard permission="accounting.journal.view" module="ACCOUNTING_CORE"><Journals /></Guard>} />
+            <Route path="jurnal/baru" element={<Guard permission="accounting.journal.create" module="ACCOUNTING_CORE"><JournalEditor /></Guard>} />
+            <Route path="jurnal/:id" element={<Guard permission="accounting.journal.view" module="ACCOUNTING_CORE"><JournalDetail /></Guard>} />
+            <Route path="jurnal/:id/ubah" element={<Guard permission="accounting.journal.update" module="ACCOUNTING_CORE"><JournalEditor /></Guard>} />
+            <Route path="buku-besar" element={<Guard permission="accounting.gl.view" module="ACCOUNTING_CORE"><GeneralLedger /></Guard>} />
+            <Route path="neraca-saldo" element={<Guard permission="accounting.trial_balance.view" module="ACCOUNTING_CORE"><TrialBalance /></Guard>} />
+            <Route path="saldo-awal" element={<Guard permission="accounting.opening_balance.view" module="ACCOUNTING_CORE"><OpeningBalancePage /></Guard>} />
+            <Route path="profil" element={<Guard permission="accounting.profile.view" module="ACCOUNTING_CORE"><Profile /></Guard>} />
+            <Route path="periode" element={<Guard permission="accounting.period.view" module="ACCOUNTING_CORE"><FiscalCalendar /></Guard>} />
+            <Route path="akun" element={<Guard permission="accounting.coa.view" module="ACCOUNTING_CORE"><ChartOfAccounts /></Guard>} />
+            <Route path="aturan-posting" element={<Guard permission="accounting.posting_rule.view" module="ACCOUNTING_CORE"><PostingRules /></Guard>} />
+            <Route path="pemetaan-akun" element={<Guard permission="accounting.account_mapping.view" module="ACCOUNTING_CORE"><AccountMappings /></Guard>} />
+          </Route>
           <Route path="langganan" element={<Guard permission="account.subscription.view"><Subscription /></Guard>} />
           <Route path="penggunaan" element={<Guard permission="account.subscription.view"><Usage /></Guard>} />
           <Route path="audit" element={<Guard permission="audit.view"><TenantAudit /></Guard>} />

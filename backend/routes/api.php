@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\App;
+use App\Http\Controllers\Api\App\Accounting;
 use App\Http\Controllers\Api\Auth\AuthController;
 use App\Http\Controllers\Api\Auth\SsoController;
 use App\Http\Controllers\Api\HealthController;
@@ -128,5 +129,82 @@ Route::prefix('v1')->middleware('request.id')->group(function () {
         Route::get('account/usage', [App\AccountController::class, 'usage'])->middleware('access:account.subscription.view');
 
         Route::get('audit-logs', [App\AccountController::class, 'audit'])->middleware('access:audit.view');
+
+        // ---------------------------------------------------- Accounting Core (OA1). Module and feature entitlement is enforced by the gate.
+        Route::prefix('accounting')->group(function () {
+            $gate = fn (string $permission, string $feature) => "access:{$permission},module=ACCOUNTING_CORE,feature={$feature}";
+            $config = 'ACCOUNTING_CONFIGURATION';
+
+            Route::get('profile', [Accounting\SetupController::class, 'profile'])->middleware($gate('accounting.profile.view', $config));
+            Route::put('profile', [Accounting\SetupController::class, 'saveProfile'])->middleware($gate('accounting.profile.manage', $config));
+            Route::post('profile/activate', [Accounting\SetupController::class, 'activate'])->middleware($gate('accounting.profile.manage', $config));
+            Route::get('readiness', [Accounting\SetupController::class, 'readiness'])->middleware($gate('accounting.profile.view', $config));
+
+            Route::get('fiscal-years', [Accounting\FiscalCalendarController::class, 'index'])->middleware($gate('accounting.period.view', $config));
+            Route::post('fiscal-years', [Accounting\FiscalCalendarController::class, 'store'])->middleware($gate('accounting.period.manage', $config));
+            Route::post('fiscal-years/{fiscalYear}/open', [Accounting\FiscalCalendarController::class, 'open'])->middleware($gate('accounting.period.manage', $config));
+            Route::post('fiscal-years/{fiscalYear}/close', [Accounting\FiscalCalendarController::class, 'close'])->middleware($gate('accounting.period.close', $config));
+            Route::delete('fiscal-years/{fiscalYear}', [Accounting\FiscalCalendarController::class, 'destroy'])->middleware($gate('accounting.period.manage', $config));
+            Route::post('periods/{period}/open', [Accounting\FiscalCalendarController::class, 'openPeriod'])->middleware($gate('accounting.period.manage', $config));
+            Route::post('periods/{period}/soft-close', [Accounting\FiscalCalendarController::class, 'softClosePeriod'])->middleware($gate('accounting.period.manage', $config));
+            Route::post('periods/{period}/close', [Accounting\FiscalCalendarController::class, 'closePeriod'])->middleware($gate('accounting.period.close', $config));
+
+            Route::get('accounts', [Accounting\ChartOfAccountsController::class, 'index'])->middleware($gate('accounting.coa.view', $config));
+            Route::post('accounts', [Accounting\ChartOfAccountsController::class, 'store'])->middleware($gate('accounting.coa.manage', $config));
+            Route::patch('accounts/{account}', [Accounting\ChartOfAccountsController::class, 'update'])->middleware($gate('accounting.coa.manage', $config));
+            Route::post('accounts/{account}/status', [Accounting\ChartOfAccountsController::class, 'status'])->middleware($gate('accounting.coa.manage', $config));
+            Route::delete('accounts/{account}', [Accounting\ChartOfAccountsController::class, 'destroy'])->middleware($gate('accounting.coa.manage', $config));
+            Route::get('coa-templates', [Accounting\ChartOfAccountsController::class, 'templates'])->middleware($gate('accounting.coa.view', $config));
+            Route::post('coa-templates/apply', [Accounting\ChartOfAccountsController::class, 'applyTemplate'])->middleware($gate('accounting.coa.manage', $config));
+
+            $journal = 'JOURNAL';
+            Route::get('dashboard', [Accounting\DashboardController::class, 'show'])->middleware($gate('accounting.journal.view', $journal));
+            Route::get('journals', [Accounting\JournalController::class, 'index'])->middleware($gate('accounting.journal.view', $journal));
+            Route::post('journals', [Accounting\JournalController::class, 'store'])->middleware($gate('accounting.journal.create', $journal));
+            Route::get('journals/{journal}', [Accounting\JournalController::class, 'show'])->middleware($gate('accounting.journal.view', $journal));
+            Route::patch('journals/{journal}', [Accounting\JournalController::class, 'update'])->middleware($gate('accounting.journal.update', $journal));
+            Route::post('journals/{journal}/submit', [Accounting\JournalController::class, 'submit'])->middleware($gate('accounting.journal.submit', $journal));
+            Route::post('journals/{journal}/approve', [Accounting\JournalController::class, 'approve'])->middleware($gate('accounting.journal.approve', $journal));
+            Route::post('journals/{journal}/reject', [Accounting\JournalController::class, 'reject'])->middleware($gate('accounting.journal.approve', $journal));
+            Route::post('journals/{journal}/reopen', [Accounting\JournalController::class, 'reopen'])->middleware($gate('accounting.journal.update', $journal));
+            Route::post('journals/{journal}/cancel', [Accounting\JournalController::class, 'cancel'])->middleware($gate('accounting.journal.update', $journal));
+            Route::post('journals/{journal}/post', [Accounting\JournalController::class, 'post'])->middleware($gate('accounting.journal.post', $journal));
+            Route::post('journals/{journal}/reverse', [Accounting\JournalController::class, 'reverse'])->middleware($gate('accounting.journal.reverse', $journal));
+
+            Route::get('event-types', [Accounting\PostingConfigurationController::class, 'eventTypes'])->middleware($gate('accounting.posting_rule.view', $config));
+            Route::get('posting-rules', [Accounting\PostingConfigurationController::class, 'rules'])->middleware($gate('accounting.posting_rule.view', $config));
+            Route::post('posting-rules', [Accounting\PostingConfigurationController::class, 'storeRule'])->middleware($gate('accounting.posting_rule.manage', $config));
+            Route::get('posting-rules/{rule}', [Accounting\PostingConfigurationController::class, 'showRule'])->middleware($gate('accounting.posting_rule.view', $config));
+            Route::patch('posting-rules/{rule}', [Accounting\PostingConfigurationController::class, 'updateRule'])->middleware($gate('accounting.posting_rule.manage', $config));
+            Route::delete('posting-rules/{rule}', [Accounting\PostingConfigurationController::class, 'destroyRule'])->middleware($gate('accounting.posting_rule.manage', $config));
+            Route::post('posting-rules/{rule}/new-version', [Accounting\PostingConfigurationController::class, 'newVersion'])->middleware($gate('accounting.posting_rule.manage', $config));
+            Route::post('posting-rules/{rule}/publish', [Accounting\PostingConfigurationController::class, 'publishRule'])->middleware($gate('accounting.posting_rule.manage', $config));
+            Route::post('posting-rules/{rule}/archive', [Accounting\PostingConfigurationController::class, 'archiveRule'])->middleware($gate('accounting.posting_rule.manage', $config));
+            Route::post('posting-rules/{rule}/simulate', [Accounting\PostingConfigurationController::class, 'simulate'])->middleware($gate('accounting.posting_rule.view', $config));
+            Route::get('account-mappings', [Accounting\PostingConfigurationController::class, 'mappings'])->middleware($gate('accounting.account_mapping.view', $config));
+            Route::put('account-mappings', [Accounting\PostingConfigurationController::class, 'saveMapping'])->middleware($gate('accounting.account_mapping.manage', $config));
+            Route::post('account-mappings/{mapping}/deactivate', [Accounting\PostingConfigurationController::class, 'deactivateMapping'])->middleware($gate('accounting.account_mapping.manage', $config));
+            Route::get('accounting-events', [Accounting\PostingConfigurationController::class, 'events'])->middleware($gate('accounting.posting_rule.view', $config));
+
+            $opening = 'OPENING_BALANCE';
+            Route::get('opening-balance', [Accounting\OpeningBalanceController::class, 'show'])->middleware($gate('accounting.opening_balance.view', $opening));
+            Route::put('opening-balance', [Accounting\OpeningBalanceController::class, 'save'])->middleware($gate('accounting.opening_balance.manage', $opening));
+            Route::post('opening-balance/cancel', [Accounting\OpeningBalanceController::class, 'cancel'])->middleware($gate('accounting.opening_balance.manage', $opening));
+            Route::post('opening-balance/post', [Accounting\OpeningBalanceController::class, 'post'])->middleware($gate('accounting.opening_balance.post', $opening));
+
+            $ledger = 'GENERAL_LEDGER';
+            Route::get('general-ledger', [Accounting\LedgerReportController::class, 'generalLedger'])->middleware($gate('accounting.gl.view', $ledger));
+            Route::get('general-ledger/export', [Accounting\LedgerReportController::class, 'exportGeneralLedger'])->middleware($gate('accounting.report.export', $ledger));
+            Route::get('trial-balance', [Accounting\LedgerReportController::class, 'trialBalance'])->middleware($gate('accounting.trial_balance.view', $ledger));
+            Route::get('trial-balance/export', [Accounting\LedgerReportController::class, 'exportTrialBalance'])->middleware($gate('accounting.report.export', $ledger));
+            Route::get('accounts-export', [Accounting\LedgerReportController::class, 'exportAccounts'])->middleware($gate('accounting.report.export', $config));
+
+            Route::get('dimension-types', [Accounting\DimensionController::class, 'types'])->middleware($gate('accounting.dimension.view', $config));
+            Route::get('dimensions', [Accounting\DimensionController::class, 'catalog'])->middleware($gate('accounting.dimension.view', $config));
+            Route::get('cost-centers', [Accounting\DimensionController::class, 'costCenters'])->middleware($gate('accounting.dimension.view', $config));
+            Route::post('cost-centers', [Accounting\DimensionController::class, 'storeCostCenter'])->middleware($gate('accounting.dimension.manage', $config));
+            Route::patch('cost-centers/{costCenter}', [Accounting\DimensionController::class, 'updateCostCenter'])->middleware($gate('accounting.dimension.manage', $config));
+            Route::post('cost-centers/{costCenter}/status', [Accounting\DimensionController::class, 'costCenterStatus'])->middleware($gate('accounting.dimension.manage', $config));
+        });
     });
 });

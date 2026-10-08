@@ -10,10 +10,10 @@ export type Column<T> = {
   primary?: boolean
 }
 
-/** Plain table; on phones each row becomes a labelled card (see .table in index.css). */
-export function DataTable<T>({ rows, columns, rowKey, caption }: { rows: T[]; columns: Column<T>[]; rowKey: (row: T) => string; caption: string }) {
+/** Plain table; on phones each row becomes a labelled card (see .table in index.css). `scroll` keeps a wide numeric table as a table that scrolls sideways instead. */
+export function DataTable<T>({ rows, columns, rowKey, caption, scroll }: { rows: T[]; columns: Column<T>[]; rowKey: (row: T) => string; caption: string; scroll?: boolean }) {
   return (
-    <div className="table-wrap">
+    <div className={scroll ? 'table-wrap keep-table' : 'table-wrap'}>
       <table className="table">
         <caption className="sr-only">{caption}</caption>
         <thead>

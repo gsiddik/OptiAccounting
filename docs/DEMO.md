@@ -26,6 +26,8 @@ Demo password for every account below: `Demo#Passw0rd2026`
 | `keuangan@majujaya.demo.test` | `Demo#Passw0rd2026` | tenant | PT Maju Jaya, "Staf Keuangan" (organization view, subscription view, audit view) | branch Jakarta (JKT) |
 | `cabang.sby@majujaya.demo.test` | `Demo#Passw0rd2026` | tenant | PT Maju Jaya, "Admin Cabang" (organization manage, user view) | branch Surabaya (SBY) |
 | `viewer@majujaya.demo.test` | `Demo#Passw0rd2026` | tenant | PT Maju Jaya, read-only viewer | whole tenant |
+| `akuntan@majujaya.demo.test` | `Demo#Passw0rd2026` | tenant | PT Maju Jaya, "Akuntan": prepares and submits journals, reads the books (cannot approve or post) | whole tenant |
+| `manajer@majujaya.demo.test` | `Demo#Passw0rd2026` | tenant | PT Maju Jaya, "Manajer Keuangan": approves and posts journals, reverses, closes periods, opening balance, configuration, exports | whole tenant |
 | `admin@sinarabadi.demo.test` | `Demo#Passw0rd2026` | tenant | CV Sinar Abadi (Starter bundle, 1 branch limit), full administration | whole tenant |
 | `admin@tunggakan.demo.test` | `Demo#Passw0rd2026` | tenant | PT Tunggakan Demo, subscription PAST_DUE: every module READ_ONLY (module reads work, module changes refused); tenant administration (users, roles, organization) stays available | whole tenant |
 | `multi@demo.test` | `Demo#Passw0rd2026` | identity | Viewer in PT Maju Jaya and administrator in CV Sinar Abadi: choose a tenant after signing in, then switch | per tenant |
@@ -33,6 +35,14 @@ Demo password for every account below: `Demo#Passw0rd2026`
 
 "Lands in" is the scope of the token returned by `POST /api/v1/auth/login`: `platform` and `tenant`
 enter directly, `identity` means the user must pick a tenant (`POST /api/v1/auth/switch-tenant`).
+
+## Demo books (Accounting Core)
+
+PT Maju Jaya is seeded with working books for the current calendar year: SAK EP profile in IDR, the `UMUM_ID` chart of
+accounts, an opening balance on 1 January, monthly sales / rent / salary journals (branches JKT and SBY) taken through the
+real prepare, approve and post workflow, a published posting rule with two accounting events, one reversal, pending journals
+in every state (2 draft, 1 submitted, 1 approved), January closed and February soft-closed. Sign in as
+`akuntan@majujaya.demo.test` (prepares) and `manajer@majujaya.demo.test` (approves, posts), or as the tenant administrator.
 
 ## Demo tenants
 
