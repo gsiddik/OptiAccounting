@@ -2,6 +2,7 @@
 
 namespace App\Domain\Payables\Services;
 
+use App\Domain\Accounting\Services\DocumentScope;
 use App\Domain\Accounting\Support\Money;
 use App\Domain\Shared\DomainException;
 use Brick\Math\BigDecimal;
@@ -16,7 +17,7 @@ class ApAgingService
 {
     public const DEFAULT_BOUNDARIES = [30, 60, 90];
 
-    public function __construct(private readonly ApSubledgerService $subledger, private readonly \App\Domain\Accounting\Services\DocumentScope $scope) {}
+    public function __construct(private readonly ApSubledgerService $subledger, private readonly DocumentScope $scope) {}
 
     /**
      * @param  list<int>|null  $boundaries

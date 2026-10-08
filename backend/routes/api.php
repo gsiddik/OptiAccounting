@@ -270,6 +270,26 @@ Route::prefix('v1')->middleware('request.id')->group(function () {
             Route::patch('cash-bank-accounts/{cashBankAccount}', [CashBank\CashBankAccountController::class, 'update'])->middleware($cb('accounting.cash_bank.manage', 'CASH_BANK_ACCOUNT'));
             Route::post('cash-bank-accounts/{cashBankAccount}/status', [CashBank\CashBankAccountController::class, 'status'])->middleware($cb('accounting.cash_bank.manage', 'CASH_BANK_ACCOUNT'));
             Route::delete('cash-bank-accounts/{cashBankAccount}', [CashBank\CashBankAccountController::class, 'destroy'])->middleware($cb('accounting.cash_bank.manage', 'CASH_BANK_ACCOUNT'));
+
+            // Expense categories and expenses (ACCOUNTING_EXPENSE). A payable expense also needs ACCOUNTING_AP and a directly paid one ACCOUNTING_CASH_BANK, checked at submit/approve/post.
+            $ex = fn (string $permission) => "access:{$permission},module=ACCOUNTING_EXPENSE,feature=EXPENSE";
+            Route::get('expense-categories', [Expense\ExpenseCategoryController::class, 'index'])->middleware($ex('accounting.expense.view'));
+            Route::post('expense-categories', [Expense\ExpenseCategoryController::class, 'store'])->middleware($ex('accounting.expense_category.manage'));
+            Route::post('expense-categories/defaults', [Expense\ExpenseCategoryController::class, 'applyDefaults'])->middleware($ex('accounting.expense_category.manage'));
+            Route::patch('expense-categories/{category}', [Expense\ExpenseCategoryController::class, 'update'])->middleware($ex('accounting.expense_category.manage'));
+            Route::post('expense-categories/{category}/status', [Expense\ExpenseCategoryController::class, 'status'])->middleware($ex('accounting.expense_category.manage'));
+            Route::delete('expense-categories/{category}', [Expense\ExpenseCategoryController::class, 'destroy'])->middleware($ex('accounting.expense_category.manage'));
+            Route::get('expenses', [Expense\ExpenseController::class, 'index'])->middleware($ex('accounting.expense.view'));
+            Route::post('expenses', [Expense\ExpenseController::class, 'store'])->middleware($ex('accounting.expense.create'));
+            Route::get('expenses/{expense}', [Expense\ExpenseController::class, 'show'])->middleware($ex('accounting.expense.view'));
+            Route::patch('expenses/{expense}', [Expense\ExpenseController::class, 'update'])->middleware($ex('accounting.expense.update'));
+            Route::post('expenses/{expense}/submit', [Expense\ExpenseController::class, 'submit'])->middleware($ex('accounting.expense.submit'));
+            Route::post('expenses/{expense}/approve', [Expense\ExpenseController::class, 'approve'])->middleware($ex('accounting.expense.approve'));
+            Route::post('expenses/{expense}/reject', [Expense\ExpenseController::class, 'reject'])->middleware($ex('accounting.expense.approve'));
+            Route::post('expenses/{expense}/reopen', [Expense\ExpenseController::class, 'reopen'])->middleware($ex('accounting.expense.update'));
+            Route::post('expenses/{expense}/cancel', [Expense\ExpenseController::class, 'cancel'])->middleware($ex('accounting.expense.update'));
+            Route::post('expenses/{expense}/post', [Expense\ExpenseController::class, 'post'])->middleware($ex('accounting.expense.post'));
+            Route::post('expenses/{expense}/reverse', [Expense\ExpenseController::class, 'reverse'])->middleware($ex('accounting.expense.reverse'));
         });
     });
 });

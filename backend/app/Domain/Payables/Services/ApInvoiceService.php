@@ -39,9 +39,6 @@ use Illuminate\Support\Facades\DB;
  */
 class ApInvoiceService
 {
-    /** Roles a line cannot be classified to: they belong to a subledger or to cash/bank, which have their own documents. */
-    private const FORBIDDEN_DESTINATION_ROLES = ['ACCOUNTS_PAYABLE', 'ACCOUNTS_RECEIVABLE', 'CASH', 'BANK', 'RETAINED_EARNINGS'];
-
     public function __construct(
         private readonly DocumentWorkflow $workflow,
         private readonly VendorService $vendors,
@@ -235,6 +232,7 @@ class ApInvoiceService
                 throw new DomainException('A payable created by an expense is reversed with its expense.', 'AP_INVOICE_NOT_REVERSIBLE', 409);
             }
             $this->assertNoActivePayments($invoice);
+            $this->authority->assertLedgerWritable($actor);
 
             $original = JournalEntry::query()->findOrFail($invoice->journal_entry_id);
             $reversal = $this->reversals->reverse($original, $actor, $reason, $postingDate, $invoice->document_number);
@@ -256,6 +254,7 @@ class ApInvoiceService
     /** Everything posting needs, checked at submit, approve and post: vendor, totals, lines, period, readiness. Returns the vendor. */
     private function validateForPosting(ApInvoice $invoice, User $actor): Vendor
     {
+        $this->authority->assertLedgerWritable($actor);
         $vendor = Vendor::query()->find($invoice->vendor_id) ?? throw new DomainException('The vendor no longer exists.', 'VENDOR_NOT_FOUND', 422);
         $this->vendors->assertUsable($vendor);
         if (! $invoice->lines()->exists()) {
@@ -354,7 +353,6 @@ class ApInvoiceService
             throw new DomainException('An invoice can have at most 300 lines.', 'AP_INVOICE_TOO_MANY_LINES', 422);
         }
 
-        $roles = DB::table('account_roles')->where('status', 'ACTIVE')->get()->keyBy('code');
         $out = [];
         foreach (array_values($lines) as $i => $line) {
             $n = $i + 1;
@@ -387,10 +385,7 @@ class ApInvoiceService
             }
             $role = $line['account_role'] ?? null;
             if ($role !== null) {
-                $def = $roles[$role] ?? null;
-                if (! $def || $def->binding !== 'MAPPED' || in_array($role, self::FORBIDDEN_DESTINATION_ROLES, true)) {
-                    throw new DomainException("The role {$role} cannot classify an invoice line.", 'ACCOUNT_ROLE_INVALID', 422, ['line' => $n, 'account_role' => $role]);
-                }
+                $this->accounts->destinationRole($role, 'account_role', $n);
             }
             $accountId = $line['account_id'] ?? null;
             if ($accountId !== null) {
@@ -514,16 +509,10 @@ class ApInvoiceService
         return $payload;
     }
 
-    /** The control account the posted journal credited for the payable: found in the stored posting snapshot, and checked against the invoice total. */
+    /** The control account the posted journal credited for the payable (see ApSubledgerService::controlAccount). */
     private function controlAccount(JournalEntry $journal, string $total): string
     {
-        $credits = collect($journal->posting_snapshot['lines'] ?? [])->where('account_role', 'ACCOUNTS_PAYABLE')->where('side', 'CREDIT');
-        $accounts = $credits->pluck('account_id')->unique();
-        if ($accounts->count() !== 1 || ! Money::sum($credits->pluck('amount'))->isEqualTo($total)) {
-            throw new DomainException('The AP invoice posting rule must credit the accounts payable role with the invoice total.', 'AP_POSTING_RULE_INVALID', 422);
-        }
-
-        return $accounts->first();
+        return $this->subledger->controlAccount($journal, $total);
     }
 
     // ------------------------------------------------------------------------------------------------ helpers

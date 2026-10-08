@@ -4,6 +4,7 @@ namespace Tests\Support;
 
 use App\Domain\Accounting\Services\OperationalSetupService;
 use App\Domain\CashBank\Models\CashBankAccount;
+use App\Domain\Expense\Models\ExpenseCategory;
 use App\Domain\Identity\Models\Tenant;
 use App\Domain\Organization\Services\OrganizationService;
 use App\Domain\Payables\Models\Vendor;
@@ -119,6 +120,50 @@ trait PayablesFixtures
         $this->postJson(self::AP."/vendor-payments/{$id}/approve")->assertOk();
 
         return $this->postJson(self::AP."/vendor-payments/{$id}/post")->assertOk()->json();
+    }
+
+    /** An expense category created through the API as an administrator; the account (code) or role it classifies to is optional. */
+    protected function expenseCategory(Tenant $tenant, string $code = 'UTIL', array $attributes = []): ExpenseCategory
+    {
+        $id = $this->asMember($tenant)->postJson(self::AP.'/expense-categories', $attributes + ['code' => $code, 'name' => "Kategori {$code}"])->assertCreated()->json('id');
+
+        return $this->inTenant($tenant, fn () => ExpenseCategory::query()->findOrFail($id));
+    }
+
+    /** @return array<string,mixed> a payable expense body (Rp 1.000.000 net plus Rp 110.000 tax) */
+    protected function payableExpenseBody(string $categoryId, Vendor $vendor, array $override = []): array
+    {
+        return $override + [
+            'settlement' => 'PAYABLE', 'expense_category_id' => $categoryId, 'vendor_id' => $vendor->id, 'expense_date' => '2026-03-12', 'description' => 'Biaya listrik Maret',
+            'net_amount' => '1000000', 'tax_amount' => '110000', 'supporting_document' => 'KW-001',
+        ];
+    }
+
+    /** @return array<string,mixed> a directly paid expense body (Rp 200.000, no tax) */
+    protected function paidExpenseBody(string $categoryId, string $cashBankAccountId, array $override = []): array
+    {
+        return $override + [
+            'settlement' => 'DIRECT_PAID', 'expense_category_id' => $categoryId, 'cash_bank_account_id' => $cashBankAccountId, 'expense_date' => '2026-03-12',
+            'description' => 'Parkir dan tol', 'net_amount' => '200000', 'payee_name' => 'Operator parkir',
+        ];
+    }
+
+    /** Create, submit and approve an expense as the already-authenticated client; returns its id. */
+    protected function approvedExpense(array $body): string
+    {
+        $id = $this->postJson(self::AP.'/expenses', $body)->assertCreated()->json('id');
+        $this->postJson(self::AP."/expenses/{$id}/submit")->assertOk();
+        $this->postJson(self::AP."/expenses/{$id}/approve")->assertOk();
+
+        return $id;
+    }
+
+    /** Create, submit, approve and post an expense as the already-authenticated client. @return array<string,mixed> the posted expense */
+    protected function postedExpense(array $body): array
+    {
+        $id = $this->approvedExpense($body);
+
+        return $this->postJson(self::AP."/expenses/{$id}/post")->assertOk()->json();
     }
 
     /** Debit minus credit of the POSTED lines on a GL account (a decimal string, 4 places), optionally up to a posting date. */

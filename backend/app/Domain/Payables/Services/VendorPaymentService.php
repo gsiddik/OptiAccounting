@@ -203,6 +203,7 @@ class VendorPaymentService
             if ($payment->status !== VendorPayment::POSTED) {
                 throw new DomainException($payment->status === VendorPayment::REVERSED ? 'This payment has already been reversed.' : 'Only a posted payment can be reversed.', $payment->status === VendorPayment::REVERSED ? 'AP_PAYMENT_ALREADY_REVERSED' : 'AP_PAYMENT_NOT_POSTED', 409, ['status' => $payment->status]);
             }
+            $this->authority->assertLedgerWritable($actor);
             $allocations = ApPaymentAllocation::query()->where('vendor_payment_id', $payment->id)->orderBy('ap_invoice_id')->get();
             ApInvoice::query()->whereIn('id', $allocations->pluck('ap_invoice_id'))->orderBy('id')->lockForUpdate()->get();
 
@@ -227,8 +228,10 @@ class VendorPaymentService
      */
     private function validateForPosting(VendorPayment $payment, User $actor, bool $lock): CashBankAccount
     {
+        $this->authority->assertLedgerWritable($actor);
         $vendor = Vendor::query()->find($payment->vendor_id) ?? throw new DomainException('The vendor no longer exists.', 'VENDOR_NOT_FOUND', 422);
         $this->vendors->assertUsable($vendor);
+        $this->authority->assertModuleWritable($actor, 'ACCOUNTING_CASH_BANK', 'CASH_BANK_ACCOUNT');
         $cash = $this->cashAccounts->usable($payment->cash_bank_account_id, $lock);
 
         $allocations = ApPaymentAllocation::query()->where('vendor_payment_id', $payment->id)->get();

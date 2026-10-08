@@ -103,6 +103,7 @@ return new class extends Migration
         DB::statement("ALTER TABLE ap_invoices ADD CONSTRAINT ap_invoices_reversed_check CHECK (
             (status = 'REVERSED') = (reversal_journal_id IS NOT NULL AND reversed_at IS NOT NULL AND reversal_posting_date IS NOT NULL))");
         DB::statement('ALTER TABLE ap_invoices ADD CONSTRAINT ap_invoices_override_check CHECK ((duplicate_override_by IS NULL) = (duplicate_override_reason IS NULL))');
+        DB::statement('CREATE UNIQUE INDEX ap_invoices_source_unique ON ap_invoices (tenant_id, source_type, source_id) WHERE source_id IS NOT NULL');
         DB::statement('CREATE UNIQUE INDEX ap_invoices_number_unique ON ap_invoices (tenant_id, document_number) WHERE document_number IS NOT NULL');
         DB::statement('CREATE UNIQUE INDEX ap_invoices_journal_unique ON ap_invoices (tenant_id, journal_entry_id) WHERE journal_entry_id IS NOT NULL');
         DB::statement('CREATE INDEX ap_invoices_reversal_journal ON ap_invoices (tenant_id, reversal_journal_id) WHERE reversal_journal_id IS NOT NULL');
@@ -142,6 +143,29 @@ return new class extends Migration
             END; $$ LANGUAGE plpgsql
             SQL);
         DB::unprepared('CREATE TRIGGER ap_invoices_post_guard BEFORE UPDATE ON ap_invoices FOR EACH ROW EXECUTE FUNCTION ap_invoices_post_guard()');
+
+        // A payable is born a DRAFT invoice, or POSTED as the payable of a posted expense (origin EXPENSE) whose journal it shares.
+        DB::unprepared(<<<'SQL'
+            CREATE OR REPLACE FUNCTION ap_invoices_insert_guard() RETURNS trigger AS $$
+            BEGIN
+                IF NEW.origin = 'INVOICE' AND NEW.status <> 'DRAFT' THEN
+                    RAISE EXCEPTION 'a vendor invoice starts as a draft' USING ERRCODE = '23514';
+                END IF;
+                IF NEW.origin = 'EXPENSE' THEN
+                    IF NEW.status <> 'POSTED' OR NEW.source_type IS DISTINCT FROM 'expense' OR NOT EXISTS (
+                        SELECT 1 FROM expenses e WHERE e.tenant_id = NEW.tenant_id AND e.id::text = NEW.source_id AND e.status = 'POSTED'
+                        AND e.journal_entry_id = NEW.journal_entry_id AND e.settlement = 'PAYABLE' AND e.total_amount = NEW.total_amount) THEN
+                        RAISE EXCEPTION 'an expense payable exists only for a posted payable expense of the same journal and total' USING ERRCODE = '23514';
+                    END IF;
+                    IF NOT EXISTS (SELECT 1 FROM journal_entries j WHERE j.tenant_id = NEW.tenant_id AND j.id = NEW.journal_entry_id AND j.status = 'POSTED'
+                                   AND j.total_credit = NEW.total_amount AND j.posting_date = NEW.posting_date) THEN
+                        RAISE EXCEPTION 'a posted payable needs the posted journal of exactly its total and posting date' USING ERRCODE = '23514';
+                    END IF;
+                END IF;
+                RETURN NEW;
+            END; $$ LANGUAGE plpgsql
+            SQL);
+        DB::unprepared('CREATE TRIGGER ap_invoices_insert_guard BEFORE INSERT ON ap_invoices FOR EACH ROW EXECUTE FUNCTION ap_invoices_insert_guard()');
         DocumentGuards::guardDocument('ap_invoices', self::REVERSAL, ['vendor_invoice_key']);
 
         Schema::create('ap_invoice_lines', function (Blueprint $table) {
@@ -179,6 +203,8 @@ return new class extends Migration
         DocumentGuards::drop('ap_invoice_lines');
         Schema::dropIfExists('ap_invoice_lines');
         DocumentGuards::drop('ap_invoices');
+        DB::unprepared('DROP TRIGGER IF EXISTS ap_invoices_insert_guard ON ap_invoices');
+        DB::unprepared('DROP FUNCTION IF EXISTS ap_invoices_insert_guard()');
         DB::unprepared('DROP TRIGGER IF EXISTS ap_invoices_post_guard ON ap_invoices');
         DB::unprepared('DROP FUNCTION IF EXISTS ap_invoices_post_guard()');
         Schema::dropIfExists('ap_invoices');

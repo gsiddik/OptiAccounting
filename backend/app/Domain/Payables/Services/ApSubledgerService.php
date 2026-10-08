@@ -2,10 +2,12 @@
 
 namespace App\Domain\Payables\Services;
 
+use App\Domain\Accounting\Models\JournalEntry;
 use App\Domain\Accounting\Services\DocumentScope;
 use App\Domain\Accounting\Support\Money;
 use App\Domain\Identity\Models\Tenant;
 use App\Domain\Payables\Models\ApInvoice;
+use App\Domain\Shared\DomainException;
 use App\Support\TenantContext;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
@@ -105,5 +107,20 @@ class ApSubledgerService
     public function totalAsOf(string $asOf, array $filter = []): string
     {
         return Money::str(Money::sum($this->rowsAsOf($asOf, $filter)->pluck('outstanding_asof')->all()));
+    }
+
+    /**
+     * The control account a posted journal credited for a payable (an invoice or a payable expense): found in the stored posting snapshot
+     * and checked against the document total, so the subledger and its control account always move together.
+     */
+    public function controlAccount(JournalEntry $journal, string $total): string
+    {
+        $credits = collect($journal->posting_snapshot['lines'] ?? [])->where('account_role', 'ACCOUNTS_PAYABLE')->where('side', 'CREDIT');
+        $accounts = $credits->pluck('account_id')->unique();
+        if ($accounts->count() !== 1 || ! Money::sum($credits->pluck('amount'))->isEqualTo($total)) {
+            throw new DomainException('The AP invoice posting rule must credit the accounts payable role with the invoice total.', 'AP_POSTING_RULE_INVALID', 422);
+        }
+
+        return $accounts->first();
     }
 }
