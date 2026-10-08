@@ -6,6 +6,8 @@ export type Column<T> = {
   align?: 'right'
   /** Action cells render without a label on phones. */
   actions?: boolean
+  /** Identity cell (name, code): on phones it heads the card, full width and without a label. */
+  primary?: boolean
 }
 
 /** Plain table; on phones each row becomes a labelled card (see .table in index.css). */
@@ -27,7 +29,7 @@ export function DataTable<T>({ rows, columns, rowKey, caption }: { rows: T[]; co
           {rows.map((row) => (
             <tr key={rowKey(row)}>
               {columns.map((c) => (
-                <td key={c.header} data-label={c.actions ? undefined : c.header} className={[c.align === 'right' ? 'num' : '', c.actions ? 'cell-actions' : ''].join(' ').trim() || undefined}>
+                <td key={c.header} data-label={c.actions || c.primary ? undefined : c.header} className={[c.align === 'right' ? 'num' : '', c.actions ? 'cell-actions' : '', c.primary ? 'cell-primary' : ''].join(' ').trim() || undefined}>
                   {c.cell(row)}
                 </td>
               ))}

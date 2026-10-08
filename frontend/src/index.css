@@ -177,10 +177,11 @@ button, input, select, textarea { font: inherit; color: inherit; }
 @media (max-width: 600px) { .toolbar .input, .toolbar .select { width: 100%; } }
 
 /* ---- table (stacks into labelled cards on phones) ---- */
-.table-wrap { overflow-x: auto; }
+.table-wrap { overflow-x: auto; position: relative; } /* relative: the sr-only header cell must not escape the scroller */
 .table { width: 100%; border-collapse: collapse; }
 .table th { text-align: left; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); font-weight: 600; padding: 10px 16px; border-bottom: 1px solid var(--border); white-space: nowrap; }
 .table td { padding: 12px 16px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.table td .mono { overflow-wrap: anywhere; }
 .table tr:last-child td { border-bottom: 0; }
 .table tbody tr:hover { background: var(--surface-2); }
 .table .num { text-align: right; font-variant-numeric: tabular-nums; }
@@ -191,6 +192,9 @@ button, input, select, textarea { font: inherit; color: inherit; }
   .table tr:last-child { border-bottom: 0; }
   .table td { display: flex; justify-content: space-between; gap: 14px; padding: 5px 0; border: 0; text-align: right; }
   .table td::before { content: attr(data-label); color: var(--muted); font-size: 0.8rem; font-weight: 600; text-align: left; flex: none; }
+  .table td { overflow-wrap: anywhere; }
+  .table td.cell-primary { display: block; text-align: left; padding-bottom: 6px; }
+  .table td.cell-primary::before { content: none; }
   .table td.cell-actions { justify-content: flex-end; padding-top: 8px; }
   .table td.cell-actions::before { content: none; }
 }
@@ -226,10 +230,12 @@ button, input, select, textarea { font: inherit; color: inherit; }
 
 /* ---- modal and toast ---- */
 .modal-scrim { position: fixed; inset: 0; z-index: 60; background: rgb(8 12 18 / 55%); display: flex; align-items: center; justify-content: center; padding: 16px; }
-.modal { width: min(100%, 560px); max-height: calc(100vh - 32px); display: flex; flex-direction: column; background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow-lg); border: 1px solid var(--border); }
+.modal { width: min(100%, 560px); max-height: calc(100vh - 32px); max-height: calc(100dvh - 32px); display: flex; flex-direction: column; background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow-lg); border: 1px solid var(--border); }
 .modal.wide { width: min(100%, 760px); }
+/* The form wraps body + footer: keep it a flex column so only the body scrolls and the footer stays visible. */
+.modal > form { display: flex; flex-direction: column; min-height: 0; flex: 1 1 auto; }
 .modal-head { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; gap: 12px; }
-.modal-body { padding: 18px 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; }
+.modal-body { padding: 18px 20px; overflow-y: auto; min-height: 0; flex: 1 1 auto; display: flex; flex-direction: column; gap: 14px; }
 .modal-foot { padding: 14px 20px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
 .toasts { position: fixed; z-index: 80; right: 16px; bottom: 16px; display: flex; flex-direction: column; gap: 8px; max-width: min(92vw, 380px); }
 .toast { padding: 12px 16px; border-radius: var(--radius-sm); box-shadow: var(--shadow-lg); background: var(--text); color: var(--bg); }

@@ -83,7 +83,7 @@ export default function Users() {
               rows={members.data.data}
               rowKey={(m) => m.id}
               columns={[
-                { header: 'Pengguna', cell: (m) => <><strong>{m.user.name}</strong><div className="muted">{m.user.email}</div></> },
+                { header: 'Pengguna', primary: true, cell: (m) => <><strong>{m.user.name}</strong><div className="muted">{m.user.email}</div></> },
                 { header: 'Peran', cell: (m) => <div className="chips">{m.roles.length === 0 ? <span className="muted">Tanpa peran</span> : m.roles.map((r) => <Badge key={r.id} tone="info">{r.name}</Badge>)}</div> },
                 { header: 'Cakupan data', cell: (m) => (
                   <div className="chips">

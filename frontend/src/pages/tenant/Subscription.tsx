@@ -52,7 +52,7 @@ function Summary() {
           rows={data.history}
           rowKey={(s) => s.id}
           columns={[
-            { header: 'Paket', cell: (s) => <strong>{s.bundle?.name ?? 'Tanpa paket'}</strong> },
+            { header: 'Paket', primary: true, cell: (s) => <strong>{s.bundle?.name ?? 'Tanpa paket'}</strong> },
             { header: 'Status', cell: (s) => <StatusBadge status={s.status} /> },
             { header: 'Mulai', cell: (s) => formatDate(s.starts_on) },
             { header: 'Berakhir', cell: (s) => formatDate(s.ends_on) },
@@ -75,7 +75,7 @@ function Modules() {
       rows={data.data}
       rowKey={(m) => `${m.module.code}-${m.effective_from}`}
       columns={[
-        { header: 'Modul', cell: (m) => <><strong>{m.module.name}</strong><div className="muted">{m.module.description}</div></> },
+        { header: 'Modul', primary: true, cell: (m) => <><strong>{m.module.name}</strong><div className="muted">{m.module.description}</div></> },
         { header: 'Akses sekarang', cell: (m) => <StatusBadge status={m.effective_mode} /> },
         { header: 'Sumber', cell: (m) => sourceLabels[m.source] ?? m.source },
         { header: 'Periode', cell: (m) => <span className="nowrap">{formatDate(m.effective_from)} – {m.effective_until ? formatDate(m.effective_until) : 'terbuka'}</span> },
@@ -97,7 +97,7 @@ function Features() {
       rows={data.data}
       rowKey={(f) => `${f.feature.code}-${f.effective_from}`}
       columns={[
-        { header: 'Fitur', cell: (f) => <><strong>{f.feature.name}</strong><div className="muted">{f.module.name}</div></> },
+        { header: 'Fitur', primary: true, cell: (f) => <><strong>{f.feature.name}</strong><div className="muted">{f.module.name}</div></> },
         { header: 'Status', cell: (f) => <StatusBadge status={f.state} /> },
         { header: 'Dapat dipakai', cell: (f) => (f.usable ? <Badge tone="ok">Ya</Badge> : <Badge>Tidak</Badge>) },
         { header: 'Sumber', cell: (f) => sourceLabels[f.source] ?? f.source },

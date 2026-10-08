@@ -25,7 +25,7 @@ sample transactions) whose logins are documented in `docs/DEMO.md`.
 
 Open owner decisions (not blocking MASTER):
 
-1. OA0-N placement: right after OA0 (recommended) or after OA1.
+1. ~~OA0-N placement~~ — decided by the owner: right after OA0.
 2. OA6 transport for OptiFleet events in `optinexus` mode: OptiNexus delivers
    to applications (needs an OptiNexus change) or OptiAccounting pulls a
    gateway cursor feed.

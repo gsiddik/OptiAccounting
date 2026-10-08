@@ -66,7 +66,7 @@ function OperatorList() {
           rows={users.data}
           rowKey={(u) => u.id}
           columns={[
-            { header: 'Operator', cell: (u) => <><strong>{u.name}</strong><div className="muted">{u.email}</div></> },
+            { header: 'Operator', primary: true, cell: (u) => <><strong>{u.name}</strong><div className="muted">{u.email}</div></> },
             { header: 'Peran', cell: (u) => <div className="chips">{(u.platformRoles ?? u.platform_roles ?? []).map((r) => <Badge key={r.id} tone="info">{r.name}</Badge>)}</div> },
             { header: 'Status', cell: (u) => <StatusBadge status={u.status} /> },
             { header: 'Login terakhir', cell: (u) => formatDateTime(u.last_login_at) },

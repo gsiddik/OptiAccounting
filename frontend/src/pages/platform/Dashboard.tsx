@@ -59,8 +59,8 @@ export default function PlatformDashboard() {
             ) : (
               <ul style={{ listStyle: 'none', margin: 0, padding: '4px 20px 12px' }}>
                 {(audit.data ?? []).map((a) => (
-                  <li key={a.id} style={{ padding: '8px 0', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-                    <span className="mono">{a.action}</span>
+                  <li key={a.id} style={{ padding: '8px 0', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '2px 12px' }}>
+                    <span className="mono" style={{ overflowWrap: 'anywhere', minWidth: 0 }}>{a.action}</span>
                     <span className="muted nowrap">{formatDateTime(a.occurred_at)}</span>
                   </li>
                 ))}

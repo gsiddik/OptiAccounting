@@ -58,7 +58,7 @@ function ModuleList({ modules, canManage, onChanged }: Props) {
         rows={modules}
         rowKey={(m) => m.id}
         columns={[
-          { header: 'Modul', cell: (m) => <><strong>{m.name}</strong><div className="mono muted">{m.code}</div></> },
+          { header: 'Modul', primary: true, cell: (m) => <><strong>{m.name}</strong><div className="mono muted">{m.code}</div></> },
           { header: 'Status', cell: (m) => <StatusBadge status={m.status} /> },
           { header: 'Dijual', cell: (m) => (m.commercially_available ? <Badge tone="ok">Tersedia</Badge> : <Badge>Belum dijual</Badge>) },
           { header: 'Fitur', align: 'right', cell: (m) => m.features.length },
@@ -126,7 +126,7 @@ function Dependencies({ modules, canManage, onChanged }: Props) {
         rows={modules}
         rowKey={(m) => m.id}
         columns={[
-          { header: 'Modul', cell: (m) => <><strong>{m.name}</strong><div className="mono muted">{m.code}</div></> },
+          { header: 'Modul', primary: true, cell: (m) => <><strong>{m.name}</strong><div className="mono muted">{m.code}</div></> },
           { header: 'Membutuhkan', cell: (m) => m.requires.length === 0 ? <span className="muted">Tidak ada</span> : (
             <div className="chips">
               {m.requires.map((r) => (
@@ -196,7 +196,7 @@ function Features({ modules, canManage, onChanged }: Props) {
           rows={rows}
           rowKey={(r) => r.feature.id}
           columns={[
-            { header: 'Fitur', cell: (r) => <><strong>{r.feature.name}</strong><div className="mono muted">{r.feature.code}</div></> },
+            { header: 'Fitur', primary: true, cell: (r) => <><strong>{r.feature.name}</strong><div className="mono muted">{r.feature.code}</div></> },
             { header: 'Modul', cell: (r) => r.module.name },
             { header: 'Status', cell: (r) => <StatusBadge status={r.feature.status} /> },
             { header: 'Aksi', actions: true, cell: (r) => canManage && <Button size="sm" onClick={() => setEditing(r)}>Ubah</Button> },

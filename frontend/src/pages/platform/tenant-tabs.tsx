@@ -33,7 +33,7 @@ export function MemberTab({ tenantId }: { tenantId: string }) {
         rows={members.data.data}
         rowKey={(m) => m.id}
         columns={[
-          { header: 'Pengguna', cell: (m) => <><strong>{m.user.name}</strong><div className="muted">{m.user.email}</div></> },
+          { header: 'Pengguna', primary: true, cell: (m) => <><strong>{m.user.name}</strong><div className="muted">{m.user.email}</div></> },
           { header: 'Peran', cell: (m) => <div className="chips">{m.roles.map((r) => <Badge key={r.id} tone="info">{r.name}</Badge>)}</div> },
           { header: 'Status', cell: (m) => <StatusBadge status={m.status} /> },
           { header: 'Aksi', actions: true, cell: (m) => canManage && (
@@ -118,7 +118,7 @@ export function SubscriptionTab({ tenant }: { tenant: Tenant }) {
           rows={subs.data}
           rowKey={(s) => s.id}
           columns={[
-            { header: 'Paket', cell: (s) => <strong>{s.bundle?.name ?? 'Tanpa paket'}</strong> },
+            { header: 'Paket', primary: true, cell: (s) => <strong>{s.bundle?.name ?? 'Tanpa paket'}</strong> },
             { header: 'Status', cell: (s) => <StatusBadge status={s.status} /> },
             { header: 'Mulai', cell: (s) => formatDate(s.starts_on) },
             { header: 'Berakhir', cell: (s) => formatDate(s.ends_on) },
@@ -250,7 +250,7 @@ export function ModuleTab({ tenant }: { tenant: Tenant }) {
           rows={data.modules}
           rowKey={(m) => m.id}
           columns={[
-            { header: 'Modul', cell: (m) => <><strong>{m.module.name}</strong><div className="mono muted">{m.module.code}</div></> },
+            { header: 'Modul', primary: true, cell: (m) => <><strong>{m.module.name}</strong><div className="mono muted">{m.module.code}</div></> },
             { header: 'Status', cell: (m) => <StatusBadge status={m.state} /> },
             { header: 'Sumber', cell: (m) => sourceLabels[m.source] ?? m.source },
             { header: 'Periode', cell: (m) => <span className="nowrap">{formatDate(m.effective_from)} – {m.effective_until ? formatDate(m.effective_until) : 'tanpa batas'}</span> },
@@ -350,7 +350,7 @@ export function FeatureTab({ tenant }: { tenant: Tenant }) {
           rows={ent.data.features}
           rowKey={(f) => f.id}
           columns={[
-            { header: 'Fitur', cell: (f) => <><strong>{f.feature.name}</strong><div className="mono muted">{f.feature.code}</div></> },
+            { header: 'Fitur', primary: true, cell: (f) => <><strong>{f.feature.name}</strong><div className="mono muted">{f.feature.code}</div></> },
             { header: 'Status', cell: (f) => <StatusBadge status={f.state} /> },
             { header: 'Sumber', cell: (f) => sourceLabels[f.source] ?? f.source },
             { header: 'Periode', cell: (f) => <span className="nowrap">{formatDate(f.effective_from)} – {f.effective_until ? formatDate(f.effective_until) : 'tanpa batas'}</span> },

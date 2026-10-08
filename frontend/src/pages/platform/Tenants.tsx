@@ -53,7 +53,7 @@ export default function Tenants() {
               rows={data.data}
               rowKey={(t) => t.id}
               columns={[
-                { header: 'Tenant', cell: (t) => <Link to={`/platform/tenants/${t.id}`}><strong>{t.name}</strong></Link> },
+                { header: 'Tenant', primary: true, cell: (t) => <Link to={`/platform/tenants/${t.id}`}><strong>{t.name}</strong></Link> },
                 { header: 'Kode', cell: (t) => <span className="mono">{t.code}</span> },
                 { header: 'Status', cell: (t) => <StatusBadge status={t.status} /> },
                 { header: 'Zona waktu', cell: (t) => t.timezone },

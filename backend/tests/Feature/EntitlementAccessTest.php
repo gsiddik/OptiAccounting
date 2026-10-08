@@ -191,6 +191,20 @@ class EntitlementAccessTest extends TestCase
         }
     }
 
+    /**
+     * OA0 decision: READ_ONLY gates module-bound routes (financial resources arrive in OA1).
+     * Administration routes carry no module, so an overdue tenant can still manage its own access.
+     */
+    public function test_tenant_administration_stays_writable_while_the_subscription_is_overdue(): void
+    {
+        [$admin] = $this->member($this->tenant, ['organization.view', 'organization.manage'], 'admin@overdue.test');
+        $adminToken = $this->tenantToken($admin, $this->tenant);
+        $this->subscription(['status' => 'PAST_DUE']);
+
+        $this->as($adminToken)->postJson('/api/v1/app/branches', ['code' => 'LATE', 'name' => 'Cabang saat menunggak'])->assertCreated();
+        $this->write('core')->assertForbidden()->assertJsonPath('code', 'SUBSCRIPTION_READ_ONLY');
+    }
+
     public function test_active_subscription_past_its_end_date_is_not_writable_without_any_scheduler(): void
     {
         $yesterday = Carbon::parse($this->tenant->businessDate())->subDay()->toDateString();

@@ -4,7 +4,8 @@ Double-entry accounting platform, delivered from one codebase as a multi-tenant
 SaaS in the OptiNexus ecosystem or as a standalone product. Integration-ready
 (OptiFleet-v2 first) through versioned events, never shared databases.
 
-Status: **MASTER — architecture foundation**. No accounting features yet; see
+Status: **OA0 — standalone SaaS foundation** (platform + tenant portals, dynamic RBAC,
+data scope, module/feature/capacity entitlements). No accounting features yet; see
 `docs/architecture/ROADMAP.md` and `docs/status/`.
 
 ## Layout
@@ -36,7 +37,7 @@ Tests (real PostgreSQL database `optiaccounting_test`, see `backend/phpunit.xml`
 
 ```bash
 cd backend && php artisan test
-cd frontend && npm run lint && npm run build
+cd frontend && npm run lint && npm test && npm run build
 ```
 
 ## Run with Docker
@@ -52,6 +53,7 @@ API on `http://localhost:8000`, SPA on `http://localhost:5173`.
 
 - `php artisan db:seed` — production-safe (catalogs, permissions, templates; no tenants, no passwords).
 - `php artisan db:seed --class=DemoSeeder` — demo data; logins in `docs/DEMO.md`.
+- First platform administrator in a real environment: `php artisan optiaccounting:bootstrap-platform-admin`.
 
 ## Identity mode
 

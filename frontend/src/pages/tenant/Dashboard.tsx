@@ -10,7 +10,7 @@ import type { CapacityUsage } from '../../lib/types'
 type ModuleRow = { module: { code: string; name: string }; current: boolean; effective_mode: string }
 
 export default function TenantDashboard() {
-  const { can, tenant, readOnly } = useCapabilities()
+  const { can, tenant } = useCapabilities()
   const canSeeAccount = can('account.subscription.view')
 
   const usage = useResource(async () => (canSeeAccount ? (await api.get<{ data: CapacityUsage[] }>('/app/account/usage')).data.data : null), [canSeeAccount])
@@ -21,12 +21,6 @@ export default function TenantDashboard() {
   return (
     <>
       <PageHeader title={tenant.tenant.name} description={`Kode ${tenant.tenant.code} · zona waktu ${tenant.tenant.timezone} · mata uang ${tenant.tenant.default_currency}`} />
-
-      {readOnly && (
-        <Banner tone="warn">
-          Langganan sedang <strong>menunggak</strong>. Data tetap dapat dibaca, tetapi semua perubahan ditolak sampai langganan kembali aktif.
-        </Banner>
-      )}
 
       <div className="grid grid-4">
         <Stat label="Status organisasi" value={<StatusBadge status={tenant.tenant.status} />} />
