@@ -1,0 +1,114 @@
+# Local runtime: PostgreSQL (authoritative), Redis (cache/queue), Laravel API
+# behind nginx, queue worker, scheduler, and the React dev server.
+# MongoDB is intentionally absent until OA7 justifies analytical projections.
+x-backend-env: &backend-env
+  APP_NAME: OptiAccounting
+  APP_ENV: ${APP_ENV:-local}
+  APP_KEY: ${APP_KEY:?set APP_KEY in .env (php artisan key:generate --show)}
+  APP_DEBUG: ${APP_DEBUG:-true}
+  APP_URL: ${APP_URL:-http://localhost:8000}
+  FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
+  DB_CONNECTION: pgsql
+  DB_HOST: postgres
+  DB_PORT: 5432
+  DB_DATABASE: ${DB_DATABASE:-optiaccounting}
+  DB_USERNAME: ${DB_USERNAME:-optiaccounting}
+  DB_PASSWORD: ${DB_PASSWORD:-optiaccounting}
+  REDIS_CLIENT: predis
+  REDIS_HOST: redis
+  REDIS_PORT: 6379
+  CACHE_STORE: redis
+  SESSION_DRIVER: redis
+  QUEUE_CONNECTION: redis
+  LOG_CHANNEL: stderr
+  OPTIACCOUNTING_IDENTITY_MODE: ${OPTIACCOUNTING_IDENTITY_MODE:-standalone}
+  OPTINEXUS_BASE_URL: ${OPTINEXUS_BASE_URL:-}
+
+x-backend-depends: &backend-depends
+  postgres:
+    condition: service_healthy
+  redis:
+    condition: service_healthy
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_DATABASE:-optiaccounting}
+      POSTGRES_USER: ${DB_USERNAME:-optiaccounting}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-optiaccounting}
+    ports:
+      - "${DB_PORT:-5433}:5432"
+    volumes:
+      - optiaccounting_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-optiaccounting}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6380}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: .
+      dockerfile: docker/backend/Dockerfile
+    image: optiaccounting-backend:local
+    restart: unless-stopped
+    depends_on: *backend-depends
+    environment:
+      <<: *backend-env
+      RUN_MIGRATIONS: "true"
+
+  queue-worker:
+    image: optiaccounting-backend:local
+    restart: unless-stopped
+    depends_on: *backend-depends
+    environment: *backend-env
+    command: ["php", "artisan", "queue:work", "--tries=3", "--max-time=3600"]
+
+  scheduler:
+    image: optiaccounting-backend:local
+    restart: unless-stopped
+    depends_on: *backend-depends
+    environment: *backend-env
+    command: ["php", "artisan", "schedule:work"]
+
+  nginx:
+    image: nginx:alpine
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "${APP_PORT:-8000}:80"
+    volumes:
+      - ./backend/public:/var/www/html/public:ro
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+
+  frontend:
+    image: node:22-alpine
+    working_dir: /app
+    command: sh -c "npm ci && npx vite --host 0.0.0.0 --port 5173"
+    environment:
+      VITE_DEV_API_PROXY: http://nginx:80
+    ports:
+      - "${FRONTEND_PORT:-5173}:5173"
+    volumes:
+      - ./frontend:/app
+      - optiaccounting_frontend_node_modules:/app/node_modules
+    depends_on:
+      - nginx
+
+volumes:
+  optiaccounting_postgres_data:
+  optiaccounting_frontend_node_modules:
