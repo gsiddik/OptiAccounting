@@ -271,6 +271,36 @@ Route::prefix('v1')->middleware('request.id')->group(function () {
             Route::post('cash-bank-accounts/{cashBankAccount}/status', [CashBank\CashBankAccountController::class, 'status'])->middleware($cb('accounting.cash_bank.manage', 'CASH_BANK_ACCOUNT'));
             Route::delete('cash-bank-accounts/{cashBankAccount}', [CashBank\CashBankAccountController::class, 'destroy'])->middleware($cb('accounting.cash_bank.manage', 'CASH_BANK_ACCOUNT'));
 
+            // Controlled cash and bank payments and receipts (features PAYMENT and RECEIPT). The kind comes from the route, never from the body.
+            foreach (['PAYMENT' => ['cash-payments', 'PAYMENT'], 'RECEIPT' => ['cash-receipts', 'RECEIPT']] as $kind => [$path, $feature]) {
+                $ct = fn (string $permission) => "access:{$permission},module=ACCOUNTING_CASH_BANK,feature={$feature}";
+                Route::get($path, [CashBank\CashTransactionController::class, 'index'])->defaults('kind', $kind)->middleware($ct('accounting.cash_transaction.view'));
+                Route::post($path, [CashBank\CashTransactionController::class, 'store'])->defaults('kind', $kind)->middleware($ct('accounting.cash_transaction.create'));
+                Route::get("{$path}/{cashTransaction}", [CashBank\CashTransactionController::class, 'show'])->defaults('kind', $kind)->middleware($ct('accounting.cash_transaction.view'));
+                Route::patch("{$path}/{cashTransaction}", [CashBank\CashTransactionController::class, 'update'])->defaults('kind', $kind)->middleware($ct('accounting.cash_transaction.create'));
+                Route::post("{$path}/{cashTransaction}/cancel", [CashBank\CashTransactionController::class, 'cancel'])->defaults('kind', $kind)->middleware($ct('accounting.cash_transaction.create'));
+                Route::post("{$path}/{cashTransaction}/post", [CashBank\CashTransactionController::class, 'post'])->defaults('kind', $kind)->middleware($ct('accounting.cash_transaction.post'));
+                Route::post("{$path}/{cashTransaction}/reverse", [CashBank\CashTransactionController::class, 'reverse'])->defaults('kind', $kind)->middleware($ct('accounting.cash_transaction.reverse'));
+            }
+
+            // Bank history, manual bank reconciliation and the cash/bank to general ledger reconciliation (feature BANK_RECONCILIATION). Nothing here writes to the ledger.
+            $br = fn (string $permission) => "access:{$permission},module=ACCOUNTING_CASH_BANK,feature=BANK_RECONCILIATION";
+            Route::get('cash-bank-accounts/{cashBankAccount}/transactions', [CashBank\BankReconciliationController::class, 'transactions'])->middleware($cb('accounting.cash_bank.view', 'CASH_BANK_ACCOUNT'));
+            Route::get('reconciliation/cash-bank', [CashBank\BankReconciliationController::class, 'report'])->middleware($br('accounting.reconciliation.cash_bank.view'));
+            Route::get('bank-statements', [CashBank\BankReconciliationController::class, 'index'])->middleware($br('accounting.bank_reconciliation.view'));
+            Route::post('bank-statements', [CashBank\BankReconciliationController::class, 'store'])->middleware($br('accounting.bank_reconciliation.manage'));
+            Route::get('bank-statements/{statement}', [CashBank\BankReconciliationController::class, 'show'])->middleware($br('accounting.bank_reconciliation.view'));
+            Route::patch('bank-statements/{statement}', [CashBank\BankReconciliationController::class, 'update'])->middleware($br('accounting.bank_reconciliation.manage'));
+            Route::delete('bank-statements/{statement}', [CashBank\BankReconciliationController::class, 'destroy'])->middleware($br('accounting.bank_reconciliation.manage'));
+            Route::post('bank-statements/{statement}/complete', [CashBank\BankReconciliationController::class, 'complete'])->middleware($br('accounting.bank_reconciliation.manage'));
+            Route::post('bank-statements/{statement}/items', [CashBank\BankReconciliationController::class, 'addItems'])->middleware($br('accounting.bank_reconciliation.manage'));
+            Route::patch('bank-statements/{statement}/items/{item}', [CashBank\BankReconciliationController::class, 'updateItem'])->middleware($br('accounting.bank_reconciliation.manage'));
+            Route::delete('bank-statements/{statement}/items/{item}', [CashBank\BankReconciliationController::class, 'destroyItem'])->middleware($br('accounting.bank_reconciliation.manage'));
+            Route::get('bank-statements/{statement}/items/{item}/candidates', [CashBank\BankReconciliationController::class, 'candidates'])->middleware($br('accounting.bank_reconciliation.view'));
+            Route::post('bank-statements/{statement}/items/{item}/match', [CashBank\BankReconciliationController::class, 'match'])->middleware($br('accounting.bank_reconciliation.manage'));
+            Route::post('bank-statements/{statement}/items/{item}/unmatch', [CashBank\BankReconciliationController::class, 'unmatch'])->middleware($br('accounting.bank_reconciliation.manage'));
+            Route::post('bank-statements/{statement}/items/{item}/exception', [CashBank\BankReconciliationController::class, 'exception'])->middleware($br('accounting.bank_reconciliation.manage'));
+
             // Expense categories and expenses (ACCOUNTING_EXPENSE). A payable expense also needs ACCOUNTING_AP and a directly paid one ACCOUNTING_CASH_BANK, checked at submit/approve/post.
             $ex = fn (string $permission) => "access:{$permission},module=ACCOUNTING_EXPENSE,feature=EXPENSE";
             Route::get('expense-categories', [Expense\ExpenseCategoryController::class, 'index'])->middleware($ex('accounting.expense.view'));

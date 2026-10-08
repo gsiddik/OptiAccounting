@@ -43,6 +43,16 @@ final class Money
         return $amount->toScale(4, RoundingMode::Unnecessary);
     }
 
+    /** Like parse, but a leading minus is allowed (a statement balance can be an overdraft, a statement line a withdrawal). */
+    public static function parseSigned(mixed $value, int $scale, string $field = 'amount', ?int $line = null): BigDecimal
+    {
+        if (is_string($value) && str_starts_with($value, '-')) {
+            return self::parse(substr($value, 1), $scale, $field, $line)->negated()->toScale(4);
+        }
+
+        return self::parse($value, $scale, $field, $line);
+    }
+
     public static function sum(iterable $amounts): BigDecimal
     {
         $total = BigDecimal::zero();
