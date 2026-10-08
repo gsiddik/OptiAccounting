@@ -174,6 +174,8 @@ class BankReconciliationTest extends TestCase
         $this->postJson("{$uri}/{$ids[0]}/match", ['journal_line_id' => $draftLine])->assertStatus(422)->assertJsonPath('code', 'BANK_BOOK_LINE_NOT_FOUND'); // not posted yet
 
         $this->postJson("{$uri}/{$ids[0]}/match", ['journal_line_id' => $lines['receipt']])->assertOk();
+        $this->postJson("{$uri}/{$ids[0]}/match", ['journal_line_id' => $lines['receipt']])->assertOk()->assertJsonPath('items.0.status', 'MATCHED'); // asking twice is harmless
+        $this->postJson("{$uri}/{$ids[0]}/match", ['journal_line_id' => $draftLine])->assertStatus(409)->assertJsonPath('code', 'BANK_ITEM_MATCHED'); // an item is moved only after it is unmatched
         $secondItem = $second['items'][0]['id'];
         $this->postJson(self::AP."/bank-statements/{$second['id']}/items/{$secondItem}/match", ['journal_line_id' => $lines['receipt']])->assertStatus(409)->assertJsonPath('code', 'BANK_BOOK_LINE_ALREADY_MATCHED');
         $this->getJson(self::AP."/bank-statements/{$second['id']}/items/{$secondItem}/candidates")->assertOk()->assertJsonCount(0, 'data'); // the receipt is taken

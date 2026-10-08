@@ -228,6 +228,12 @@ class BankStatementService
         try {
             return DB::transaction(function () use ($item, $journalLineId, $actor) {
                 [$statement, $item] = $this->lockItem($item);
+                if ($item->status === BankStatementItem::MATCHED) {
+                    if ($item->matched_journal_line_id === $journalLineId) {
+                        return $this->load($statement); // the same match asked twice
+                    }
+                    throw new DomainException('Unmatch the item before matching it to another book line.', 'BANK_ITEM_MATCHED', 409);
+                }
                 $account = CashBankAccount::query()->findOrFail($statement->cash_bank_account_id);
 
                 $line = DB::table('journal_lines as l')->join('journal_entries as j', fn ($join) => $join->on('j.id', '=', 'l.journal_entry_id')->on('j.tenant_id', '=', 'l.tenant_id'))

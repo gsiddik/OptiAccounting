@@ -45,7 +45,11 @@ Brief: `docs/specs/OA2.md`. OptiNexus and OptiFleet-v2 are not modified; OA3 is 
 | `Feature/Expense` + `Feature/Payables` + `Feature/CashBank` together | PASS (94 tests, 2209 assertions) |
 | Batch I: `Feature/Operational` (exports 5, summary 3, rules/audit 4): every export's figures, filters, permission, audit, tenant + branch scope, cap, module/feature states, bank number never exposed; counters per section/scope/tenant; default rules idempotent, AP role restriction, document-bound roles unmappable, audit actions across the module | PASS (12 tests) |
 | OA1 `Feature/Accounting` + `SeederAndBootstrapTest` with the new routes (incl. access matrix pinning `operational-summary`) | PASS |
+| Batch K: `tests/Concurrency/OperationalConcurrencyTest` (14 tests, real parallel PHP processes via `RaceRunner`): one invoice posted/reversed by several requests, gapless invoice numbers, two payments for one remaining balance, many payments vs one invoice, one payment posted/reversed several times, invoice reversal vs payment posting, payable expense posted several times, directly paid expenses, cash payments/receipts in their own sequences, one book line matched to two statement lines, one statement line matched twice, completion vs match/unmatch. After each race: every posted journal balances, AP control = subledger, no invoice over-settled, one journal per document | PASS (14 tests, 435 assertions) |
 | Pint | PASS |
 
+## Fixed in batch K
+Matching a statement line that is already MATCHED to another book line silently moved the match; it is now refused (`BANK_ITEM_MATCHED`, 409, unmatch first) and re-asking the same match is idempotent.
+
 ## Remaining
-Batch J (UI), K (concurrency), L (access matrix), M–N (regression, release gate) per brief §55.
+Batch J (UI, in progress), L (access matrix), M–N (regression, release gate) per brief §55.
