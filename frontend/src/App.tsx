@@ -33,6 +33,27 @@ import OpeningBalancePage from './pages/accounting/OpeningBalance'
 import PostingRules from './pages/accounting/PostingRules'
 import Profile from './pages/accounting/Profile'
 import TrialBalance from './pages/accounting/TrialBalance'
+import ApAging from './pages/operational/ApAging'
+import ApInvoiceDetail from './pages/operational/ApInvoiceDetail'
+import ApInvoiceEditor from './pages/operational/ApInvoiceEditor'
+import ApInvoices from './pages/operational/ApInvoices'
+import ApReconciliation from './pages/operational/ApReconciliation'
+import BankStatementDetail from './pages/operational/BankStatementDetail'
+import BankStatements from './pages/operational/BankStatements'
+import CashBankAccountDetail from './pages/operational/CashBankAccountDetail'
+import CashBankAccounts from './pages/operational/CashBankAccounts'
+import CashBankReconciliation from './pages/operational/CashBankReconciliation'
+import CashTransactionDetail from './pages/operational/CashTransactionDetail'
+import CashTransactionEditor from './pages/operational/CashTransactionEditor'
+import CashTransactions from './pages/operational/CashTransactions'
+import ExpenseCategories from './pages/operational/ExpenseCategories'
+import ExpenseDetail from './pages/operational/ExpenseDetail'
+import ExpenseEditor from './pages/operational/ExpenseEditor'
+import Expenses from './pages/operational/Expenses'
+import VendorPaymentDetail from './pages/operational/VendorPaymentDetail'
+import VendorPaymentEditor from './pages/operational/VendorPaymentEditor'
+import VendorPayments from './pages/operational/VendorPayments'
+import Vendors from './pages/operational/Vendors'
 
 // Navigation is declarative: an item shows only when the user holds its permission (cosmetic; the API enforces).
 const PLATFORM_NAV: NavItem[] = [
@@ -55,6 +76,19 @@ const TENANT_NAV: NavItem[] = [
   { to: '/app/akuntansi/buku-besar', label: 'Buku besar', icon: 'book', permission: 'accounting.gl.view', module: 'ACCOUNTING_CORE', group: 'Akuntansi' },
   { to: '/app/akuntansi/neraca-saldo', label: 'Neraca saldo', icon: 'scale', permission: 'accounting.trial_balance.view', module: 'ACCOUNTING_CORE', group: 'Akuntansi' },
   { to: '/app/akuntansi/saldo-awal', label: 'Saldo awal', icon: 'box', permission: 'accounting.opening_balance.view', module: 'ACCOUNTING_CORE', group: 'Akuntansi' },
+  // OA2 modules. Each section needs its own module (and, for the cash/bank documents, its feature) and the user's permission (cosmetic; the API enforces).
+  { to: '/app/akuntansi/vendor', label: 'Vendor', icon: 'users', permission: 'accounting.vendor.view', module: 'ACCOUNTING_AP', feature: 'VENDOR', group: 'Utang usaha' },
+  { to: '/app/akuntansi/faktur-vendor', label: 'Faktur vendor', icon: 'list', permission: 'accounting.ap_invoice.view', module: 'ACCOUNTING_AP', feature: 'VENDOR_INVOICE', group: 'Utang usaha' },
+  { to: '/app/akuntansi/pembayaran-vendor', label: 'Pembayaran vendor', icon: 'card', permission: 'accounting.ap_payment.view', module: 'ACCOUNTING_AP', feature: 'AP_PAYMENT', group: 'Utang usaha' },
+  { to: '/app/akuntansi/umur-utang', label: 'Umur utang', icon: 'calendar', permission: 'accounting.ap_aging.view', module: 'ACCOUNTING_AP', feature: 'AP_AGING', group: 'Utang usaha' },
+  { to: '/app/akuntansi/beban', label: 'Beban', icon: 'tag', permission: 'accounting.expense.view', module: 'ACCOUNTING_EXPENSE', feature: 'EXPENSE', group: 'Beban' },
+  { to: '/app/akuntansi/kategori-beban', label: 'Kategori beban', icon: 'grid', permission: 'accounting.expense.view', module: 'ACCOUNTING_EXPENSE', feature: 'EXPENSE', group: 'Beban' },
+  { to: '/app/akuntansi/kas-bank', label: 'Akun kas & bank', icon: 'building', permission: 'accounting.cash_bank.view', module: 'ACCOUNTING_CASH_BANK', feature: 'CASH_BANK_ACCOUNT', group: 'Kas & bank' },
+  { to: '/app/akuntansi/pembayaran-kas', label: 'Pembayaran kas', icon: 'card', permission: 'accounting.cash_transaction.view', module: 'ACCOUNTING_CASH_BANK', feature: 'PAYMENT', group: 'Kas & bank' },
+  { to: '/app/akuntansi/penerimaan-kas', label: 'Penerimaan kas', icon: 'box', permission: 'accounting.cash_transaction.view', module: 'ACCOUNTING_CASH_BANK', feature: 'RECEIPT', group: 'Kas & bank' },
+  { to: '/app/akuntansi/rekening-koran', label: 'Rekening koran', icon: 'book', permission: 'accounting.bank_reconciliation.view', module: 'ACCOUNTING_CASH_BANK', feature: 'BANK_RECONCILIATION', group: 'Kas & bank' },
+  { to: '/app/akuntansi/rekonsiliasi/utang', label: 'Utang vs buku besar', icon: 'scale', permission: 'accounting.reconciliation.ap.view', module: 'ACCOUNTING_AP', feature: 'AP_AGING', group: 'Rekonsiliasi' },
+  { to: '/app/akuntansi/rekonsiliasi/kas-bank', label: 'Kas/bank vs buku besar', icon: 'scale', permission: 'accounting.reconciliation.cash_bank.view', module: 'ACCOUNTING_CASH_BANK', feature: 'BANK_RECONCILIATION', group: 'Rekonsiliasi' },
   { to: '/app/akuntansi/profil', label: 'Profil akuntansi', icon: 'cog', permission: 'accounting.profile.view', module: 'ACCOUNTING_CORE', group: 'Konfigurasi akuntansi' },
   { to: '/app/akuntansi/periode', label: 'Tahun fiskal & periode', icon: 'calendar', permission: 'accounting.period.view', module: 'ACCOUNTING_CORE', group: 'Konfigurasi akuntansi' },
   { to: '/app/akuntansi/akun', label: 'Bagan akun', icon: 'grid', permission: 'accounting.coa.view', module: 'ACCOUNTING_CORE', group: 'Konfigurasi akuntansi' },
@@ -87,9 +121,10 @@ function Portal({ scope, items }: { scope: 'platform' | 'tenant'; items: NavItem
 }
 
 /** Page-level guard: a direct URL without the permission shows a refusal instead of a failing request. */
-function Guard({ permission, module, children }: { permission: string; module?: string; children: ReactNode }) {
-  const { can, moduleMode } = useCapabilities()
+function Guard({ permission, module, feature, children }: { permission: string; module?: string; feature?: string; children: ReactNode }) {
+  const { can, moduleMode, featureEnabled } = useCapabilities()
   if (module && moduleMode(module) === 'NONE') return <EmptyState title="Modul tidak tersedia">Modul ini tidak termasuk dalam langganan organisasi Anda.</EmptyState>
+  if (feature && !featureEnabled(feature)) return <EmptyState title="Fitur tidak tersedia">Fitur ini tidak termasuk dalam langganan organisasi Anda.</EmptyState>
   if (!can(permission)) return <EmptyState title="Akses ditolak">Anda tidak memiliki izin untuk membuka halaman ini.</EmptyState>
   return <>{children}</>
 }
@@ -147,6 +182,36 @@ export default function App() {
             <Route path="akun" element={<Guard permission="accounting.coa.view" module="ACCOUNTING_CORE"><ChartOfAccounts /></Guard>} />
             <Route path="aturan-posting" element={<Guard permission="accounting.posting_rule.view" module="ACCOUNTING_CORE"><PostingRules /></Guard>} />
             <Route path="pemetaan-akun" element={<Guard permission="accounting.account_mapping.view" module="ACCOUNTING_CORE"><AccountMappings /></Guard>} />
+            {/* OA2 */}
+            <Route path="vendor" element={<Guard permission="accounting.vendor.view" module="ACCOUNTING_AP" feature="VENDOR"><Vendors /></Guard>} />
+            <Route path="faktur-vendor" element={<Guard permission="accounting.ap_invoice.view" module="ACCOUNTING_AP" feature="VENDOR_INVOICE"><ApInvoices /></Guard>} />
+            <Route path="faktur-vendor/baru" element={<Guard permission="accounting.ap_invoice.create" module="ACCOUNTING_AP" feature="VENDOR_INVOICE"><ApInvoiceEditor /></Guard>} />
+            <Route path="faktur-vendor/:id" element={<Guard permission="accounting.ap_invoice.view" module="ACCOUNTING_AP" feature="VENDOR_INVOICE"><ApInvoiceDetail /></Guard>} />
+            <Route path="faktur-vendor/:id/ubah" element={<Guard permission="accounting.ap_invoice.update" module="ACCOUNTING_AP" feature="VENDOR_INVOICE"><ApInvoiceEditor /></Guard>} />
+            <Route path="pembayaran-vendor" element={<Guard permission="accounting.ap_payment.view" module="ACCOUNTING_AP" feature="AP_PAYMENT"><VendorPayments /></Guard>} />
+            <Route path="pembayaran-vendor/baru" element={<Guard permission="accounting.ap_payment.create" module="ACCOUNTING_AP" feature="AP_PAYMENT"><VendorPaymentEditor /></Guard>} />
+            <Route path="pembayaran-vendor/:id" element={<Guard permission="accounting.ap_payment.view" module="ACCOUNTING_AP" feature="AP_PAYMENT"><VendorPaymentDetail /></Guard>} />
+            <Route path="pembayaran-vendor/:id/ubah" element={<Guard permission="accounting.ap_payment.create" module="ACCOUNTING_AP" feature="AP_PAYMENT"><VendorPaymentEditor /></Guard>} />
+            <Route path="umur-utang" element={<Guard permission="accounting.ap_aging.view" module="ACCOUNTING_AP" feature="AP_AGING"><ApAging /></Guard>} />
+            <Route path="rekonsiliasi/utang" element={<Guard permission="accounting.reconciliation.ap.view" module="ACCOUNTING_AP" feature="AP_AGING"><ApReconciliation /></Guard>} />
+            <Route path="beban" element={<Guard permission="accounting.expense.view" module="ACCOUNTING_EXPENSE" feature="EXPENSE"><Expenses /></Guard>} />
+            <Route path="beban/baru" element={<Guard permission="accounting.expense.create" module="ACCOUNTING_EXPENSE" feature="EXPENSE"><ExpenseEditor /></Guard>} />
+            <Route path="beban/:id" element={<Guard permission="accounting.expense.view" module="ACCOUNTING_EXPENSE" feature="EXPENSE"><ExpenseDetail /></Guard>} />
+            <Route path="beban/:id/ubah" element={<Guard permission="accounting.expense.update" module="ACCOUNTING_EXPENSE" feature="EXPENSE"><ExpenseEditor /></Guard>} />
+            <Route path="kategori-beban" element={<Guard permission="accounting.expense.view" module="ACCOUNTING_EXPENSE" feature="EXPENSE"><ExpenseCategories /></Guard>} />
+            <Route path="kas-bank" element={<Guard permission="accounting.cash_bank.view" module="ACCOUNTING_CASH_BANK" feature="CASH_BANK_ACCOUNT"><CashBankAccounts /></Guard>} />
+            <Route path="kas-bank/:id" element={<Guard permission="accounting.cash_bank.view" module="ACCOUNTING_CASH_BANK" feature="CASH_BANK_ACCOUNT"><CashBankAccountDetail /></Guard>} />
+            <Route path="pembayaran-kas" element={<Guard permission="accounting.cash_transaction.view" module="ACCOUNTING_CASH_BANK" feature="PAYMENT"><CashTransactions kind="PAYMENT" /></Guard>} />
+            <Route path="pembayaran-kas/baru" element={<Guard permission="accounting.cash_transaction.create" module="ACCOUNTING_CASH_BANK" feature="PAYMENT"><CashTransactionEditor kind="PAYMENT" /></Guard>} />
+            <Route path="pembayaran-kas/:id" element={<Guard permission="accounting.cash_transaction.view" module="ACCOUNTING_CASH_BANK" feature="PAYMENT"><CashTransactionDetail kind="PAYMENT" /></Guard>} />
+            <Route path="pembayaran-kas/:id/ubah" element={<Guard permission="accounting.cash_transaction.create" module="ACCOUNTING_CASH_BANK" feature="PAYMENT"><CashTransactionEditor kind="PAYMENT" /></Guard>} />
+            <Route path="penerimaan-kas" element={<Guard permission="accounting.cash_transaction.view" module="ACCOUNTING_CASH_BANK" feature="RECEIPT"><CashTransactions kind="RECEIPT" /></Guard>} />
+            <Route path="penerimaan-kas/baru" element={<Guard permission="accounting.cash_transaction.create" module="ACCOUNTING_CASH_BANK" feature="RECEIPT"><CashTransactionEditor kind="RECEIPT" /></Guard>} />
+            <Route path="penerimaan-kas/:id" element={<Guard permission="accounting.cash_transaction.view" module="ACCOUNTING_CASH_BANK" feature="RECEIPT"><CashTransactionDetail kind="RECEIPT" /></Guard>} />
+            <Route path="penerimaan-kas/:id/ubah" element={<Guard permission="accounting.cash_transaction.create" module="ACCOUNTING_CASH_BANK" feature="RECEIPT"><CashTransactionEditor kind="RECEIPT" /></Guard>} />
+            <Route path="rekening-koran" element={<Guard permission="accounting.bank_reconciliation.view" module="ACCOUNTING_CASH_BANK" feature="BANK_RECONCILIATION"><BankStatements /></Guard>} />
+            <Route path="rekening-koran/:id" element={<Guard permission="accounting.bank_reconciliation.view" module="ACCOUNTING_CASH_BANK" feature="BANK_RECONCILIATION"><BankStatementDetail /></Guard>} />
+            <Route path="rekonsiliasi/kas-bank" element={<Guard permission="accounting.reconciliation.cash_bank.view" module="ACCOUNTING_CASH_BANK" feature="BANK_RECONCILIATION"><CashBankReconciliation /></Guard>} />
           </Route>
           <Route path="langganan" element={<Guard permission="account.subscription.view"><Subscription /></Guard>} />
           <Route path="penggunaan" element={<Guard permission="account.subscription.view"><Usage /></Guard>} />

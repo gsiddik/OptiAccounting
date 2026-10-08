@@ -1,5 +1,6 @@
 import { ApiError } from './api'
 import { ACCOUNTING_ERRORS, ACCOUNTING_STATUS } from './accountingLabels'
+import { OPERATIONAL_ERRORS, OPERATIONAL_STATUS, operationalModuleLabels } from './operationalLabels'
 
 // Indonesian UI strings for statuses, codes and API refusals (UI is Indonesian-only for now).
 
@@ -24,7 +25,7 @@ const STATUS: Record<string, [string, Tone]> = {
 
 export function statusLabel(status: string | null | undefined): [string, Tone] {
   if (!status) return ['—', 'neutral']
-  return STATUS[status] ?? ACCOUNTING_STATUS[status] ?? [status, 'neutral']
+  return STATUS[status] ?? ACCOUNTING_STATUS[status] ?? OPERATIONAL_STATUS[status] ?? [status, 'neutral']
 }
 
 export const scopeLabels: Record<string, string> = {
@@ -66,6 +67,7 @@ export const groupLabels: Record<string, string> = {
 
 const ERRORS: Record<string, string> = {
   ...ACCOUNTING_ERRORS,
+  ...OPERATIONAL_ERRORS,
   INVALID_CREDENTIALS: 'E-mail atau kata sandi salah.',
   USER_INACTIVE: 'Akun ini tidak aktif.',
   TENANT_NOT_ENTERABLE: 'Anda tidak dapat masuk ke organisasi ini.',
@@ -163,6 +165,9 @@ export function describeError(error: unknown): string {
     }
     if (error.code === 'ACTIVE_DEPENDENTS' && Array.isArray(error.details.dependents)) {
       return `${ERRORS.ACTIVE_DEPENDENTS} Dipakai oleh: ${(error.details.dependents as string[]).join(', ')}.`
+    }
+    if (error.code === 'MODULE_NOT_AVAILABLE' && typeof error.details.module === 'string') {
+      return `Dokumen ini membutuhkan modul ${operationalModuleLabels[error.details.module] ?? error.details.module} yang aktif dan tidak dalam mode hanya baca.`
     }
     if (error.code && ERRORS[error.code]) return ERRORS[error.code]
     const first = Object.values(error.fields)[0]?.[0]

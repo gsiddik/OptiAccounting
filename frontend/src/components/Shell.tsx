@@ -8,12 +8,12 @@ import { Icon } from './Icon'
 import { useToast } from './Toast'
 import { Banner, Button, Loading } from './ui'
 
-export type NavItem = { to: string; label: string; icon: string; permission?: string; /** Shown only while the module is entitled (FULL or READ_ONLY). */ module?: string; end?: boolean; group?: string }
+export type NavItem = { to: string; label: string; icon: string; permission?: string; /** Shown only while the module is entitled (FULL or READ_ONLY). */ module?: string; /** Shown only while the feature is entitled. */ feature?: string; end?: boolean; group?: string }
 
 /** Sidebar + topbar shared by both portals. Navigation items appear only when `can(permission)` (cosmetic; the API enforces). */
 export function Shell({ scope, items }: { scope: 'platform' | 'tenant'; items: NavItem[] }) {
   const { state, enter, logout } = useAuth()
-  const { can, loading, failed, tenant, readOnly, moduleMode } = useCapabilities()
+  const { can, loading, failed, tenant, readOnly, moduleMode, featureEnabled } = useCapabilities()
   const location = useLocation()
   // The off-canvas menu belongs to the page it was opened on, so navigating closes it without an effect.
   const [openAt, setOpenAt] = useState<string | null>(null)
@@ -23,7 +23,7 @@ export function Shell({ scope, items }: { scope: 'platform' | 'tenant'; items: N
 
   if (state.status !== 'ready') return null
   const me = state.me
-  const visible = items.filter((i) => (!i.permission || can(i.permission)) && (!i.module || moduleMode(i.module) !== 'NONE'))
+  const visible = items.filter((i) => (!i.permission || can(i.permission)) && (!i.module || moduleMode(i.module) !== 'NONE') && (!i.feature || featureEnabled(i.feature)))
   const current = scope === 'platform' ? 'platform' : `tenant:${me.tenant_id}`
   const targets = [
     ...(me.platform_access ? [{ value: 'platform', label: 'Portal Platform' }] : []),
