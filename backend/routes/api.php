@@ -185,6 +185,12 @@ Route::prefix('v1')->middleware('request.id')->group(function () {
             Route::post('account-mappings/{mapping}/deactivate', [Accounting\PostingConfigurationController::class, 'deactivateMapping'])->middleware($gate('accounting.account_mapping.manage', $config));
             Route::get('accounting-events', [Accounting\PostingConfigurationController::class, 'events'])->middleware($gate('accounting.posting_rule.view', $config));
 
+            $opening = 'OPENING_BALANCE';
+            Route::get('opening-balance', [Accounting\OpeningBalanceController::class, 'show'])->middleware($gate('accounting.opening_balance.view', $opening));
+            Route::put('opening-balance', [Accounting\OpeningBalanceController::class, 'save'])->middleware($gate('accounting.opening_balance.manage', $opening));
+            Route::post('opening-balance/cancel', [Accounting\OpeningBalanceController::class, 'cancel'])->middleware($gate('accounting.opening_balance.manage', $opening));
+            Route::post('opening-balance/post', [Accounting\OpeningBalanceController::class, 'post'])->middleware($gate('accounting.opening_balance.post', $opening));
+
             Route::get('dimension-types', [Accounting\DimensionController::class, 'types'])->middleware($gate('accounting.dimension.view', $config));
             Route::get('cost-centers', [Accounting\DimensionController::class, 'costCenters'])->middleware($gate('accounting.dimension.view', $config));
             Route::post('cost-centers', [Accounting\DimensionController::class, 'storeCostCenter'])->middleware($gate('accounting.dimension.manage', $config));

@@ -180,6 +180,9 @@ class PostingEngine
                     throw new DomainException('This journal is already posted.', 'JOURNAL_ALREADY_POSTED', 409, ['journal_number' => $journal->journal_number]);
                 }
 
+                // Posting shares the ledger gate; the opening balance takes it exclusively, so no posting slips in before a cutover date.
+                DB::select('select pg_advisory_xact_lock_shared(hashtextextended(?, 0))', [self::ledgerGate($journal->tenant_id)]);
+
                 $postingDate = $journal->posting_date->toDateString();
                 $profile = $this->readiness->assertCanPost($postingDate, $journal->journal_type);
                 $this->assertWorkflowAllowsPosting($journal, $profile->approval_required);
@@ -195,7 +198,7 @@ class PostingEngine
                 // 3. The period is resolved from posting_date and locked FOR SHARE: a concurrent close waits, a later one sees the posting.
                 $period = $this->periods->resolveForPosting($postingDate, $allowSoftClosed && $actor !== null);
 
-                if ($actor !== null && $journal->journal_type === JournalEntry::MANUAL) {
+                if ($actor !== null && in_array($journal->journal_type, [JournalEntry::MANUAL, JournalEntry::OPENING], true)) {
                     $this->sod->assertMayPost($journal, $actor->id, $profile);
                 }
 
@@ -229,6 +232,12 @@ class PostingEngine
         } catch (QueryException $e) {
             throw $this->translate($e);
         }
+    }
+
+    /** Advisory lock key serializing the opening balance against every other posting of the tenant. */
+    public static function ledgerGate(string $tenantId): string
+    {
+        return "oa1:ledger:{$tenantId}";
     }
 
     /** MANUAL journals follow the approval policy; every other type is created and posted by its own service. */

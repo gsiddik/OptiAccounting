@@ -22,6 +22,7 @@ class ReversalService
         private readonly PostingEngine $engine,
         private readonly AuditService $audit,
         private readonly OutboxPublisher $outbox,
+        private readonly OpeningBalanceService $openings,
     ) {}
 
     public function reverse(JournalEntry $original, User $actor, string $reason, ?string $postingDate = null, ?string $reference = null): JournalEntry
@@ -65,6 +66,10 @@ class ReversalService
 
             DB::table('journal_entries')->where('tenant_id', $original->tenant_id)->where('id', $original->id)
                 ->update(['reversed_by_journal_id' => $posted->id, 'updated_at' => now()]);
+
+            if ($original->journal_type === JournalEntry::OPENING) {
+                $this->openings->markReversed($original);
+            }
 
             $this->audit->record('accounting.journal.reversed', 'journal_entry', $original->id, ['journal_number' => $original->journal_number], [
                 'reversal_id' => $posted->id, 'reversal_number' => $posted->journal_number, 'posting_date' => $date, 'reason' => $reason,

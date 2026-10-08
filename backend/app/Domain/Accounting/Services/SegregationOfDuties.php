@@ -22,8 +22,8 @@ class SegregationOfDuties
 
     public function assertMayPost(JournalEntry $journal, string $actorId, AccountingProfile $profile): void
     {
-        if ($journal->journal_type !== JournalEntry::MANUAL) {
-            return;
+        if (! in_array($journal->journal_type, [JournalEntry::MANUAL, JournalEntry::OPENING], true)) {
+            return; // system-authority journals have no human preparer
         }
         if ($profile->sod_creator_not_poster && $journal->created_by === $actorId) {
             throw new DomainException('Segregation of duties: the person who prepared a journal cannot post it.', 'SOD_VIOLATION', 403, ['rule' => 'creator_not_poster']);

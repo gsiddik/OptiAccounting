@@ -43,6 +43,9 @@ class JournalService
         return DB::transaction(function () use ($journal, $data) {
             $journal = JournalEntry::query()->lockForUpdate()->findOrFail($journal->id);
             $this->assertEditable($journal);
+            if ($journal->journal_type !== JournalEntry::MANUAL) {
+                throw new DomainException('Only manual journals are edited here; an opening balance is handled on its own page.', 'JOURNAL_NOT_MANUAL', 409, ['journal_type' => $journal->journal_type]);
+            }
             $profile = $this->profile();
             $before = $this->summary($journal);
 

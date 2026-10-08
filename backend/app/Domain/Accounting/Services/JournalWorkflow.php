@@ -27,6 +27,8 @@ class JournalWorkflow
 
     public function submit(JournalEntry $journal, User $actor): JournalEntry
     {
+        $this->assertManual($journal);
+
         return $this->move($journal, JournalEntry::SUBMITTED, $actor, function (JournalEntry $journal) use ($actor) {
             $profile = $this->journals->profile();
             $lines = $journal->lines()->with('dimensions')->get()->map(fn ($l) => [
@@ -43,6 +45,8 @@ class JournalWorkflow
 
     public function approve(JournalEntry $journal, User $actor): JournalEntry
     {
+        $this->assertManual($journal);
+
         return $this->move($journal, JournalEntry::APPROVED, $actor, function (JournalEntry $journal) use ($actor) {
             $this->sod->assertMayApprove($journal, $actor->id, $this->journals->profile());
             $journal->approved_by = $actor->id;
@@ -52,6 +56,8 @@ class JournalWorkflow
 
     public function reject(JournalEntry $journal, User $actor, string $reason): JournalEntry
     {
+        $this->assertManual($journal);
+
         return $this->move($journal, JournalEntry::REJECTED, $actor, function (JournalEntry $journal) use ($actor, $reason) {
             $journal->rejected_by = $actor->id;
             $journal->rejected_at = now();
@@ -62,6 +68,8 @@ class JournalWorkflow
     /** REJECTED -> DRAFT so the preparer can correct and resubmit. */
     public function reopen(JournalEntry $journal, User $actor): JournalEntry
     {
+        $this->assertManual($journal);
+
         return $this->move($journal, JournalEntry::DRAFT, $actor, function (JournalEntry $journal) {
             $journal->submitted_by = $journal->submitted_at = $journal->approved_by = $journal->approved_at = null;
         });
@@ -69,6 +77,8 @@ class JournalWorkflow
 
     public function cancel(JournalEntry $journal, User $actor, string $reason): JournalEntry
     {
+        $this->assertManual($journal);
+
         return $this->move($journal, JournalEntry::CANCELLED, $actor, function (JournalEntry $journal) use ($actor, $reason) {
             $journal->cancelled_by = $actor->id;
             $journal->cancelled_at = now();
@@ -78,7 +88,31 @@ class JournalWorkflow
 
     public function post(JournalEntry $journal, User $actor): JournalEntry
     {
+        $this->assertManual($journal);
+
         return $this->engine->post($journal, $actor, $this->canPostSoftClosed($actor));
+    }
+
+    /** The opening balance owns its draft; this is how its service cancels it (type OPENING only). */
+    public function cancelOpening(JournalEntry $journal, User $actor, string $reason): JournalEntry
+    {
+        if ($journal->journal_type !== JournalEntry::OPENING) {
+            throw new DomainException('Not an opening balance journal.', 'JOURNAL_NOT_OPENING', 409);
+        }
+
+        return $this->move($journal, JournalEntry::CANCELLED, $actor, function (JournalEntry $journal) use ($actor, $reason) {
+            $journal->cancelled_by = $actor->id;
+            $journal->cancelled_at = now();
+            $journal->cancel_reason = $reason;
+        }, $reason);
+    }
+
+    /** Opening balance drafts are prepared, cancelled and posted on their own page (their own permission and preconditions). */
+    private function assertManual(JournalEntry $journal): void
+    {
+        if ($journal->journal_type !== JournalEntry::MANUAL) {
+            throw new DomainException('Only manual journals follow this workflow; an opening balance is handled on its own page.', 'JOURNAL_NOT_MANUAL', 409, ['journal_type' => $journal->journal_type]);
+        }
     }
 
     public function canPostSoftClosed(User $actor): bool

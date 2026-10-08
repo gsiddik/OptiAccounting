@@ -194,6 +194,11 @@ return new class extends Migration
                        OR (to_jsonb(NEW) - 'reversed_by_journal_id' - 'updated_at') IS DISTINCT FROM (to_jsonb(OLD) - 'reversed_by_journal_id' - 'updated_at') THEN
                         RAISE EXCEPTION 'a posted journal is immutable' USING ERRCODE = '23514';
                     END IF;
+                    -- ...and only to the posted reversal journal that reverses exactly this journal
+                    IF NOT EXISTS (SELECT 1 FROM journal_entries r WHERE r.tenant_id = NEW.tenant_id AND r.id = NEW.reversed_by_journal_id
+                                   AND r.journal_type = 'REVERSAL' AND r.status = 'POSTED' AND r.reverses_journal_id = NEW.id) THEN
+                        RAISE EXCEPTION 'a journal can only be linked to the posted reversal that reverses it' USING ERRCODE = '23514';
+                    END IF;
                     RETURN NEW;
                 END IF;
 
