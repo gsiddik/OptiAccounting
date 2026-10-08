@@ -80,3 +80,9 @@ enabled) and the person, then projects the subscription.
 - **Switching an installation with existing local tenants** to `optinexus` is not
   supported in place (SAAS_ARCHITECTURE §1); such a tenant keeps its local
   subscription and is skipped by the projection with a warning.
+
+## 4. After an upgrade that adds permissions or events
+
+A release that adds `accounting.*` permissions or events (OA1 added 27 permissions and `journal.posted` / `journal.reversed`) needs
+section 1 repeated for the **new entries only**: re-run `optiaccounting:nexus:manifest`, register the missing `permissions[]` (step 3) and `events[]`
+(step 5), then attach the new permissions to the application roles (step 8) and run `optiaccounting:nexus:sync-entitlements`. Entries that are already registered need no change. Until it is done, people sign in as before but hold none of the new permissions.
