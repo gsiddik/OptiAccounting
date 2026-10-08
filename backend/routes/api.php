@@ -33,6 +33,8 @@ Route::prefix('v1')->middleware('request.id')->group(function () {
 
     // ---------------------------------------------------------------- platform
     Route::prefix('platform')->middleware(['auth:sanctum', 'context:platform'])->group(function () {
+        Route::get('capabilities', Platform\CapabilityController::class);
+
         Route::get('tenants', [Platform\TenantController::class, 'index'])->middleware('access:platform.tenant.view');
         Route::post('tenants', [Platform\TenantController::class, 'store'])->middleware('access:platform.tenant.create');
         Route::get('tenants/{tenant}', [Platform\TenantController::class, 'show'])->middleware('access:platform.tenant.view');

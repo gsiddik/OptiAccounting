@@ -162,7 +162,7 @@ class SecurityTest extends TestCase
 
     public function test_every_platform_and_tenant_route_declares_a_permission_check(): void
     {
-        $exempt = ['api/v1/app/capabilities']; // the caller's own capability list
+        $exempt = ['api/v1/app/capabilities', 'api/v1/platform/capabilities']; // the caller's own capability list
         $missing = [];
 
         foreach (Route::getRoutes() as $route) {

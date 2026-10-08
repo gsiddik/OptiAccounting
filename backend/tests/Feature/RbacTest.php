@@ -221,6 +221,16 @@ class RbacTest extends TestCase
         $this->as($tenantToken)->getJson('/api/v1/platform/audit-logs')->assertForbidden();
     }
 
+    public function test_the_platform_capability_list_matches_the_operators_permissions(): void
+    {
+        $token = $this->platformToken($this->platformUser(['platform.tenant.view', 'platform.audit.view']));
+
+        $body = $this->as($token)->getJson('/api/v1/platform/capabilities')->assertOk()->assertJsonPath('scope', 'platform')->json();
+        $this->assertEqualsCanonicalizing(['platform.tenant.view', 'platform.audit.view'], $body['permissions']);
+
+        $this->as($this->tenantToken($this->member($this->tenant)[0], $this->tenant))->getJson('/api/v1/platform/capabilities')->assertForbidden();
+    }
+
     public function test_tenant_permissions_do_not_open_platform_routes_and_the_reverse(): void
     {
         $limited = $this->platformUser(['platform.tenant.view']);
