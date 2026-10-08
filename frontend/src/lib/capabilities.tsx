@@ -16,7 +16,23 @@ type CapabilityValue = {
   featureEnabled: (code: string) => boolean
   /** The subscription allows reading but not changing accounting data. */
   readOnly: boolean
+  /** Members, roles and subscriptions are edited in OptiNexus, not here (identity mode `optinexus`). */
+  managedExternally: boolean
+  /** `can()` for actions this installation owns: false for lifecycle actions that OptiNexus manages. */
+  canEdit: (permission: string) => boolean
 }
+
+/**
+ * Permissions whose actions live in OptiNexus when it is the identity authority. The API answers
+ * 409 MANAGED_BY_OPTINEXUS for them; the UI hides the buttons so nobody meets that refusal.
+ */
+const EXTERNALLY_MANAGED = new Set([
+  'access.user.manage',
+  'access.role.manage',
+  'platform.subscription.manage',
+  'platform.entitlement.manage',
+  'platform.tenant.create',
+])
 
 const CapabilityContext = createContext<CapabilityValue | null>(null)
 
@@ -33,6 +49,7 @@ export function CapabilityProvider({ scope, tenantId, children }: { scope: 'tena
   const value = useMemo<CapabilityValue>(() => {
     const granted = new Set(data?.permissions ?? [])
     const tenant = data?.scope === 'tenant' ? data : null
+    const managedExternally = data?.identity?.managed_externally ?? false
     return {
       loading,
       failed: error !== null,
@@ -42,6 +59,8 @@ export function CapabilityProvider({ scope, tenantId, children }: { scope: 'tena
       moduleMode: (code) => tenant?.modules[code] ?? 'NONE',
       featureEnabled: (code) => tenant?.features[code] ?? false,
       readOnly: tenant?.subscription.mode === 'READ_ONLY',
+      managedExternally,
+      canEdit: (permission) => granted.has(permission) && !(managedExternally && EXTERNALLY_MANAGED.has(permission)),
     }
   }, [data, loading, error])
 

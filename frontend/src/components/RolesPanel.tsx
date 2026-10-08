@@ -5,6 +5,7 @@ import { useAction, useResource } from '../lib/hooks'
 import type { Permission, Role } from '../lib/types'
 import { DataTable } from './DataTable'
 import { ConfirmDialog, FormModal } from './Modal'
+import { ManagedNotice } from './ManagedNotice'
 import { PermissionPicker } from './PermissionPicker'
 import { useToast } from './Toast'
 import { Badge, Banner, Button, EmptyState, ErrorNotice, Field, Loading } from './ui'
@@ -17,13 +18,13 @@ type Props = {
 
 /** Roles are named permission sets: create, edit and delete custom roles; bundled system roles are read-only. */
 export function RolesPanel({ base, managePermission }: Props) {
-  const { can, caps } = useCapabilities()
+  const { canEdit, caps } = useCapabilities()
   const toast = useToast()
   const roles = useResource(async () => (await api.get<{ data: Role[] }>(`${base}/roles`)).data.data, [base])
   const permissions = useResource(async () => (await api.get<{ data: Permission[] }>(`${base}/permissions`)).data.data, [base])
   const [editing, setEditing] = useState<Role | 'new' | null>(null)
   const [removing, setRemoving] = useState<Role | null>(null)
-  const canManage = can(managePermission)
+  const canManage = canEdit(managePermission)
   const myPermissions = new Set(caps?.permissions ?? [])
 
   if (roles.loading && !roles.data) return <Loading />
@@ -31,6 +32,7 @@ export function RolesPanel({ base, managePermission }: Props) {
 
   return (
     <div>
+      {base === '/app' && <ManagedNotice>Izin pengguna ditentukan di OptiNexus. Peran di bawah ini hanya untuk dilihat dan tidak menentukan akses.</ManagedNotice>}
       <div className="card-head">
         <span className="muted">Peran hanyalah kumpulan izin. Izin yang diberikan tidak boleh melebihi izin Anda sendiri.</span>
         {canManage && <Button variant="primary" size="sm" onClick={() => setEditing('new')}>Peran baru</Button>}
