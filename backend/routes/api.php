@@ -2,6 +2,9 @@
 
 use App\Http\Controllers\Api\App;
 use App\Http\Controllers\Api\App\Accounting;
+use App\Http\Controllers\Api\App\CashBank;
+use App\Http\Controllers\Api\App\Expense;
+use App\Http\Controllers\Api\App\Payables;
 use App\Http\Controllers\Api\Auth\AuthController;
 use App\Http\Controllers\Api\Auth\SsoController;
 use App\Http\Controllers\Api\HealthController;
@@ -205,6 +208,22 @@ Route::prefix('v1')->middleware('request.id')->group(function () {
             Route::post('cost-centers', [Accounting\DimensionController::class, 'storeCostCenter'])->middleware($gate('accounting.dimension.manage', $config));
             Route::patch('cost-centers/{costCenter}', [Accounting\DimensionController::class, 'updateCostCenter'])->middleware($gate('accounting.dimension.manage', $config));
             Route::post('cost-centers/{costCenter}/status', [Accounting\DimensionController::class, 'costCenterStatus'])->middleware($gate('accounting.dimension.manage', $config));
+
+            // ------------------------------------------------ OA2: payables, expense, cash & bank. Each module has its own entitlement; all depend on ACCOUNTING_CORE.
+            $ap = fn (string $permission, string $feature) => "access:{$permission},module=ACCOUNTING_AP,feature={$feature}";
+
+            Route::get('vendors', [Payables\VendorController::class, 'index'])->middleware($ap('accounting.vendor.view', 'VENDOR'));
+            Route::post('vendors', [Payables\VendorController::class, 'store'])->middleware($ap('accounting.vendor.manage', 'VENDOR'));
+            Route::get('vendors/{vendor}', [Payables\VendorController::class, 'show'])->middleware($ap('accounting.vendor.view', 'VENDOR'));
+            Route::patch('vendors/{vendor}', [Payables\VendorController::class, 'update'])->middleware($ap('accounting.vendor.manage', 'VENDOR'));
+            Route::post('vendors/{vendor}/status', [Payables\VendorController::class, 'status'])->middleware($ap('accounting.vendor.manage', 'VENDOR'));
+            Route::delete('vendors/{vendor}', [Payables\VendorController::class, 'destroy'])->middleware($ap('accounting.vendor.manage', 'VENDOR'));
+            Route::get('payment-terms', [Payables\VendorController::class, 'terms'])->middleware($ap('accounting.vendor.view', 'VENDOR'));
+            Route::post('payment-terms', [Payables\VendorController::class, 'storeTerm'])->middleware($ap('accounting.vendor.manage', 'VENDOR'));
+            Route::post('payment-terms/defaults', [Payables\VendorController::class, 'applyTermDefaults'])->middleware($ap('accounting.vendor.manage', 'VENDOR'));
+            Route::patch('payment-terms/{term}', [Payables\VendorController::class, 'updateTerm'])->middleware($ap('accounting.vendor.manage', 'VENDOR'));
+            Route::post('payment-terms/{term}/status', [Payables\VendorController::class, 'termStatus'])->middleware($ap('accounting.vendor.manage', 'VENDOR'));
+            Route::delete('payment-terms/{term}', [Payables\VendorController::class, 'destroyTerm'])->middleware($ap('accounting.vendor.manage', 'VENDOR'));
         });
     });
 });

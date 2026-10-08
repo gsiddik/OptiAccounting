@@ -19,10 +19,10 @@ class ModuleCatalogSeeder extends Seeder
         'ACCOUNTING_CORE' => ['Accounting Core', 'Profile, fiscal year, periods, chart of accounts, journals, general ledger, trial balance', [], [
             'ACCOUNTING_CONFIGURATION' => 'Accounting configuration', 'JOURNAL' => 'Journal', 'GENERAL_LEDGER' => 'General ledger', 'OPENING_BALANCE' => 'Opening balance']],
         'ACCOUNTING_AP' => ['Accounts Payable', 'Vendors, vendor invoices, AP subledger and aging', ['ACCOUNTING_CORE'], [
-            'VENDOR_INVOICE' => 'Vendor invoice', 'AP_AGING' => 'AP aging']],
+            'VENDOR_INVOICE' => 'Vendor invoice', 'AP_AGING' => 'AP aging', 'VENDOR' => 'Vendor', 'AP_PAYMENT' => 'Vendor payment']],
         'ACCOUNTING_EXPENSE' => ['Expense', 'Expense categories and expense claims', ['ACCOUNTING_CORE'], ['EXPENSE' => 'Expense']],
         'ACCOUNTING_CASH_BANK' => ['Cash & Bank', 'Cash and bank accounts, payments, receipts, bank reconciliation', ['ACCOUNTING_CORE'], [
-            'PAYMENT' => 'Payment', 'RECEIPT' => 'Receipt', 'BANK_RECONCILIATION' => 'Bank reconciliation']],
+            'PAYMENT' => 'Payment', 'RECEIPT' => 'Receipt', 'BANK_RECONCILIATION' => 'Bank reconciliation', 'CASH_BANK_ACCOUNT' => 'Cash and bank account']],
         'ACCOUNTING_AR' => ['Accounts Receivable', 'Customers, customer invoices, credit/debit notes, AR aging', ['ACCOUNTING_CORE'], [
             'CUSTOMER_INVOICE' => 'Customer invoice', 'CREDIT_NOTE' => 'Credit note', 'AR_AGING' => 'AR aging']],
         'ACCOUNTING_BUDGET' => ['Budget', 'Budgets, versions and budget versus actual', ['ACCOUNTING_CORE'], ['BUDGET' => 'Budget']],
