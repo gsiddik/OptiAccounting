@@ -1,5 +1,5 @@
 import react from '@vitejs/plugin-react'
-import { defineConfig } from 'vite'
+import { defineConfig } from 'vitest/config'
 
 // In development the SPA calls /api on its own origin; Vite forwards it to Laravel.
 export default defineConfig({
@@ -8,5 +8,10 @@ export default defineConfig({
     proxy: {
       '/api': process.env.VITE_DEV_API_PROXY ?? 'http://localhost:8000',
     },
+  },
+  test: {
+    environment: 'jsdom',
+    setupFiles: ['./src/test/setup.ts'],
+    css: false,
   },
 })
