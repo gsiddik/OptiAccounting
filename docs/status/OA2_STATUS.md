@@ -7,8 +7,11 @@ Brief: `docs/specs/OA2.md`. OptiNexus and OptiFleet-v2 are not modified; OA3 is 
 - A Vendor + payment terms (+ expense category table, document history table, DB document guards, 35 permissions, 3 features)
 - B Vendor invoice (`ap_invoices` + lines, also the payable of an expense via `origin`): draft → submit → approve → post, duplicate-number control with override permission, scope and SoD
 - C Posting through `PostingEngine::postEvent` (`AP_INVOICE_RECOGNIZED`, per-line classification, pro-rata discount / other charges, vendor payable override), reversal via the shared `ReversalService`
+- G Cash/bank accounts (`cash_bank_accounts`): mapped to one usable GL asset account, one active account per GL account, masked bank number only, book balance read from posted lines, GL mapping frozen once a document uses the account
+- D Vendor payments + allocations: allocation to posted invoices (manual or `auto_allocate` oldest-due-first), posting `VENDOR_PAYMENT` (debits the payable account each invoice was booked to), reversal releases allocations; outstanding is derived (`ApSubledgerService`)
 
 ## Important decisions
+- A payment is allocated in full before approval (no vendor advance in OA2), so no payable can go negative. A distribution key `component@ROLE` lets two rule lines share a component.
 - All postings go through `PostingEngine::postEvent`; OA2 has no debit/credit engine. Execution order adjusted for table dependencies: cash/bank accounts (G) precede payments (D).
 - Vendor identity and financial profile are written separately; profile changes are audited as `payables.vendor.financial_profile_changed`.
 - Payment term gives a deterministic due date (net days / end of month + days); a different date only where the term allows it; CUSTOM needs an explicit date.
@@ -17,7 +20,7 @@ Brief: `docs/specs/OA2.md`. OptiNexus and OptiFleet-v2 are not modified; OA3 is 
 - New features VENDOR, AP_PAYMENT (ACCOUNTING_AP) and CASH_BANK_ACCOUNT (ACCOUNTING_CASH_BANK); migration `2026_10_10_100003` backfills them for tenants that already hold the module.
 
 ## Migrations (additive, `2026_10_10_1000xx`)
-100001 document history + guard functions · 100002 payment terms, expense categories, vendors · 100003 feature backfill · 100004 ap_invoices + lines + triggers · 100005 account role binding.
+100001 document history + guard functions · 100002 payment terms, expense categories, vendors · 100003 feature backfill · 100004 ap_invoices + lines + triggers · 100005 account role binding · 100006 cash_bank_accounts + in-use guard · 100007 vendor_payments, ap_payment_allocations, deferred allocation check.
 
 ## Tests (executed this session)
 | Check | Result |
@@ -25,6 +28,7 @@ Brief: `docs/specs/OA2.md`. OptiNexus and OptiFleet-v2 are not modified; OA3 is 
 | Batch A: `Feature/Payables/VendorAndPaymentTermTest` (8 tests) | PASS |
 | Batches B–C: `Feature/Payables` (lifecycle 7, posting 11, vendor 8) | PASS (26 tests) |
 | OA1 accounting suite + security with the new routes/permissions (119 tests) and OA0/OA0-N RBAC, entitlement, seeder, adapter (170 tests) | PASS |
+| Batches G, D: `Feature/CashBank` (7), `Feature/Payables/VendorPayment*` (15) incl. partial / multiple / multi-invoice, over-allocation (service + DB), reversal, closed period, immutability, SoD, scope, tenant isolation, audit | PASS |
 | Pint | PASS |
 
 ## Remaining

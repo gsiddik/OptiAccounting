@@ -113,7 +113,7 @@ return new class extends Migration
         // A posted invoice must carry a posted journal of exactly its total (the credit to the control account).
         DB::unprepared(<<<'SQL'
             CREATE OR REPLACE FUNCTION ap_invoices_post_guard() RETURNS trigger AS $$
-            DECLARE j journal_entries%ROWTYPE;
+            DECLARE j journal_entries%ROWTYPE; settled boolean := false;
             BEGIN
                 IF NEW.status = 'POSTED' AND OLD.status IS DISTINCT FROM 'POSTED' THEN
                     SELECT * INTO j FROM journal_entries WHERE tenant_id = NEW.tenant_id AND id = NEW.journal_entry_id;
@@ -125,6 +125,13 @@ return new class extends Migration
                     END IF;
                 END IF;
                 IF NEW.status = 'REVERSED' AND OLD.status = 'POSTED' THEN
+                    -- Payments allocated to the invoice must be reversed first, so the subledger never goes negative.
+                    IF to_regclass('ap_payment_allocations') IS NOT NULL THEN
+                        EXECUTE 'SELECT EXISTS (SELECT 1 FROM ap_payment_allocations WHERE tenant_id = $1 AND ap_invoice_id = $2 AND is_effective)' INTO settled USING NEW.tenant_id, NEW.id;
+                        IF settled THEN
+                            RAISE EXCEPTION 'an invoice with effective payment allocations cannot be reversed' USING ERRCODE = '23514';
+                        END IF;
+                    END IF;
                     IF NOT EXISTS (SELECT 1 FROM journal_entries r WHERE r.tenant_id = NEW.tenant_id AND r.id = NEW.reversal_journal_id
                                    AND r.status = 'POSTED' AND r.reverses_journal_id = NEW.journal_entry_id) THEN
                         RAISE EXCEPTION 'a payable is reversed only by the posted reversal of its own journal' USING ERRCODE = '23514';

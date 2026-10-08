@@ -20,6 +20,7 @@ use App\Domain\Expense\Models\ExpenseCategory;
 use App\Domain\Identity\Models\User;
 use App\Domain\Payables\Models\ApInvoice;
 use App\Domain\Payables\Models\ApInvoiceLine;
+use App\Domain\Payables\Models\ApPaymentAllocation;
 use App\Domain\Payables\Models\PaymentTerm;
 use App\Domain\Payables\Models\Vendor;
 use App\Domain\Shared\DomainException;
@@ -54,6 +55,7 @@ class ApInvoiceService
         private readonly PeriodGuard $periods,
         private readonly ReadinessService $readiness,
         private readonly SegregationOfDuties $sod,
+        private readonly ApSubledgerService $subledger,
         private readonly AuditService $audit,
         private readonly TenantContext $context,
     ) {}
@@ -65,6 +67,8 @@ class ApInvoiceService
     {
         $query = ApInvoice::query()->with(['vendor', 'branch', 'businessUnit', 'creator']);
         $this->scope->restrict($query->getQuery(), 'ap_invoices');
+        $this->subledger->figures($query);
+        $this->subledger->filter($query, $filter, $this->subledger->today());
 
         return $query
             ->when($filter['status'] ?? null, fn ($q, $v) => $q->where('ap_invoices.status', $v))
@@ -91,9 +95,15 @@ class ApInvoiceService
     /** The full document for the detail page. */
     public function load(ApInvoice $invoice): ApInvoice
     {
+        // The derived settlement figures (paid, outstanding, payment status) come from the subledger, never from a stored column.
+        $figures = $this->subledger->figures(ApInvoice::query()->whereKey($invoice->id))->first();
+        if ($figures !== null) {
+            $invoice->setRawAttributes($figures->getAttributes(), true);
+        }
+
         return $invoice->load([
             'vendor', 'paymentTerm', 'branch', 'businessUnit', 'costCenter', 'creator', 'transitions.actor',
-            'lines.expenseCategory', 'lines.account', 'lines.costCenter',
+            'lines.expenseCategory', 'lines.account', 'lines.costCenter', 'allocations.payment',
         ]);
     }
 
@@ -233,10 +243,12 @@ class ApInvoiceService
         });
     }
 
-    /** Refuse a reversal while payments are allocated to the invoice (completed in the payment batch). */
-    protected function assertNoActivePayments(ApInvoice $invoice): void
+    /** Refuse a reversal while payments are allocated to the invoice; they are reversed first, so the subledger can never go negative. */
+    private function assertNoActivePayments(ApInvoice $invoice): void
     {
-        // Replaced by the allocation check when payments exist (see ApSettlementService).
+        if (ApPaymentAllocation::query()->where('ap_invoice_id', $invoice->id)->where('is_effective', true)->exists()) {
+            throw new DomainException('Payments are allocated to this invoice; reverse them first.', 'AP_INVOICE_HAS_PAYMENTS', 409);
+        }
     }
 
     // ------------------------------------------------------------------------------------------------ validation

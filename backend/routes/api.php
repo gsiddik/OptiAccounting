@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\App;
 use App\Http\Controllers\Api\App\Accounting;
+use App\Http\Controllers\Api\App\CashBank;
 use App\Http\Controllers\Api\App\Expense;
 use App\Http\Controllers\Api\App\Payables;
 use App\Http\Controllers\Api\Auth\AuthController;
@@ -239,6 +240,31 @@ Route::prefix('v1')->middleware('request.id')->group(function () {
             Route::post('ap-invoices/{invoice}/cancel', [Payables\ApInvoiceController::class, 'cancel'])->middleware($ap('accounting.ap_invoice.update', $inv));
             Route::post('ap-invoices/{invoice}/post', [Payables\ApInvoiceController::class, 'post'])->middleware($ap('accounting.ap_invoice.post', $inv));
             Route::post('ap-invoices/{invoice}/reverse', [Payables\ApInvoiceController::class, 'reverse'])->middleware($ap('accounting.ap_invoice.reverse', $inv));
+
+            // Vendor payments and allocations (ACCOUNTING_AP, feature AP_PAYMENT).
+            $pay = 'AP_PAYMENT';
+            Route::get('vendor-payments', [Payables\VendorPaymentController::class, 'index'])->middleware($ap('accounting.ap_payment.view', $pay));
+            Route::post('vendor-payments', [Payables\VendorPaymentController::class, 'store'])->middleware($ap('accounting.ap_payment.create', $pay));
+            Route::get('vendor-payments/{payment}', [Payables\VendorPaymentController::class, 'show'])->middleware($ap('accounting.ap_payment.view', $pay));
+            Route::patch('vendor-payments/{payment}', [Payables\VendorPaymentController::class, 'update'])->middleware($ap('accounting.ap_payment.create', $pay));
+            Route::post('vendor-payments/{payment}/submit', [Payables\VendorPaymentController::class, 'submit'])->middleware($ap('accounting.ap_payment.submit', $pay));
+            Route::post('vendor-payments/{payment}/approve', [Payables\VendorPaymentController::class, 'approve'])->middleware($ap('accounting.ap_payment.approve', $pay));
+            Route::post('vendor-payments/{payment}/reject', [Payables\VendorPaymentController::class, 'reject'])->middleware($ap('accounting.ap_payment.approve', $pay));
+            Route::post('vendor-payments/{payment}/reopen', [Payables\VendorPaymentController::class, 'reopen'])->middleware($ap('accounting.ap_payment.create', $pay));
+            Route::post('vendor-payments/{payment}/cancel', [Payables\VendorPaymentController::class, 'cancel'])->middleware($ap('accounting.ap_payment.create', $pay));
+            Route::post('vendor-payments/{payment}/post', [Payables\VendorPaymentController::class, 'post'])->middleware($ap('accounting.ap_payment.post', $pay));
+            Route::post('vendor-payments/{payment}/reverse', [Payables\VendorPaymentController::class, 'reverse'])->middleware($ap('accounting.ap_payment.reverse', $pay));
+            Route::get('vendors/{vendor}/open-invoices', [Payables\VendorPaymentController::class, 'openInvoices'])->middleware($ap('accounting.ap_payment.view', $pay));
+            Route::get('vendors/{vendor}/allocation-suggestion', [Payables\VendorPaymentController::class, 'suggest'])->middleware($ap('accounting.ap_payment.create', $pay));
+
+            // Cash and bank accounts (ACCOUNTING_CASH_BANK).
+            $cb = fn (string $permission, string $feature) => "access:{$permission},module=ACCOUNTING_CASH_BANK,feature={$feature}";
+            Route::get('cash-bank-accounts', [CashBank\CashBankAccountController::class, 'index'])->middleware($cb('accounting.cash_bank.view', 'CASH_BANK_ACCOUNT'));
+            Route::post('cash-bank-accounts', [CashBank\CashBankAccountController::class, 'store'])->middleware($cb('accounting.cash_bank.manage', 'CASH_BANK_ACCOUNT'));
+            Route::get('cash-bank-accounts/{cashBankAccount}', [CashBank\CashBankAccountController::class, 'show'])->middleware($cb('accounting.cash_bank.view', 'CASH_BANK_ACCOUNT'));
+            Route::patch('cash-bank-accounts/{cashBankAccount}', [CashBank\CashBankAccountController::class, 'update'])->middleware($cb('accounting.cash_bank.manage', 'CASH_BANK_ACCOUNT'));
+            Route::post('cash-bank-accounts/{cashBankAccount}/status', [CashBank\CashBankAccountController::class, 'status'])->middleware($cb('accounting.cash_bank.manage', 'CASH_BANK_ACCOUNT'));
+            Route::delete('cash-bank-accounts/{cashBankAccount}', [CashBank\CashBankAccountController::class, 'destroy'])->middleware($cb('accounting.cash_bank.manage', 'CASH_BANK_ACCOUNT'));
         });
     });
 });

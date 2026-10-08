@@ -228,7 +228,8 @@ class PostingRuleService
                 continue;
             }
 
-            $parts = $distribution[$line->amount_key] ?? null;
+            // A distribution may target one rule line by its role ("amount@ACCOUNTS_PAYABLE") when two lines share a component.
+            $parts = $distribution["{$line->amount_key}@{$line->account_role}"] ?? $distribution[$line->amount_key] ?? null;
             $distributed = is_array($parts) && $parts !== [];
             $parts = $distributed ? array_values($parts) : [['amount' => Money::str($amount)]];
             $spread = Money::sum(array_map(fn ($p) => Money::parse($p['amount'] ?? null, $scale, "{$line->amount_key} distribution"), $parts));

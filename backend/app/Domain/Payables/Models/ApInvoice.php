@@ -66,6 +66,11 @@ class ApInvoice extends Model
         return $this->belongsTo(CostCenter::class)->select(['id', 'code', 'name']);
     }
 
+    public function allocations(): HasMany
+    {
+        return $this->hasMany(ApPaymentAllocation::class)->where('is_effective', true)->orderBy('effective_at');
+    }
+
     public function lines(): HasMany
     {
         return $this->hasMany(ApInvoiceLine::class)->orderBy('line_number');

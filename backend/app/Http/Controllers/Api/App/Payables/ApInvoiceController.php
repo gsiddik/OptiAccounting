@@ -29,9 +29,13 @@ class ApInvoiceController extends AppController
             'document_from' => ['nullable', 'date_format:Y-m-d'], 'document_to' => ['nullable', 'date_format:Y-m-d'],
             'posting_from' => ['nullable', 'date_format:Y-m-d'], 'posting_to' => ['nullable', 'date_format:Y-m-d'],
             'due_from' => ['nullable', 'date_format:Y-m-d'], 'due_to' => ['nullable', 'date_format:Y-m-d'],
+            'payment_status' => ['nullable', Rule::in(['UNPAID', 'PARTIALLY_PAID', 'PAID'])], 'open' => ['nullable', 'boolean'], 'overdue' => ['nullable', 'boolean'],
+            'due_within' => ['nullable', 'integer', 'between:1,365'],
             'q' => ['nullable', 'string', 'max:100'], 'mine' => ['nullable', 'boolean'], 'per_page' => ['nullable', 'integer', 'between:1,100'],
         ]);
         $filter['mine'] = $request->boolean('mine');
+        $filter['open'] = $request->boolean('open');
+        $filter['overdue'] = $request->boolean('overdue');
 
         return response()->json($this->invoices->query($filter)->paginate($filter['per_page'] ?? 25));
     }
