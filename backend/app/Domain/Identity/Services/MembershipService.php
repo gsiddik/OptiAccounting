@@ -12,6 +12,8 @@ use App\Domain\Entitlement\Services\CapacityException;
 use App\Domain\Entitlement\Services\CapacityService;
 use App\Domain\Identity\Models\TenantUser;
 use App\Domain\Identity\Models\User;
+use App\Domain\Organization\Models\Branch;
+use App\Domain\Organization\Models\BusinessUnit;
 use App\Domain\Shared\DomainException;
 use Illuminate\Support\Facades\DB;
 
@@ -184,6 +186,13 @@ class MembershipService
             $type = $row['scope_type'];
             if (! in_array($type, DataScope::TYPES, true)) {
                 throw new DomainException('Invalid data scope type.', 'INVALID_SCOPE');
+            }
+            // The referenced branch/unit must exist in this tenant (a foreign id is simply unknown).
+            if ($type === DataScope::BRANCH && ! Branch::query()->whereKey($row['branch_id'] ?? null)->exists()) {
+                throw new DomainException('Unknown branch.', 'UNKNOWN_BRANCH');
+            }
+            if ($type === DataScope::BUSINESS_UNIT && ! BusinessUnit::query()->whereKey($row['business_unit_id'] ?? null)->exists()) {
+                throw new DomainException('Unknown business unit.', 'UNKNOWN_BUSINESS_UNIT');
             }
             // Scopes can only be handed out within one's own reach.
             $reach = $actorScope === null

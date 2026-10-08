@@ -4,6 +4,7 @@ use App\Domain\Shared\DomainException;
 use App\Http\Middleware\AssignRequestId;
 use App\Http\Middleware\RequireAccess;
 use App\Http\Middleware\ResolveContext;
+use Illuminate\Contracts\Session\Middleware\AuthenticatesSessions;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -22,6 +23,11 @@ return Application::configure(basePath: dirname(__DIR__))
             'context' => ResolveContext::class,
             'access' => RequireAccess::class,
         ]);
+
+        // Route-model binding goes through the tenant scope, so the tenant context (and the access check)
+        // must run before SubstituteBindings; otherwise every tenant-scoped binding fails closed with 404.
+        $middleware->appendToPriorityList(AuthenticatesSessions::class, ResolveContext::class);
+        $middleware->appendToPriorityList(ResolveContext::class, RequireAccess::class);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(
