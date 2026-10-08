@@ -141,7 +141,12 @@ class SecurityTest extends TestCase
 
     public function test_every_protected_route_rejects_anonymous_callers(): void
     {
-        $public = ['api/v1/health', 'api/v1/auth/login'];
+        // Anonymous by design: sign-in doors and the OptiNexus server-to-server receiver (authenticated by its signed token; see OptinexusAdapterTest).
+        $public = [
+            'api/v1/health', 'api/v1/auth/login',
+            'api/v1/auth/sso/status', 'api/v1/auth/sso/redirect', 'api/v1/auth/sso/callback', 'api/v1/auth/sso/exchange',
+            'api/v1/integration/optinexus/backchannel-logout',
+        ];
         $checked = 0;
 
         foreach (Route::getRoutes() as $route) {

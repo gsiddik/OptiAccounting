@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Platform;
 
 use App\Domain\AccessControl\AccessRequest;
 use App\Domain\AccessControl\Services\EffectiveAccess;
+use App\Support\IdentityMode;
 use App\Support\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -18,6 +19,6 @@ class CapabilityController extends PlatformController
 
     public function __invoke(Request $request): JsonResponse
     {
-        return response()->json($this->access->capabilities(new AccessRequest($request->user(), null)));
+        return response()->json([...$this->access->capabilities(new AccessRequest($request->user(), null)), 'identity' => IdentityMode::describe()]);
     }
 }

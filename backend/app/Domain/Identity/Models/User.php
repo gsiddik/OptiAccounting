@@ -25,7 +25,7 @@ class User extends Authenticatable
 
     protected function casts(): array
     {
-        return ['password' => 'hashed', 'last_login_at' => 'datetime'];
+        return ['password' => 'hashed', 'last_login_at' => 'datetime', 'optinexus_deactivated_at' => 'datetime'];
     }
 
     public function isActive(): bool

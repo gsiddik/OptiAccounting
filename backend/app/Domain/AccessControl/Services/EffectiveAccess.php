@@ -27,6 +27,7 @@ class EffectiveAccess
         private readonly EntitlementSnapshot $entitlements,
         private readonly DataScopeService $scopes,
         private readonly AccessCache $cache,
+        private readonly PermissionSource $permissions,
     ) {}
 
     public function evaluate(AccessRequest $request): AccessDecision
@@ -126,11 +127,7 @@ class EffectiveAccess
     /** @return list<string> */
     public function tenantPermissions(string $tenantId, string $tenantUserId): array
     {
-        return $this->cache->rememberForTenant($tenantId, "perm:{$tenantUserId}", fn () => DB::table('tenant_user_roles as ur')
-            ->join('role_permissions as rp', 'rp.role_id', '=', 'ur.role_id')
-            ->join('permissions as p', 'p.id', '=', 'rp.permission_id')
-            ->where('ur.tenant_id', $tenantId)->where('ur.tenant_user_id', $tenantUserId)
-            ->where('p.scope', 'tenant')->distinct()->pluck('p.code')->all());
+        return $this->permissions->tenantPermissions($tenantId, $tenantUserId);
     }
 
     /** @return list<string> */
