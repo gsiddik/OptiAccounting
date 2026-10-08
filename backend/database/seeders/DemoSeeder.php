@@ -39,6 +39,13 @@ class DemoSeeder extends Seeder
         'ENTERPRISE' => ['Enterprise', null, []], // null = every module in the catalog, no capacity limits
     ];
 
+    /** What a bookkeeper may do in the demo books: prepare and submit journals, read everything. */
+    private const ACCOUNTANT_PERMISSIONS = [
+        'accounting.profile.view', 'accounting.period.view', 'accounting.coa.view', 'accounting.dimension.view', 'accounting.posting_rule.view', 'accounting.account_mapping.view',
+        'accounting.journal.view', 'accounting.journal.create', 'accounting.journal.update', 'accounting.journal.submit', 'accounting.opening_balance.view',
+        'accounting.gl.view', 'accounting.trial_balance.view',
+    ];
+
     private const PLATFORM_USERS = [
         ['platform.admin@demo.test', 'Admin Platform Demo', 'Platform Administrator'],
         ['platform.support@demo.test', 'Support Platform Demo', 'Platform Support (read-only)'],
@@ -51,14 +58,21 @@ class DemoSeeder extends Seeder
             'admin' => ['Budi Santoso', 'admin@majujaya.demo.test'],
             'branches' => [['JKT', 'Kantor Pusat Jakarta'], ['SBY', 'Cabang Surabaya']],
             'units' => [['SALES', 'Penjualan', 'JKT'], ['OPS', 'Operasional Jakarta', 'JKT'], ['SBY-OPS', 'Operasional Surabaya', 'SBY']],
+            'accounting' => ['akuntan@majujaya.demo.test', 'manajer@majujaya.demo.test'], // demo books (OA1)
             'roles' => [
                 'Staf Keuangan' => ['organization.view', 'account.subscription.view', 'audit.view'],
                 'Admin Cabang' => ['organization.view', 'organization.manage', 'access.user.view'],
+                'Akuntan' => self::ACCOUNTANT_PERMISSIONS,
+                'Manajer Keuangan' => [...self::ACCOUNTANT_PERMISSIONS, 'accounting.journal.approve', 'accounting.journal.post', 'accounting.journal.reverse', 'accounting.period.manage',
+                    'accounting.period.close', 'accounting.opening_balance.manage', 'accounting.opening_balance.post', 'accounting.report.export', 'accounting.coa.manage',
+                    'accounting.posting_rule.manage', 'accounting.account_mapping.manage', 'accounting.dimension.manage', 'accounting.profile.manage'],
             ],
             'users' => [
                 ['Sari Keuangan', 'keuangan@majujaya.demo.test', 'Staf Keuangan', ['BRANCH', 'JKT']],
                 ['Rudi Surabaya', 'cabang.sby@majujaya.demo.test', 'Admin Cabang', ['BRANCH', 'SBY']],
                 ['Vina Viewer', 'viewer@majujaya.demo.test', 'Tenant Viewer', ['TENANT', null]],
+                ['Andi Akuntan', 'akuntan@majujaya.demo.test', 'Akuntan', ['TENANT', null]],
+                ['Maya Manajer Keuangan', 'manajer@majujaya.demo.test', 'Manajer Keuangan', ['TENANT', null]],
             ],
         ],
         [
@@ -93,7 +107,7 @@ class DemoSeeder extends Seeder
 
         $this->password = (string) (config('optiaccounting.demo_password') ?: self::DEFAULT_PASSWORD);
 
-        $this->call([ModuleCatalogSeeder::class, AccessControlSeeder::class]);
+        $this->call([ModuleCatalogSeeder::class, AccessControlSeeder::class, AccountingCatalogSeeder::class]);
 
         DB::transaction(function () {
             $this->bundles();
@@ -165,6 +179,10 @@ class DemoSeeder extends Seeder
             }
             foreach ($d['users'] as [$name, $email, $roleName, [$scopeType, $branchCode]]) {
                 $this->member($tenant->id, $admin, $name, $email, $roleName, $scopeType, $branchCode);
+            }
+            if (isset($d['accounting'])) {
+                [$accountant, $manager] = array_map(fn ($email) => User::query()->whereRaw('lower(email) = ?', [$email])->firstOrFail(), $d['accounting']);
+                app(DemoAccountingSeeder::class)->seed($tenant, $accountant, $manager);
             }
         });
 

@@ -172,6 +172,6 @@ class SeederAndBootstrapTest extends TestCase
         $this->as($finance)->getJson('/api/v1/app/users')->assertForbidden();
 
         $admin = $login('admin@majujaya.demo.test');
-        $this->as($admin)->getJson('/api/v1/app/users')->assertOk()->assertJsonPath('total', 5); // admin, 3 staff, multi-tenant viewer
+        $this->as($admin)->getJson('/api/v1/app/users')->assertOk()->assertJsonPath('total', 7); // admin, 5 staff (incl. accountant and finance manager), multi-tenant viewer
     }
 }
