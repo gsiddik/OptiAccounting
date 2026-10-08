@@ -22,6 +22,7 @@ final class DocumentGuards
             CREATE OR REPLACE FUNCTION oa2_document_guard() RETURNS trigger AS $$
             DECLARE
                 allowed text[];
+                generated text[] := string_to_array(coalesce(TG_ARGV[1], ''), ',');
             BEGIN
                 IF TG_OP = 'DELETE' THEN
                     IF OLD.status <> 'DRAFT' THEN
@@ -36,11 +37,11 @@ final class DocumentGuards
 
                 IF OLD.status = 'POSTED' THEN
                     IF NEW.status = 'POSTED' THEN
-                        IF (to_jsonb(NEW) - 'updated_at') IS DISTINCT FROM (to_jsonb(OLD) - 'updated_at') THEN
+                        IF (to_jsonb(NEW) - 'updated_at' - generated) IS DISTINCT FROM (to_jsonb(OLD) - 'updated_at' - generated) THEN
                             RAISE EXCEPTION 'a posted % is immutable', TG_TABLE_NAME USING ERRCODE = '23514';
                         END IF;
                     ELSIF NEW.status = 'REVERSED' THEN
-                        allowed := ARRAY['status', 'updated_at'] || string_to_array(coalesce(TG_ARGV[0], ''), ',');
+                        allowed := ARRAY['status', 'updated_at'] || string_to_array(coalesce(TG_ARGV[0], ''), ',') || generated;
                         IF (to_jsonb(NEW) - allowed) IS DISTINCT FROM (to_jsonb(OLD) - allowed) THEN
                             RAISE EXCEPTION 'a posted % can only receive its reversal link', TG_TABLE_NAME USING ERRCODE = '23514';
                         END IF;
@@ -95,11 +96,15 @@ final class DocumentGuards
             SQL);
     }
 
-    /** @param list<string> $reversalColumns the only columns that may change when a POSTED document becomes REVERSED */
-    public static function guardDocument(string $table, array $reversalColumns): void
+    /**
+     * @param  list<string>  $reversalColumns  the only columns that may change when a POSTED document becomes REVERSED
+     * @param  list<string>  $generatedColumns  stored generated columns: PostgreSQL computes them after BEFORE triggers, so NEW holds NULL there
+     */
+    public static function guardDocument(string $table, array $reversalColumns, array $generatedColumns = []): void
     {
         $columns = implode(',', $reversalColumns);
-        DB::unprepared("CREATE TRIGGER {$table}_guard BEFORE UPDATE OR DELETE ON {$table} FOR EACH ROW EXECUTE FUNCTION oa2_document_guard('{$columns}')");
+        $generated = implode(',', $generatedColumns);
+        DB::unprepared("CREATE TRIGGER {$table}_guard BEFORE UPDATE OR DELETE ON {$table} FOR EACH ROW EXECUTE FUNCTION oa2_document_guard('{$columns}', '{$generated}')");
     }
 
     public static function guardLines(string $table, string $parentTable, string $parentKey): void

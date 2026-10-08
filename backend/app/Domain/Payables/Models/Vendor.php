@@ -2,6 +2,7 @@
 
 namespace App\Domain\Payables\Models;
 
+use App\Domain\Accounting\Models\Account;
 use App\Domain\Shared\BelongsToTenant;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
@@ -36,11 +37,11 @@ class Vendor extends Model
 
     public function payableAccount(): BelongsTo
     {
-        return $this->belongsTo(\App\Domain\Accounting\Models\Account::class, 'payable_account_id')->select(['id', 'code', 'name']);
+        return $this->belongsTo(Account::class, 'payable_account_id')->select(['id', 'code', 'name']);
     }
 
     public function defaultExpenseAccount(): BelongsTo
     {
-        return $this->belongsTo(\App\Domain\Accounting\Models\Account::class, 'default_expense_account_id')->select(['id', 'code', 'name']);
+        return $this->belongsTo(Account::class, 'default_expense_account_id')->select(['id', 'code', 'name']);
     }
 }

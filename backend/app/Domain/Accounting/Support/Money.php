@@ -62,4 +62,42 @@ final class Money
     {
         return new DomainException($message, 'AMOUNT_INVALID', 422, $line === null ? [] : ['line' => $line]);
     }
+
+    /**
+     * Split a signed amount over weights so the parts add up to it exactly (largest remainder at the currency scale;
+     * ties go to the earlier part). Used to spread a document's header discount / other charges over its lines.
+     *
+     * @param  list<BigDecimal>  $weights  non-negative, at least one positive
+     * @return list<BigDecimal> parts at scale 4, summing exactly to $total
+     */
+    public static function prorate(BigDecimal $total, array $weights, int $scale): array
+    {
+        $count = count($weights);
+        $sum = BigDecimal::zero();
+        foreach ($weights as $w) {
+            $sum = $sum->plus($w);
+        }
+        if ($total->isZero() || $count === 0 || $sum->isZero()) {
+            return array_fill(0, $count, BigDecimal::zero()->toScale(4));
+        }
+
+        $abs = $total->abs();
+        $unit = BigDecimal::one()->dividedBy(BigDecimal::of(10)->power($scale), $scale, RoundingMode::Unnecessary);
+        $floors = [];
+        $fractions = [];
+        foreach ($weights as $i => $w) {
+            $exact = $abs->multipliedBy($w)->dividedBy($sum, $scale + 12, RoundingMode::Down);
+            $floor = $exact->toScale($scale, RoundingMode::Down);
+            $floors[$i] = $floor;
+            $fractions[$i] = $exact->minus($floor);
+        }
+        $left = $abs->minus(array_reduce($floors, fn ($c, $f) => $c->plus($f), BigDecimal::zero()))->dividedBy($unit, 0, RoundingMode::Unnecessary)->toInt();
+        $order = array_keys($fractions);
+        usort($order, fn ($a, $b) => $fractions[$b]->compareTo($fractions[$a]) ?: $a <=> $b);
+        foreach (array_slice($order, 0, $left) as $i) {
+            $floors[$i] = $floors[$i]->plus($unit);
+        }
+
+        return array_map(fn ($part) => ($total->isNegative() ? $part->negated() : $part)->toScale(4, RoundingMode::Unnecessary), $floors);
+    }
 }

@@ -2,7 +2,6 @@
 
 use App\Http\Controllers\Api\App;
 use App\Http\Controllers\Api\App\Accounting;
-use App\Http\Controllers\Api\App\CashBank;
 use App\Http\Controllers\Api\App\Expense;
 use App\Http\Controllers\Api\App\Payables;
 use App\Http\Controllers\Api\Auth\AuthController;
@@ -188,6 +187,8 @@ Route::prefix('v1')->middleware('request.id')->group(function () {
             Route::put('account-mappings', [Accounting\PostingConfigurationController::class, 'saveMapping'])->middleware($gate('accounting.account_mapping.manage', $config));
             Route::post('account-mappings/{mapping}/deactivate', [Accounting\PostingConfigurationController::class, 'deactivateMapping'])->middleware($gate('accounting.account_mapping.manage', $config));
             Route::get('accounting-events', [Accounting\PostingConfigurationController::class, 'events'])->middleware($gate('accounting.posting_rule.view', $config));
+            Route::get('operational-rules', [Accounting\OperationalSetupController::class, 'status'])->middleware($gate('accounting.posting_rule.view', $config));
+            Route::post('operational-rules/defaults', [Accounting\OperationalSetupController::class, 'apply'])->middleware($gate('accounting.posting_rule.manage', $config));
 
             $opening = 'OPENING_BALANCE';
             Route::get('opening-balance', [Accounting\OpeningBalanceController::class, 'show'])->middleware($gate('accounting.opening_balance.view', $opening));
@@ -224,6 +225,20 @@ Route::prefix('v1')->middleware('request.id')->group(function () {
             Route::patch('payment-terms/{term}', [Payables\VendorController::class, 'updateTerm'])->middleware($ap('accounting.vendor.manage', 'VENDOR'));
             Route::post('payment-terms/{term}/status', [Payables\VendorController::class, 'termStatus'])->middleware($ap('accounting.vendor.manage', 'VENDOR'));
             Route::delete('payment-terms/{term}', [Payables\VendorController::class, 'destroyTerm'])->middleware($ap('accounting.vendor.manage', 'VENDOR'));
+
+            $inv = 'VENDOR_INVOICE';
+            Route::get('ap-invoices', [Payables\ApInvoiceController::class, 'index'])->middleware($ap('accounting.ap_invoice.view', $inv));
+            Route::post('ap-invoices', [Payables\ApInvoiceController::class, 'store'])->middleware($ap('accounting.ap_invoice.create', $inv));
+            Route::get('ap-invoices/check-duplicate', [Payables\ApInvoiceController::class, 'checkDuplicate'])->middleware($ap('accounting.ap_invoice.view', $inv));
+            Route::get('ap-invoices/{invoice}', [Payables\ApInvoiceController::class, 'show'])->middleware($ap('accounting.ap_invoice.view', $inv));
+            Route::patch('ap-invoices/{invoice}', [Payables\ApInvoiceController::class, 'update'])->middleware($ap('accounting.ap_invoice.update', $inv));
+            Route::post('ap-invoices/{invoice}/submit', [Payables\ApInvoiceController::class, 'submit'])->middleware($ap('accounting.ap_invoice.submit', $inv));
+            Route::post('ap-invoices/{invoice}/approve', [Payables\ApInvoiceController::class, 'approve'])->middleware($ap('accounting.ap_invoice.approve', $inv));
+            Route::post('ap-invoices/{invoice}/reject', [Payables\ApInvoiceController::class, 'reject'])->middleware($ap('accounting.ap_invoice.approve', $inv));
+            Route::post('ap-invoices/{invoice}/reopen', [Payables\ApInvoiceController::class, 'reopen'])->middleware($ap('accounting.ap_invoice.update', $inv));
+            Route::post('ap-invoices/{invoice}/cancel', [Payables\ApInvoiceController::class, 'cancel'])->middleware($ap('accounting.ap_invoice.update', $inv));
+            Route::post('ap-invoices/{invoice}/post', [Payables\ApInvoiceController::class, 'post'])->middleware($ap('accounting.ap_invoice.post', $inv));
+            Route::post('ap-invoices/{invoice}/reverse', [Payables\ApInvoiceController::class, 'reverse'])->middleware($ap('accounting.ap_invoice.reverse', $inv));
         });
     });
 });

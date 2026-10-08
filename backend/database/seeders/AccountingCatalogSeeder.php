@@ -22,6 +22,12 @@ class AccountingCatalogSeeder extends Seeder
         'TAX_RECEIVABLE' => 'Pajak dibayar di muka / PPN masukan', 'TAX_PAYABLE' => 'Utang pajak / PPN keluaran', 'RETAINED_EARNINGS' => 'Laba ditahan',
     ];
 
+    /** OA2: roles whose account is named by the source document, not by a tenant mapping (code => name). */
+    private const DOCUMENT_ROLES = [
+        'CASH_BANK_ACCOUNT' => 'Akun kas/bank pada dokumen (dari akun kas atau bank yang dipilih)',
+        'DOCUMENT_ACCOUNT' => 'Akun lawan pada baris dokumen (klasifikasi akun di dokumen)',
+    ];
+
     /** code => [name, description, components]. The components are the only amount keys a posting rule line may use. */
     private const EVENT_TYPES = [
         'EXPENSE_RECOGNIZED' => ['Beban diakui', 'Komponen: net, tax, total.', ['net', 'tax', 'total']],
@@ -29,6 +35,9 @@ class AccountingCatalogSeeder extends Seeder
         'VENDOR_PAYMENT' => ['Pembayaran vendor', 'Komponen: amount. Diaktifkan oleh OA2.', ['amount']],
         'AR_INVOICE_RECOGNIZED' => ['Faktur pelanggan diakui', 'Komponen: net, tax, total. Diaktifkan oleh OA3.', ['net', 'tax', 'total']],
         'CUSTOMER_RECEIPT' => ['Penerimaan pelanggan', 'Komponen: amount. Diaktifkan oleh OA3.', ['amount']],
+        'EXPENSE_PAID' => ['Beban dibayar langsung', 'Komponen: net, tax, total. Beban yang langsung dibayar dari kas/bank (OA2).', ['net', 'tax', 'total']],
+        'CASH_PAYMENT' => ['Pembayaran kas/bank', 'Komponen: amount. Pembayaran di luar utang usaha (OA2).', ['amount']],
+        'CASH_RECEIPT' => ['Penerimaan kas/bank', 'Komponen: amount. Penerimaan di luar piutang usaha (OA2).', ['amount']],
     ];
 
     /** code, name, parent, type, postable, control, role */
@@ -84,6 +93,11 @@ class AccountingCatalogSeeder extends Seeder
             $order = 10;
             foreach (self::ACCOUNT_ROLES as $code => $name) {
                 DB::table('account_roles')->insertOrIgnore(['code' => $code, 'name' => $name, 'status' => 'ACTIVE', 'sort_order' => $order, 'created_at' => $now, 'updated_at' => $now]);
+                $order += 10;
+            }
+
+            foreach (self::DOCUMENT_ROLES as $code => $name) {
+                DB::table('account_roles')->insertOrIgnore(['code' => $code, 'name' => $name, 'binding' => 'DOCUMENT', 'status' => 'ACTIVE', 'sort_order' => $order, 'created_at' => $now, 'updated_at' => $now]);
                 $order += 10;
             }
 

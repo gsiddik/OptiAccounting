@@ -25,7 +25,7 @@ class AccountMappingService
     /** @return array{roles:Collection,mappings:Collection} */
     public function overview(): array
     {
-        $roles = DB::table('account_roles')->where('status', 'ACTIVE')->orderBy('sort_order')->get(['code', 'name', 'description']);
+        $roles = DB::table('account_roles')->where('status', 'ACTIVE')->orderBy('sort_order')->get(['code', 'name', 'description', 'binding']);
         $usedByRules = $this->rolesUsedByPublishedRules();
         $mappings = AccountMapping::query()->with('account:id,code,name,account_type,status')->orderBy('account_role')->get();
 
@@ -41,6 +41,9 @@ class AccountMappingService
     {
         $role = DB::table('account_roles')->where('code', $data['account_role'])->where('status', 'ACTIVE')->first()
             ?? throw new DomainException('Unknown account role.', 'ACCOUNT_ROLE_UNKNOWN', 422, ['account_role' => $data['account_role']]);
+        if ($role->binding === 'DOCUMENT') {
+            throw new DomainException('This role takes its account from the source document; it has no tenant mapping.', 'ACCOUNT_ROLE_DOCUMENT_BOUND', 422, ['account_role' => $role->code]);
+        }
         $branchId = $data['branch_id'] ?? null;
         $unitId = $data['business_unit_id'] ?? null;
         $this->assertOrganization($branchId, $unitId);

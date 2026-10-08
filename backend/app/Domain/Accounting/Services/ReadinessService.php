@@ -94,8 +94,9 @@ class ReadinessService
 
         $mapped = DB::table('account_mappings')->where('tenant_id', $this->context->tenantId())->where('status', 'ACTIVE')
             ->whereNull('branch_id')->whereNull('business_unit_id')->pluck('account_role')->all();
+        $documentBound = DB::table('account_roles')->where('binding', 'DOCUMENT')->pluck('code')->all(); // the source document names these accounts
 
-        return array_values(array_diff($used, $mapped));
+        return array_values(array_diff($used, $mapped, $documentBound));
     }
 
     private function check(string $code, string $label, bool $required, bool $done, string $detail, string $action): array

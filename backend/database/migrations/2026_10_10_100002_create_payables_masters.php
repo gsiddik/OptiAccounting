@@ -96,7 +96,7 @@ return new class extends Migration
         });
         DB::statement("ALTER TABLE vendors ADD CONSTRAINT vendors_status_check CHECK (status IN ('ACTIVE','INACTIVE'))");
         DB::statement("ALTER TABLE vendors ADD CONSTRAINT vendors_currency_check CHECK (default_currency IS NULL OR default_currency ~ '^[A-Z]{3}\$')");
-        DB::statement("ALTER TABLE vendors ADD CONSTRAINT vendors_external_check CHECK ((external_source IS NULL) = (external_id IS NULL))");
+        DB::statement('ALTER TABLE vendors ADD CONSTRAINT vendors_external_check CHECK ((external_source IS NULL) = (external_id IS NULL))');
         DB::statement('CREATE UNIQUE INDEX vendors_external_unique ON vendors (tenant_id, external_source, external_id) WHERE external_id IS NOT NULL');
     }
 

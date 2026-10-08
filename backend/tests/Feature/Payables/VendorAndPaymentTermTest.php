@@ -5,7 +5,9 @@ namespace Tests\Feature\Payables;
 use App\Domain\Payables\Models\PaymentTerm;
 use App\Domain\Payables\Services\PaymentTermService;
 use App\Domain\Shared\DomainException;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Tests\Support\AccountingFixtures;
 use Tests\Support\Fixtures;
 use Tests\TestCase;
@@ -178,11 +180,11 @@ class VendorAndPaymentTermTest extends TestCase
         $beta = $this->accountingTenant('beta');
         $term = $this->asMember($beta)->postJson(self::A.'/payment-terms', ['code' => 'NET30', 'name' => 'Net 30', 'term_type' => 'NET_DAYS', 'due_days' => 30])->assertCreated()->json('id');
 
-        $base = ['id' => (string) \Illuminate\Support\Str::uuid(), 'tenant_id' => $alpha->id, 'code' => 'RAW', 'name' => 'Raw', 'created_at' => now(), 'updated_at' => now()];
+        $base = ['id' => (string) Str::uuid(), 'tenant_id' => $alpha->id, 'code' => 'RAW', 'name' => 'Raw', 'created_at' => now(), 'updated_at' => now()];
         $this->assertDbRefuses(fn () => DB::table('payment_terms')->insert($base + ['term_type' => 'NET_DAYS', 'due_days' => null]));
         $this->assertDbRefuses(fn () => DB::table('payment_terms')->insert(['code' => 'RAW2'] + $base + ['term_type' => 'CUSTOM', 'due_days' => 5]));
-        $this->assertDbRefuses(fn () => DB::table('vendors')->insert(['id' => (string) \Illuminate\Support\Str::uuid(), 'tenant_id' => $alpha->id, 'code' => 'X', 'name' => 'x', 'payment_term_id' => $term, 'created_at' => now(), 'updated_at' => now()]));
-        $this->assertDbRefuses(fn () => DB::table('vendors')->insert(['id' => (string) \Illuminate\Support\Str::uuid(), 'tenant_id' => $alpha->id, 'code' => 'X', 'name' => 'x', 'default_currency' => 'usd', 'created_at' => now(), 'updated_at' => now()]));
+        $this->assertDbRefuses(fn () => DB::table('vendors')->insert(['id' => (string) Str::uuid(), 'tenant_id' => $alpha->id, 'code' => 'X', 'name' => 'x', 'payment_term_id' => $term, 'created_at' => now(), 'updated_at' => now()]));
+        $this->assertDbRefuses(fn () => DB::table('vendors')->insert(['id' => (string) Str::uuid(), 'tenant_id' => $alpha->id, 'code' => 'X', 'name' => 'x', 'default_currency' => 'usd', 'created_at' => now(), 'updated_at' => now()]));
     }
 
     public function test_view_and_manage_are_separate_permissions_and_a_missing_module_closes_the_routes(): void
@@ -205,7 +207,7 @@ class VendorAndPaymentTermTest extends TestCase
         try {
             DB::transaction($statement);
             $this->fail('the database accepted a row it must refuse');
-        } catch (\Illuminate\Database\QueryException $e) {
+        } catch (QueryException $e) {
             $this->assertContains($e->errorInfo[0], ['23514', '23503', '23505', '23502']);
         }
     }
