@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\App\Budget;
 use App\Http\Controllers\Api\App\CashBank;
 use App\Http\Controllers\Api\App\Expense;
 use App\Http\Controllers\Api\App\FixedAsset;
+use App\Http\Controllers\Api\App\Tax;
 use App\Http\Controllers\Api\App\Operational;
 use App\Http\Controllers\Api\App\Payables;
 use App\Http\Controllers\Api\App\Receivables;
@@ -471,6 +472,21 @@ Route::prefix('v1')->middleware('request.id')->group(function () {
             Route::get('asset-reconciliation/export', [FixedAsset\AssetReportController::class, 'exportReconciliation'])->middleware($fa('accounting.report.export'));
             Route::get('asset-rules', [FixedAsset\AssetReportController::class, 'setupStatus'])->middleware($fa('accounting.asset.view'));
             Route::post('asset-rules/defaults', [FixedAsset\AssetReportController::class, 'applyDefaults'])->middleware($fa('accounting.posting_rule.manage'));
+
+            // ------------------------------------------------ OA4: tax (ACCOUNTING_TAX). Codes and rates are tenant data; documents calculate through the one TaxCalculator.
+            $tx = fn (string $permission, string $feature = 'TAX_CONFIGURATION') => "access:{$permission},module=ACCOUNTING_TAX,feature={$feature}";
+            Route::get('tax-codes', [Tax\TaxCodeController::class, 'index'])->middleware($tx('accounting.tax.view'));
+            Route::post('tax-codes', [Tax\TaxCodeController::class, 'store'])->middleware($tx('accounting.tax.manage'));
+            Route::get('tax-codes/{code}', [Tax\TaxCodeController::class, 'show'])->middleware($tx('accounting.tax.view'));
+            Route::patch('tax-codes/{code}', [Tax\TaxCodeController::class, 'update'])->middleware($tx('accounting.tax.manage'));
+            Route::post('tax-codes/{code}/activate', [Tax\TaxCodeController::class, 'activate'])->middleware($tx('accounting.tax.manage'));
+            Route::post('tax-codes/{code}/deactivate', [Tax\TaxCodeController::class, 'deactivate'])->middleware($tx('accounting.tax.manage'));
+            Route::delete('tax-codes/{code}', [Tax\TaxCodeController::class, 'destroy'])->middleware($tx('accounting.tax.manage'));
+            Route::post('tax-codes/{code}/rates', [Tax\TaxCodeController::class, 'addRate'])->middleware($tx('accounting.tax.manage'));
+            Route::post('tax-codes/{code}/preview', [Tax\TaxCodeController::class, 'preview'])->middleware($tx('accounting.tax.view'));
+            Route::get('tax-transactions', [Tax\TaxReportController::class, 'transactions'])->middleware($tx('accounting.tax.report.view', 'TAX_REPORT'));
+            Route::get('tax-report', [Tax\TaxReportController::class, 'summary'])->middleware($tx('accounting.tax.report.view', 'TAX_REPORT'));
+            Route::get('tax-report/export', [Tax\TaxReportController::class, 'export'])->middleware($tx('accounting.report.export', 'TAX_REPORT'));
         });
     });
 });

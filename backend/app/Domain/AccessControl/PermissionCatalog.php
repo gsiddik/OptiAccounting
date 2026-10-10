@@ -202,6 +202,11 @@ final class PermissionCatalog
                     'accounting.asset.disposal.post' => 'Post and reverse asset disposals',
                     'accounting.asset.reconciliation.view' => 'View the asset register to ledger reconciliation',
                 ],
+                'Tax' => [
+                    'accounting.tax.view' => 'View tax codes, rates and tax transactions, and preview a tax calculation',
+                    'accounting.tax.manage' => 'Create and edit tax codes, add rates, activate and deactivate codes',
+                    'accounting.tax.report.view' => 'View the tax report',
+                ],
                 'Audit' => [
                     'audit.view' => 'View the tenant audit log',
                 ],

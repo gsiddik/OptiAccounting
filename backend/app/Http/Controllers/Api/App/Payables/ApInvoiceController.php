@@ -125,7 +125,7 @@ class ApInvoiceController extends AppController
             'lines' => [$req, 'array', 'min:1', 'max:300'],
             'lines.*.description' => ['required', 'string', 'max:255'], 'lines.*.quantity' => ['nullable'], 'lines.*.unit_price' => ['nullable'], 'lines.*.amount' => ['nullable'],
             'lines.*.expense_category_id' => ['nullable', 'uuid'], 'lines.*.account_role' => ['nullable', 'string', 'max:40'], 'lines.*.account_id' => ['nullable', 'uuid'],
-            'lines.*.cost_center_id' => ['nullable', 'uuid'], 'lines.*.metadata' => ['nullable', 'array', 'max:20'],
+            'lines.*.cost_center_id' => ['nullable', 'uuid'], 'lines.*.tax_code_id' => ['nullable', 'uuid'], 'lines.*.metadata' => ['nullable', 'array', 'max:20'],
         ]);
     }
 }
