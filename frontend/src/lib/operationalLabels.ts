@@ -1,3 +1,5 @@
+import { OA4_MODULE_LABELS } from './oa4Labels'
+
 // Indonesian texts for the OA2 and OA3 modules (payables, receivables, expense, cash & bank): statuses, option labels and API refusals.
 
 type Tone = 'ok' | 'warn' | 'bad' | 'info' | 'neutral'
@@ -22,6 +24,7 @@ export const operationalModuleLabels: Record<string, string> = {
   ACCOUNTING_AR: 'Piutang usaha',
   ACCOUNTING_EXPENSE: 'Beban',
   ACCOUNTING_CASH_BANK: 'Kas & bank',
+  ...OA4_MODULE_LABELS,
 }
 
 export const paymentMethodLabels: Record<string, string> = { TRANSFER: 'Transfer bank', CASH: 'Tunai', CHEQUE: 'Cek', GIRO: 'Giro', OTHER: 'Lainnya' }

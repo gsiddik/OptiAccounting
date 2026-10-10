@@ -3,12 +3,14 @@ import { Link } from 'react-router-dom'
 import { DataTable, type Column } from '../../components/DataTable'
 import { Banner, Card, EmptyState, ErrorNotice, Loading, PageHeader, Stat } from '../../components/ui'
 import { api } from '../../lib/api'
+import { useCapabilities } from '../../lib/capabilities'
 import { formatDate } from '../../lib/format'
 import { useDebounced, useResource } from '../../lib/hooks'
 import { API, useVendors } from '../../lib/operational'
 import { useDimensions } from '../accounting/data'
+import { formatRate, isForeignRow } from './foreignSupport'
 import { BUCKET_PATTERN, exportQuery, useBusinessDate } from './payables/lists'
-import type { AgingReport } from './payables/types'
+import type { AgingInvoiceRow, AgingReport } from './payables/types'
 import { DimensionFilters, ExportButton, Filters, Money } from './shared'
 
 /** One line of the vendor table: a vendor, or the grand total (`strong`). */
@@ -58,6 +60,9 @@ export default function ApAging() {
 }
 
 function Report({ report }: { report: AgingReport }) {
+  const functional = useCapabilities().tenant?.tenant.default_currency ?? 'IDR'
+  // Currency, rate and functional balance show only when some invoice of the report is in a foreign currency.
+  const foreign = (report.invoices ?? []).some((i) => isForeignRow(i, functional))
   const label = (key: string) => report.buckets.find((b) => b.key === key)?.label ?? key
   const lines: Line[] = [
     ...report.data.map((v) => ({ id: v.vendor_id, name: <>{v.vendor_name}<div className="muted mono">{v.vendor_code}</div></>, count: v.invoice_count, amounts: { ...v.buckets, total: v.total } })),
@@ -92,6 +97,7 @@ function Report({ report }: { report: AgingReport }) {
       {report.invoices && report.invoices.length > 0 && (
         <>
           <div className="card-head"><h2>Rincian faktur</h2></div>
+          {foreign && <div className="card-body"><p className="muted preview-note">Nilai faktur, dibayar dan saldo memakai mata uang masing-masing faktur. Kelompok umur dan total di atas dalam mata uang fungsional, sesuai kolom saldo fungsional.</p></div>}
           <DataTable
             caption="Rincian umur utang per faktur"
             rows={report.invoices}
@@ -105,9 +111,14 @@ function Report({ report }: { report: AgingReport }) {
               { header: 'Jatuh tempo', cell: (i) => formatDate(i.due_date) },
               { header: 'Hari lewat', align: 'right', cell: (i) => i.days_overdue },
               { header: 'Kelompok', cell: (i) => label(i.bucket) },
+              ...(foreign ? [
+                { header: 'Mata uang', cell: (i: AgingInvoiceRow) => <span className="mono">{i.currency ?? functional}</span> },
+                { header: 'Kurs', align: 'right' as const, cell: (i: AgingInvoiceRow) => (isForeignRow(i, functional) ? <span className="money">{formatRate(i.exchange_rate)}</span> : <span className="muted">—</span>) },
+              ] : []),
               { header: 'Nilai faktur', align: 'right', cell: (i) => <Money value={i.total_amount} /> },
               { header: 'Dibayar', align: 'right', cell: (i) => <Money value={i.paid_amount} /> },
               { header: 'Saldo', align: 'right', cell: (i) => <Money value={i.outstanding_amount} strong /> },
+              ...(foreign ? [{ header: 'Saldo fungsional', align: 'right' as const, cell: (i: AgingInvoiceRow) => <Money value={i.outstanding_functional} strong /> }] : []),
             ]}
           />
         </>

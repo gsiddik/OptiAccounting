@@ -114,7 +114,7 @@ class ExpenseController extends AppController
             'payment_method' => ['nullable', Rule::in(VendorPayment::METHODS)], 'supporting_document' => ['nullable', 'string', 'max:150'],
             'cash_bank_account_id' => ['nullable', 'uuid'],
             'branch_id' => ['nullable', 'uuid'], 'business_unit_id' => ['nullable', 'uuid'], 'cost_center_id' => ['nullable', 'uuid'],
-            'net_amount' => [$req], 'tax_amount' => ['nullable'],
+            'net_amount' => [$req], 'tax_amount' => ['nullable'], 'tax_code_id' => ['nullable', 'uuid'],
         ]);
     }
 }

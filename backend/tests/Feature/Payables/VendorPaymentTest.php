@@ -147,7 +147,7 @@ class VendorPaymentTest extends TestCase
         $this->postJson($uri, $this->paymentBody($vendor, $bank->id, [$invoice['id'] => '100000'], ['posting_date' => '2026-03-01', 'payment_date' => '2026-03-01']))->assertStatus(422)->assertJsonPath('code', 'AP_PAYMENT_BEFORE_INVOICE');
         $this->postJson($uri, $this->paymentBody($vendor, $bank->id, [$invoice['id'] => '100000'], ['amount' => '-5']))->assertStatus(422);
         $this->postJson($uri, $this->paymentBody($vendor, $bank->id, [$invoice['id'] => '100000'], ['payment_method' => 'BITCOIN']))->assertStatus(422);
-        $this->postJson($uri, $this->paymentBody($vendor, $bank->id, [$invoice['id'] => '100000'], ['currency' => 'USD']))->assertStatus(422)->assertJsonPath('code', 'CURRENCY_NOT_SUPPORTED');
+        $this->postJson($uri, $this->paymentBody($vendor, $bank->id, [$invoice['id'] => '100000'], ['currency' => 'USD']))->assertStatus(422)->assertJsonPath('code', 'CURRENCY_NOT_FOUND');
         $this->assertSame(0, $this->rows('vendor_payments'));
 
         // A payment must be allocated in full before it can leave the draft state.

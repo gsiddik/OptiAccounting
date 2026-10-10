@@ -16,6 +16,8 @@ use App\Domain\Accounting\Services\ReversalService;
 use App\Domain\Accounting\Services\SegregationOfDuties;
 use App\Domain\Accounting\Support\Money;
 use App\Domain\Audit\Services\AuditService;
+use App\Domain\Currency\Services\ForeignDocumentService;
+use App\Domain\Currency\Services\ForeignPostingService;
 use App\Domain\Expense\Models\ExpenseCategory;
 use App\Domain\Identity\Models\User;
 use App\Domain\Payables\Models\ApInvoice;
@@ -24,6 +26,7 @@ use App\Domain\Payables\Models\ApPaymentAllocation;
 use App\Domain\Payables\Models\PaymentTerm;
 use App\Domain\Payables\Models\Vendor;
 use App\Domain\Shared\DomainException;
+use App\Domain\Tax\Services\TaxDocumentService;
 use App\Support\TenantContext;
 use Brick\Math\BigDecimal;
 use Brick\Math\RoundingMode;
@@ -55,6 +58,9 @@ class ApInvoiceService
         private readonly ApSubledgerService $subledger,
         private readonly AuditService $audit,
         private readonly TenantContext $context,
+        private readonly TaxDocumentService $taxes,
+        private readonly ForeignDocumentService $foreign,
+        private readonly ForeignPostingService $fxPosting,
     ) {}
 
     // ------------------------------------------------------------------------------------------------ queries
@@ -126,6 +132,7 @@ class ApInvoiceService
             $invoice->created_by = $actor->id;
             $invoice->save();
             $this->writeLines($invoice, $prepared['lines']);
+            $this->syncTax($invoice, $prepared, $actor);
             $this->workflow->created($invoice, $actor->id);
             $this->audit->record('payables.ap_invoice.created', 'ap_invoice', $invoice->id, null, $this->summary($invoice));
 
@@ -150,6 +157,7 @@ class ApInvoiceService
             $invoice->forceFill($prepared['columns'] + $this->overrideColumns($data, $actor, $prepared['vendor']->id, $invoice));
             $invoice->save();
             $this->writeLines($invoice, $prepared['lines']);
+            $this->syncTax($invoice, $prepared, $actor);
             $this->audit->record('payables.ap_invoice.updated', 'ap_invoice', $invoice->id, $before, $this->summary($invoice->refresh()));
 
             return $this->load($invoice);
@@ -182,7 +190,12 @@ class ApInvoiceService
 
     public function cancel(ApInvoice $invoice, User $actor, string $reason): ApInvoice
     {
-        return $this->load($this->workflow->cancel($invoice, $actor, $reason));
+        return DB::transaction(function () use ($invoice, $actor, $reason) {
+            $cancelled = $this->workflow->cancel($invoice, $actor, $reason);
+            $this->taxes->discard(ApInvoice::DOCUMENT_TYPE, $cancelled->id);
+
+            return $this->load($cancelled);
+        });
     }
 
     // ------------------------------------------------------------------------------------------------ posting
@@ -200,20 +213,29 @@ class ApInvoiceService
                 throw new DomainException('A payable created by an expense is posted with its expense.', 'AP_INVOICE_NOT_POSTABLE', 409);
             }
             $this->workflow->assertMayPost($invoice, $actor);
-            $vendor = $this->validateForPosting($invoice, $actor);
+            $vendor = $this->validateForPosting($invoice, $actor, true);
 
             $lines = ApInvoiceLine::query()->where('ap_invoice_id', $invoice->id)->orderBy('line_number')->get();
-            $payload = $this->payload($invoice, $lines, $vendor, (int) $this->workflow->profile()->currency_scale);
+            $profile = $this->workflow->profile();
+            $rate = $this->foreign->current($invoice, $invoice->posting_date->toDateString(), true); // the rate row is held until this posting commits
+            $payload = $this->payload($invoice, $lines, $vendor, $this->foreign->scaleOf($invoice, $profile), $this->taxes->postingParts(ApInvoice::DOCUMENT_TYPE, $invoice->id, $rate->foreign()));
+            $converted = $this->fxPosting->invoice($payload, $rate);
+            if ($rate->foreign() && ! $converted['functional_total']->isEqualTo($invoice->functional_total_amount)) {
+                throw new DomainException('The functional total of this invoice no longer matches its exchange rate.', 'EXCHANGE_RATE_CHANGED', 409);
+            }
             $dims = ['branch_id' => $invoice->branch_id, 'business_unit_id' => $invoice->business_unit_id, 'cost_center_id' => $invoice->cost_center_id];
 
             $event = $this->engine->postEvent(
-                'AP_INVOICE_RECOGNIZED', ApInvoice::DOCUMENT_TYPE, $invoice->id, $invoice->posting_date->toDateString(), $payload, $dims, 'POST',
+                'AP_INVOICE_RECOGNIZED', ApInvoice::DOCUMENT_TYPE, $invoice->id, $invoice->posting_date->toDateString(), $converted['payload'], $dims, 'POST',
                 mb_substr("Faktur vendor {$vendor->code} {$invoice->vendor_invoice_number}", 0, 500), $invoice->vendor_invoice_number, $actor, $this->authority->canPostSoftClosed($actor),
             );
             $journal = JournalEntry::query()->findOrFail($event->journal_entry_id);
-            $controlAccountId = $this->controlAccount($journal, $invoice->total_amount);
+            $controlAccountId = $this->controlAccount($journal, Money::str($converted['functional_total']));
 
-            return $this->load($this->workflow->markPosted($invoice, $actor, $journal, $event, 'AP_INVOICE', 'AP', ['payable_account_id' => $controlAccountId]));
+            $posted = $this->workflow->markPosted($invoice, $actor, $journal, $event, 'AP_INVOICE', 'AP', ['payable_account_id' => $controlAccountId]);
+            $this->taxes->markPosted(ApInvoice::DOCUMENT_TYPE, $posted->id, $journal, $posted->document_number, $rate);
+
+            return $this->load($posted);
         });
     }
 
@@ -237,7 +259,10 @@ class ApInvoiceService
             $original = JournalEntry::query()->findOrFail($invoice->journal_entry_id);
             $reversal = $this->reversals->reverse($original, $actor, $reason, $postingDate, $invoice->document_number);
 
-            return $this->load($this->workflow->markReversed($invoice, $actor, $reversal, $reason));
+            $reversed = $this->workflow->markReversed($invoice, $actor, $reversal, $reason);
+            $this->taxes->markReversed(ApInvoice::DOCUMENT_TYPE, $reversed->id, $reversal);
+
+            return $this->load($reversed);
         });
     }
 
@@ -252,7 +277,7 @@ class ApInvoiceService
     // ------------------------------------------------------------------------------------------------ validation
 
     /** Everything posting needs, checked at submit, approve and post: vendor, totals, lines, period, readiness. Returns the vendor. */
-    private function validateForPosting(ApInvoice $invoice, User $actor): Vendor
+    private function validateForPosting(ApInvoice $invoice, User $actor, bool $lock = false): Vendor
     {
         $this->authority->assertLedgerWritable($actor);
         $vendor = Vendor::query()->find($invoice->vendor_id) ?? throw new DomainException('The vendor no longer exists.', 'VENDOR_NOT_FOUND', 422);
@@ -268,7 +293,10 @@ class ApInvoiceService
                 $this->accounts->usable($line->account_id, ['EXPENSE', 'ASSET'], false, 'account_id', $line->line_number);
             }
         }
+        $this->taxes->assertCurrent(ApInvoice::DOCUMENT_TYPE, $invoice->id, $actor, $lock);
         $postingDate = $invoice->posting_date->toDateString();
+        $this->foreign->assertWritable($actor, $invoice);
+        $this->foreign->current($invoice, $postingDate, $lock);
         $this->readiness->assertCanPost($postingDate, JournalEntry::SYSTEM);
         $this->periods->resolveForPosting($postingDate, $this->authority->canPostSoftClosed($actor));
 
@@ -282,7 +310,6 @@ class ApInvoiceService
      */
     private function prepare(array $data, ?ApInvoice $existing, User $actor, AccountingProfile $profile): array
     {
-        $scale = (int) $profile->currency_scale;
         $field = fn (string $key, mixed $default = null) => array_key_exists($key, $data) ? $data[$key] : ($existing?->{$key} ?? $default);
         $date = fn (mixed $v) => $v instanceof \DateTimeInterface ? $v->format('Y-m-d') : $v;
 
@@ -291,12 +318,12 @@ class ApInvoiceService
         if ($existing === null || $existing->vendor_id !== $vendor->id) {
             $this->vendors->assertUsable($vendor);
         }
-        if (isset($data['currency']) && $data['currency'] !== $profile->functional_currency) {
-            throw new DomainException("OA2 books in the functional currency ({$profile->functional_currency}) only.", 'CURRENCY_NOT_SUPPORTED', 422, ['field' => 'currency']);
-        }
 
         $documentDate = $date($field('document_date')) ?? throw new DomainException('The document date is required.', 'DOCUMENT_DATE_REQUIRED', 422);
         $postingDate = $date(array_key_exists('posting_date', $data) ? $data['posting_date'] : ($existing?->posting_date ?? $documentDate));
+        // the currency of the document and the rate for its posting date; amounts are entered with the currency's own decimal places
+        $fx = $this->foreign->prepare($data['currency'] ?? $existing?->currency, $postingDate, $data['exchange_rate_type'] ?? null, $actor, $profile);
+        $scale = $fx['scale'];
 
         $termId = array_key_exists('payment_term_id', $data) ? $data['payment_term_id'] : ($existing ? $existing->payment_term_id : $vendor->payment_term_id);
         $term = $termId ? (PaymentTerm::query()->find($termId) ?? throw new DomainException('The payment term does not exist.', 'PAYMENT_TERM_NOT_FOUND', 422, ['field' => 'payment_term_id'])) : null;
@@ -307,10 +334,12 @@ class ApInvoiceService
         $this->scope->assertWritable($dims['branch_id'], $dims['business_unit_id'], $existing?->created_by ?? $actor->id);
 
         $lines = $this->normalizeLines($data['lines'] ?? $this->existingLines($existing), $scale, $dims['branch_id']);
+        $app = $this->taxes->apply(TaxDocumentService::INPUT, $lines, substr((string) $documentDate, 0, 10), $scale, $actor);
+        $lines = $app->lines;
         $subtotal = Money::sum(array_column($lines, 'amount'));
         $discount = Money::parse($field('discount_amount'), $scale, 'discount_amount');
-        $tax = Money::parse($field('tax_amount'), $scale, 'tax_amount');
         $other = Money::parse($field('other_charges_amount'), $scale, 'other_charges_amount');
+        $tax = $this->taxes->headerTax($app, $data, $existing?->id ? ApInvoice::DOCUMENT_TYPE : null, $existing?->id, $existing?->tax_amount, $discount, $scale);
         if ($discount->isGreaterThan($subtotal)) {
             throw new DomainException('The discount cannot exceed the subtotal.', 'AP_INVOICE_DISCOUNT_INVALID', 422);
         }
@@ -320,21 +349,30 @@ class ApInvoiceService
             'vendor' => $vendor,
             'header' => collect($data)->only(['vendor_invoice_number', 'document_date', 'posting_date', 'description', 'reference'])->merge(['due_date' => $dueDate])->all(),
             'columns' => [
-                'vendor_id' => $vendor->id, 'payment_term_id' => $term?->id, 'due_date' => $dueDate, 'due_date_overridden' => $overridden, 'currency' => $profile->functional_currency,
+                'vendor_id' => $vendor->id, 'payment_term_id' => $term?->id, 'due_date' => $dueDate, 'due_date_overridden' => $overridden,
                 'posting_date' => $postingDate, 'document_date' => $documentDate,
                 'branch_id' => $dims['branch_id'], 'business_unit_id' => $dims['business_unit_id'], 'cost_center_id' => $dims['cost_center_id'],
                 'subtotal_amount' => Money::str($subtotal), 'discount_amount' => Money::str($discount), 'tax_amount' => Money::str($tax),
                 'other_charges_amount' => Money::str($other), 'total_amount' => Money::str($total),
-            ] + ($existing === null ? ['vendor_invoice_number' => $data['vendor_invoice_number'] ?? throw new DomainException('The vendor invoice number is required.', 'AP_INVOICE_NUMBER_REQUIRED', 422), 'description' => $data['description'] ?? throw new DomainException('The description is required.', 'DESCRIPTION_REQUIRED', 422)] : []),
-            'lines' => $lines,
+            ] + $fx['columns'] + ['functional_total_amount' => $fx['rate']->foreign() ? Money::str($fx['rate']->convert($total)) : null]
+            + ($existing === null ? ['vendor_invoice_number' => $data['vendor_invoice_number'] ?? throw new DomainException('The vendor invoice number is required.', 'AP_INVOICE_NUMBER_REQUIRED', 422), 'description' => $data['description'] ?? throw new DomainException('The description is required.', 'DESCRIPTION_REQUIRED', 422)] : []),
+            'lines' => $lines, 'tax' => $app, 'tax_date' => substr((string) $documentDate, 0, 10),
         ];
+    }
+
+    /** Keep the DRAFT tax transactions in step with the lines just saved. */
+    private function syncTax(ApInvoice $invoice, array $prepared, User $actor): void
+    {
+        $vendor = $prepared['vendor'];
+        $this->taxes->sync(ApInvoice::DOCUMENT_TYPE, TaxDocumentService::INPUT, $invoice, true, $prepared['tax'], $prepared['tax_date'],
+            ['type' => 'vendor', 'id' => $vendor->id, 'name' => $vendor->name, 'tax_id' => $vendor->tax_id], $actor);
     }
 
     /** @return list<array<string,mixed>> */
     private function existingLines(?ApInvoice $invoice): array
     {
         return $invoice === null ? [] : $invoice->lines()->get()->map(fn (ApInvoiceLine $l) => [
-            'description' => $l->description, 'quantity' => $l->quantity, 'unit_price' => $l->unit_price, 'amount' => $l->amount,
+            'description' => $l->description, 'quantity' => $l->quantity, 'unit_price' => $l->unit_price, 'amount' => $l->entered_amount ?? $l->amount, 'tax_code_id' => $l->tax_code_id,
             'expense_category_id' => $l->expense_category_id, 'account_role' => $l->account_role, 'account_id' => $l->account_id,
             'cost_center_id' => $l->cost_center_id, 'metadata' => $l->metadata,
         ])->all();
@@ -395,7 +433,7 @@ class ApInvoiceService
 
             $out[] = [
                 'description' => mb_substr($description, 0, 255), 'quantity' => $quantity ? Money::str($quantity) : null, 'unit_price' => $unitPrice ? Money::str($unitPrice) : null,
-                'amount' => $amount, 'expense_category_id' => $categoryId, 'account_role' => $role, 'account_id' => $accountId, 'cost_center_id' => $center,
+                'amount' => $amount, 'tax_code_id' => $line['tax_code_id'] ?? null, 'expense_category_id' => $categoryId, 'account_role' => $role, 'account_id' => $accountId, 'cost_center_id' => $center,
                 'metadata' => isset($line['metadata']) && is_array($line['metadata']) ? array_slice($line['metadata'], 0, 20, true) : null,
             ];
         }
@@ -412,6 +450,7 @@ class ApInvoiceService
             $line->forceFill([
                 'ap_invoice_id' => $invoice->id, 'line_number' => $i + 1, 'expense_category_id' => $data['expense_category_id'], 'account_role' => $data['account_role'],
                 'account_id' => $data['account_id'], 'cost_center_id' => $data['cost_center_id'],
+                'tax_code_id' => $data['tax_code_id'] ?? null, 'entered_amount' => isset($data['entered_amount']) ? Money::str($data['entered_amount']) : null,
             ])->save();
         }
     }
@@ -479,7 +518,7 @@ class ApInvoiceService
      * @param  iterable<ApInvoiceLine>  $lines
      * @return array<string,mixed>
      */
-    private function payload(ApInvoice $invoice, iterable $lines, Vendor $vendor, int $scale): array
+    private function payload(ApInvoice $invoice, iterable $lines, Vendor $vendor, int $scale, array $tax): array
     {
         $lines = collect($lines)->values();
         $adjustment = BigDecimal::of($invoice->other_charges_amount)->minus($invoice->discount_amount);
@@ -490,17 +529,19 @@ class ApInvoiceService
         foreach ($lines as $i => $line) {
             $category = $categories[$line->expense_category_id] ?? null;
             $parts[] = array_filter([
-                'amount' => Money::str(BigDecimal::of($line->amount)->plus($shares[$i])),
+                'amount' => Money::str(BigDecimal::of($line->amount)->plus($shares[$i])->plus($tax['cost'][$line->line_number] ?? 0)), // a non-recoverable tax is a cost of its line
                 'account_id' => $line->account_id ?? $category?->account_id,
                 'account_role' => $line->account_id || $category?->account_id ? null : ($line->account_role ?? $category?->account_role),
                 'description' => $line->description, 'cost_center_id' => $line->cost_center_id,
             ], fn ($v) => $v !== null);
         }
 
-        $net = BigDecimal::of($invoice->subtotal_amount)->minus($invoice->discount_amount)->plus($invoice->other_charges_amount);
+        // with tax codes the recoverable tax is booked by account and the rest sits in the cost lines; a manual header tax keeps its single tax line
+        $taxAmount = $tax['managed'] ? $tax['recoverable'] : BigDecimal::of($invoice->tax_amount);
+        $net = BigDecimal::of($invoice->total_amount)->minus($taxAmount);
         $payload = [
-            'net' => Money::str($net), 'tax' => Money::str($invoice->tax_amount), 'total' => Money::str($invoice->total_amount),
-            'distribution' => ['net' => $parts],
+            'net' => Money::str($net), 'tax' => Money::str($taxAmount), 'total' => Money::str($invoice->total_amount),
+            'distribution' => ['net' => $parts] + ($tax['parts'] === [] ? [] : ['tax' => $tax['parts']]),
         ];
         if ($vendor->payable_account_id) {
             $payload['role_accounts'] = ['ACCOUNTS_PAYABLE' => $vendor->payable_account_id];

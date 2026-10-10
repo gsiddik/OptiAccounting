@@ -2,6 +2,7 @@
 
 namespace App\Domain\Payables\Services;
 
+use App\Domain\Accounting\Models\AccountingProfile;
 use App\Domain\Accounting\Models\JournalEntry;
 use App\Domain\Accounting\Services\DocumentScope;
 use App\Domain\Accounting\Support\Money;
@@ -34,13 +35,21 @@ class ApSubledgerService
     /** SQL: what has been paid on the invoice row `ap_invoices` right now. */
     public const PAID_SQL = '(select coalesce(sum(a.amount), 0) from ap_payment_allocations a where a.tenant_id = ap_invoices.tenant_id and a.ap_invoice_id = ap_invoices.id and a.is_effective)';
 
-    /** Add paid_amount, outstanding_amount and payment_status to a model query on ap_invoices (outstanding exists for POSTED invoices only). */
+    /** SQL: the functional value those payments released from the invoice (what the control account was relieved by); the amount itself for a functional invoice. */
+    public const CARRYING_SQL = '(select coalesce(sum(coalesce(a.carrying_amount, a.amount)), 0) from ap_payment_allocations a where a.tenant_id = ap_invoices.tenant_id and a.ap_invoice_id = ap_invoices.id and a.is_effective)';
+
+    /**
+     * Add paid_amount, outstanding_amount and payment_status to a model query on ap_invoices (outstanding exists for POSTED invoices only).
+     * Amounts are in the invoice's own currency; `outstanding_functional` is what is still carried in the ledger, in functional currency.
+     */
     public function figures(Builder $query): Builder
     {
         $paid = self::PAID_SQL;
+        $carrying = self::CARRYING_SQL;
 
         return $query->addSelect('ap_invoices.*')->selectRaw(
             "{$paid} as paid_amount, case when ap_invoices.status = 'POSTED' then ap_invoices.total_amount - {$paid} else 0 end as outstanding_amount,
+             case when ap_invoices.status = 'POSTED' then coalesce(ap_invoices.functional_total_amount, ap_invoices.total_amount) - {$carrying} else 0 end as outstanding_functional,
              case when ap_invoices.status <> 'POSTED' then null when {$paid} = 0 then 'UNPAID' when {$paid} >= ap_invoices.total_amount then 'PAID' else 'PARTIALLY_PAID' end as payment_status"
         );
     }
@@ -61,10 +70,14 @@ class ApSubledgerService
                 ->whereDate('ap_invoices.due_date', '<=', date('Y-m-d', strtotime("{$today} +{$days} days"))));
     }
 
-    /** Posted invoices of one vendor that still have an outstanding amount, oldest due date first (the order a payment is applied in). */
-    public function openInvoices(string $vendorId): Collection
+    /**
+     * Posted invoices of one vendor in one currency (the functional one unless named) that still have an outstanding amount, oldest due date
+     * first (the order a payment is applied in). A payment settles invoices of its own currency only.
+     */
+    public function openInvoices(string $vendorId, ?string $currency = null): Collection
     {
-        $query = ApInvoice::query()->with(['vendor', 'branch'])->where('ap_invoices.vendor_id', $vendorId)->where('ap_invoices.status', ApInvoice::POSTED);
+        $currency ??= (string) AccountingProfile::query()->value('functional_currency');
+        $query = ApInvoice::query()->with(['vendor', 'branch'])->where('ap_invoices.vendor_id', $vendorId)->where('ap_invoices.status', ApInvoice::POSTED)->where('ap_invoices.currency', $currency);
         $this->scope->restrict($query->getQuery(), 'ap_invoices');
 
         return $this->figures($query)->whereRaw('ap_invoices.total_amount - '.self::PAID_SQL.' > 0')
@@ -84,6 +97,10 @@ class ApSubledgerService
                   where a.tenant_id = i.tenant_id and a.ap_invoice_id = i.id and a.effective_at is not null and p.posting_date <= ?
                   and (p.status = \'POSTED\' or p.reversal_posting_date > ?))';
 
+        $carrying = '(select coalesce(sum(coalesce(a.carrying_amount, a.amount)), 0) from ap_payment_allocations a join vendor_payments p on p.tenant_id = a.tenant_id and p.id = a.vendor_payment_id
+                  where a.tenant_id = i.tenant_id and a.ap_invoice_id = i.id and a.effective_at is not null and p.posting_date <= ?
+                  and (p.status = \'POSTED\' or p.reversal_posting_date > ?))';
+
         $query = DB::table('ap_invoices as i')->join('vendors as v', fn ($j) => $j->on('v.id', '=', 'i.vendor_id')->on('v.tenant_id', '=', 'i.tenant_id'))
             ->where('i.tenant_id', $this->context->tenantId())
             ->whereIn('i.status', ['POSTED', 'REVERSED'])->whereDate('i.posting_date', '<=', $asOf)
@@ -93,7 +110,8 @@ class ApSubledgerService
             ->when($filter['business_unit_id'] ?? null, fn ($q, $x) => $q->where('i.business_unit_id', $x))
             ->when($filter['cost_center_id'] ?? null, fn ($q, $x) => $q->where('i.cost_center_id', $x))
             ->selectRaw("i.id, i.document_number, i.vendor_invoice_number, i.vendor_id, v.code as vendor_code, v.name as vendor_name, i.posting_date, i.due_date, i.branch_id, i.business_unit_id,
-                         i.cost_center_id, i.payable_account_id, i.total_amount, {$paid} as paid_asof, i.total_amount - {$paid} as outstanding_asof", [$asOf, $asOf, $asOf, $asOf]);
+                         i.cost_center_id, i.payable_account_id, i.currency, i.exchange_rate, i.total_amount, {$paid} as paid_asof, i.total_amount - {$paid} as outstanding_asof,
+                         coalesce(i.functional_total_amount, i.total_amount) as functional_total_amount, coalesce(i.functional_total_amount, i.total_amount) - {$carrying} as outstanding_functional_asof", [$asOf, $asOf, $asOf, $asOf, $asOf, $asOf]);
 
         $this->scope->restrict($query, 'i');
         if (! $includeSettled) {
@@ -103,10 +121,10 @@ class ApSubledgerService
         return $query->orderBy('v.code')->orderBy('i.due_date')->orderBy('i.document_number')->get();
     }
 
-    /** Total outstanding on $asOf over the user's scope, as a decimal string. */
+    /** Total outstanding on $asOf over the user's scope in functional currency (the figure the control account is compared with), as a decimal string. */
     public function totalAsOf(string $asOf, array $filter = []): string
     {
-        return Money::str(Money::sum($this->rowsAsOf($asOf, $filter)->pluck('outstanding_asof')->all()));
+        return Money::str(Money::sum($this->rowsAsOf($asOf, $filter)->pluck('outstanding_functional_asof')->all()));
     }
 
     /**

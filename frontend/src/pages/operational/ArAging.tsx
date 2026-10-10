@@ -3,13 +3,15 @@ import { Link } from 'react-router-dom'
 import { DataTable, type Column } from '../../components/DataTable'
 import { Banner, Card, EmptyState, ErrorNotice, Loading, PageHeader, Stat } from '../../components/ui'
 import { api } from '../../lib/api'
+import { useCapabilities } from '../../lib/capabilities'
 import { formatDate } from '../../lib/format'
 import { useDebounced, useResource } from '../../lib/hooks'
 import { API, useCustomers } from '../../lib/operational'
 import { useDimensions } from '../accounting/data'
+import { formatRate, isForeignRow } from './foreignSupport'
 import { BUCKET_PATTERN, exportQuery, useBusinessDate } from './payables/lists'
 import { AR_PATH } from './receivables/paths'
-import type { ArAgingReport } from './receivables/types'
+import type { ArAgingInvoiceRow, ArAgingReport } from './receivables/types'
 import { DimensionFilters, ExportButton, Filters, Money } from './shared'
 
 /** One line of the customer table: a customer, or the grand total (`strong`). */
@@ -59,6 +61,9 @@ export default function ArAging() {
 }
 
 function Report({ report }: { report: ArAgingReport }) {
+  const functional = useCapabilities().tenant?.tenant.default_currency ?? 'IDR'
+  // Currency, rate and functional balance show only when some invoice of the report is in a foreign currency.
+  const foreign = (report.invoices ?? []).some((i) => isForeignRow(i, functional))
   const label = (key: string) => report.buckets.find((b) => b.key === key)?.label ?? key
   const lines: Line[] = [
     ...report.data.map((c) => ({ id: c.customer_id, name: <>{c.customer_name}<div className="muted mono">{c.customer_code}</div></>, count: c.invoice_count, amounts: { ...c.buckets, total: c.total } })),
@@ -93,6 +98,7 @@ function Report({ report }: { report: ArAgingReport }) {
       {report.invoices && report.invoices.length > 0 && (
         <>
           <div className="card-head"><h2>Rincian faktur</h2></div>
+          {foreign && <div className="card-body"><p className="muted preview-note">Nilai faktur, dibayar dan saldo memakai mata uang masing-masing faktur. Kelompok umur dan total di atas dalam mata uang fungsional, sesuai kolom saldo fungsional.</p></div>}
           <DataTable
             caption="Rincian umur piutang per faktur"
             rows={report.invoices}
@@ -106,10 +112,15 @@ function Report({ report }: { report: ArAgingReport }) {
               { header: 'Jatuh tempo', cell: (i) => formatDate(i.due_date) },
               { header: 'Hari lewat', align: 'right', cell: (i) => i.days_overdue },
               { header: 'Kelompok', cell: (i) => label(i.bucket) },
+              ...(foreign ? [
+                { header: 'Mata uang', cell: (i: ArAgingInvoiceRow) => <span className="mono">{i.currency ?? functional}</span> },
+                { header: 'Kurs', align: 'right' as const, cell: (i: ArAgingInvoiceRow) => (isForeignRow(i, functional) ? <span className="money">{formatRate(i.exchange_rate)}</span> : <span className="muted">—</span>) },
+              ] : []),
               { header: 'Nilai faktur', align: 'right', cell: (i) => <Money value={i.total_amount} /> },
               { header: 'Diterima', align: 'right', cell: (i) => <Money value={i.received_amount} /> },
               { header: 'Nota kredit', align: 'right', cell: (i) => <Money value={i.credited_amount} /> },
               { header: 'Saldo', align: 'right', cell: (i) => <Money value={i.outstanding_amount} strong /> },
+              ...(foreign ? [{ header: 'Saldo fungsional', align: 'right' as const, cell: (i: ArAgingInvoiceRow) => <Money value={i.outstanding_functional} strong /> }] : []),
             ]}
           />
         </>

@@ -77,9 +77,31 @@ documentPages(`${ACCOUNTING}/penerimaan-kas`)
 page(`${ACCOUNTING}/rekening-koran`, 'Rekening koran', 'Kas & bank')
 documentPages(`${ACCOUNTING}/rekening-koran`, false)
 
+page(`${ACCOUNTING}/anggaran`, 'Anggaran', 'Anggaran')
+page(`${ACCOUNTING}/anggaran/:id`, 'Detail', undefined, `${ACCOUNTING}/anggaran`)
+page(`${ACCOUNTING}/anggaran/:id/versi/:versionId`, 'Versi', undefined, `${ACCOUNTING}/anggaran/:id`)
+page(`${ACCOUNTING}/anggaran-vs-aktual`, 'Anggaran vs aktual', 'Anggaran')
+
+page(`${ACCOUNTING}/aset`, 'Register aset', 'Aset tetap')
+documentPages(`${ACCOUNTING}/aset`)
+page(`${ACCOUNTING}/kategori-aset`, 'Kategori aset', 'Aset tetap')
+page(`${ACCOUNTING}/penyusutan`, 'Penyusutan', 'Aset tetap')
+documentPages(`${ACCOUNTING}/penyusutan`, false)
+page(`${ACCOUNTING}/pelepasan-aset`, 'Pelepasan aset', 'Aset tetap')
+documentPages(`${ACCOUNTING}/pelepasan-aset`)
+
+page(`${ACCOUNTING}/kode-pajak`, 'Kode pajak', 'Pajak')
+documentPages(`${ACCOUNTING}/kode-pajak`, false)
+page(`${ACCOUNTING}/transaksi-pajak`, 'Transaksi pajak', 'Pajak')
+page(`${ACCOUNTING}/laporan-pajak`, 'Laporan pajak', 'Pajak')
+
+page(`${ACCOUNTING}/mata-uang`, 'Mata uang', 'Mata uang')
+page(`${ACCOUNTING}/kurs`, 'Kurs', 'Mata uang')
+
 page(`${ACCOUNTING}/rekonsiliasi/utang`, 'Utang vs buku besar', 'Rekonsiliasi')
 page(`${ACCOUNTING}/rekonsiliasi/piutang`, 'Piutang vs buku besar', 'Rekonsiliasi')
 page(`${ACCOUNTING}/rekonsiliasi/kas-bank`, 'Kas/bank vs buku besar', 'Rekonsiliasi')
+page(`${ACCOUNTING}/rekonsiliasi/aset-tetap`, 'Aset tetap vs buku besar', 'Rekonsiliasi')
 
 page(`${ACCOUNTING}/profil`, 'Profil akuntansi', 'Konfigurasi akuntansi')
 page(`${ACCOUNTING}/periode`, 'Tahun fiskal & periode', 'Konfigurasi akuntansi')

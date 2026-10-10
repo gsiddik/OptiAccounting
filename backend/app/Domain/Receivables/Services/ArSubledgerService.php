@@ -2,6 +2,7 @@
 
 namespace App\Domain\Receivables\Services;
 
+use App\Domain\Accounting\Models\AccountingProfile;
 use App\Domain\Accounting\Models\JournalEntry;
 use App\Domain\Accounting\Services\DocumentScope;
 use App\Domain\Accounting\Support\Money;
@@ -28,6 +29,9 @@ class ArSubledgerService
     /** SQL: what posted credit notes have taken off the invoice right now. */
     public const CREDITED_SQL = "(select coalesce(sum(c.total_amount), 0)::numeric(20,4) from ar_credit_notes c where c.tenant_id = ar_invoices.tenant_id and c.ar_invoice_id = ar_invoices.id and c.status = 'POSTED')";
 
+    /** SQL: the functional value the effective receipts released from the invoice (the amount itself for a functional invoice). */
+    public const CARRYING_SQL = '(select coalesce(sum(coalesce(a.carrying_amount, a.amount)), 0)::numeric(20,4) from ar_receipt_allocations a where a.tenant_id = ar_invoices.tenant_id and a.ar_invoice_id = ar_invoices.id and a.is_effective)';
+
     public function __construct(private readonly DocumentScope $scope, private readonly TenantContext $context) {}
 
     /** Today's business date in the tenant's timezone (the date overdue is judged on). */
@@ -43,10 +47,12 @@ class ArSubledgerService
     {
         $received = self::RECEIVED_SQL;
         $credited = self::CREDITED_SQL;
+        $carrying = self::CARRYING_SQL;
 
         return $query->addSelect('ar_invoices.*')->selectRaw(
             "{$received} as received_amount, {$credited} as credited_amount,
              case when ar_invoices.status = 'POSTED' then ar_invoices.total_amount - {$received} - {$credited} else 0 end as outstanding_amount,
+             case when ar_invoices.status = 'POSTED' then coalesce(ar_invoices.functional_total_amount, ar_invoices.total_amount) - {$carrying} - {$credited} else 0 end as outstanding_functional,
              case when ar_invoices.status <> 'POSTED' then null when {$received} + {$credited} = 0 then 'UNPAID' when {$received} + {$credited} >= ar_invoices.total_amount then 'PAID' else 'PARTIALLY_PAID' end as payment_status"
         );
     }
@@ -67,10 +73,14 @@ class ArSubledgerService
                 ->whereDate('ar_invoices.due_date', '<=', date('Y-m-d', strtotime("{$today} +{$days} days"))));
     }
 
-    /** Posted invoices of one customer that still have an outstanding amount, oldest due date first (the order a receipt is applied in). */
-    public function openInvoices(string $customerId): Collection
+    /**
+     * Posted invoices of one customer in one currency (the functional one unless named) that still have an outstanding amount, oldest due date
+     * first (the order a receipt is applied in). A receipt settles invoices of its own currency only.
+     */
+    public function openInvoices(string $customerId, ?string $currency = null): Collection
     {
-        $query = ArInvoice::query()->with(['customer', 'branch'])->where('ar_invoices.customer_id', $customerId)->where('ar_invoices.status', ArInvoice::POSTED);
+        $currency ??= (string) AccountingProfile::query()->value('functional_currency');
+        $query = ArInvoice::query()->with(['customer', 'branch'])->where('ar_invoices.customer_id', $customerId)->where('ar_invoices.status', ArInvoice::POSTED)->where('ar_invoices.currency', $currency);
         $this->scope->restrict($query->getQuery(), 'ar_invoices');
 
         return $this->figures($query)->whereRaw('ar_invoices.total_amount - '.self::RECEIVED_SQL.' - '.self::CREDITED_SQL.' > 0')
@@ -91,6 +101,9 @@ class ArSubledgerService
                       and (p.status = \'POSTED\' or p.reversal_posting_date > ?))';
         $credited = '(select coalesce(sum(c.total_amount), 0) from ar_credit_notes c where c.tenant_id = i.tenant_id and c.ar_invoice_id = i.id
                       and c.posting_date <= ? and (c.status = \'POSTED\' or (c.status = \'REVERSED\' and c.reversal_posting_date > ?)))';
+        $carrying = '(select coalesce(sum(coalesce(a.carrying_amount, a.amount)), 0) from ar_receipt_allocations a join customer_receipts p on p.tenant_id = a.tenant_id and p.id = a.customer_receipt_id
+                      where a.tenant_id = i.tenant_id and a.ar_invoice_id = i.id and a.effective_at is not null and p.posting_date <= ?
+                      and (p.status = \'POSTED\' or p.reversal_posting_date > ?))';
         $settled = "({$received} + {$credited})";
 
         $query = DB::table('ar_invoices as i')->join('customers as v', fn ($j) => $j->on('v.id', '=', 'i.customer_id')->on('v.tenant_id', '=', 'i.tenant_id'))
@@ -102,8 +115,9 @@ class ArSubledgerService
             ->when($filter['business_unit_id'] ?? null, fn ($q, $x) => $q->where('i.business_unit_id', $x))
             ->when($filter['cost_center_id'] ?? null, fn ($q, $x) => $q->where('i.cost_center_id', $x))
             ->selectRaw("i.id, i.document_number, i.customer_reference, i.customer_id, v.code as customer_code, v.name as customer_name, i.posting_date, i.due_date, i.branch_id, i.business_unit_id,
-                         i.cost_center_id, i.receivable_account_id, i.total_amount, {$received} as received_asof, {$credited} as credited_asof, i.total_amount - {$settled} as outstanding_asof",
-                [$asOf, $asOf, $asOf, $asOf, $asOf, $asOf, $asOf, $asOf]);
+                         i.cost_center_id, i.receivable_account_id, i.currency, i.exchange_rate, i.total_amount, {$received} as received_asof, {$credited} as credited_asof, i.total_amount - {$settled} as outstanding_asof,
+                         coalesce(i.functional_total_amount, i.total_amount) as functional_total_amount, coalesce(i.functional_total_amount, i.total_amount) - {$carrying} - {$credited} as outstanding_functional_asof",
+                [$asOf, $asOf, $asOf, $asOf, $asOf, $asOf, $asOf, $asOf, $asOf, $asOf, $asOf, $asOf]);
 
         $this->scope->restrict($query, 'i');
         if (! $includeSettled) {
@@ -113,10 +127,10 @@ class ArSubledgerService
         return $query->orderBy('v.code')->orderBy('i.due_date')->orderBy('i.document_number')->get();
     }
 
-    /** Total outstanding on $asOf over the user's scope, as a decimal string. */
+    /** Total outstanding on $asOf over the user's scope in functional currency (the figure the control account is compared with), as a decimal string. */
     public function totalAsOf(string $asOf, array $filter = []): string
     {
-        return Money::str(Money::sum($this->rowsAsOf($asOf, $filter)->pluck('outstanding_asof')->all()));
+        return Money::str(Money::sum($this->rowsAsOf($asOf, $filter)->pluck('outstanding_functional_asof')->all()));
     }
 
     /**

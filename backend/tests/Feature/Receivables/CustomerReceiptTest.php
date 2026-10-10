@@ -148,7 +148,7 @@ class CustomerReceiptTest extends TestCase
         $this->postJson($uri, $this->receiptBody($customer, $bank->id, [$invoice['id'] => '100000'], ['posting_date' => '2026-03-01', 'receipt_date' => '2026-03-01']))->assertStatus(422)->assertJsonPath('code', 'AR_RECEIPT_BEFORE_INVOICE');
         $this->postJson($uri, $this->receiptBody($customer, $bank->id, [$invoice['id'] => '100000'], ['amount' => '-5']))->assertStatus(422);
         $this->postJson($uri, $this->receiptBody($customer, $bank->id, [$invoice['id'] => '100000'], ['receipt_method' => 'BITCOIN']))->assertStatus(422);
-        $this->postJson($uri, $this->receiptBody($customer, $bank->id, [$invoice['id'] => '100000'], ['currency' => 'USD']))->assertStatus(422)->assertJsonPath('code', 'CURRENCY_NOT_SUPPORTED');
+        $this->postJson($uri, $this->receiptBody($customer, $bank->id, [$invoice['id'] => '100000'], ['currency' => 'USD']))->assertStatus(422)->assertJsonPath('code', 'CURRENCY_NOT_FOUND');
         $this->assertSame(0, $this->rows('customer_receipts'));
 
         // A receipt must be allocated in full before it can leave the draft state.

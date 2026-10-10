@@ -69,6 +69,32 @@ The same tenant also has the OA3 posting rules, the AR payment terms (shared wit
 - The AR aging shows CURRENT and 1-30 buckets; the AR-to-GL reconciliation reads MATCHED (the opening-balance receivable is its own component);
   the home page shows the receivables summary. The cash/bank-to-GL reconciliation counts the customer receipts as a document kind of its own.
 
+## Demo OA4: budget, aset tetap, pajak, multi mata uang
+
+The Business bundle (PT Maju Jaya, and PT Tunggakan Demo read-only) now includes `ACCOUNTING_BUDGET`, `ACCOUNTING_FIXED_ASSET`, `ACCOUNTING_TAX` and
+`ACCOUNTING_MULTI_CURRENCY`; Starter has none of them. The 21 OA4 permissions go to the finance roles: `akuntan` 12 (read and prepare), `manajer` all 21.
+A database seeded before OA4 gets the modules, entitlements and permissions when `DemoSeeder` runs again. Relative to today, inside the open periods,
+PT Maju Jaya has:
+
+- **Budget** `ANGGARAN-<year>`: active. Version 1 "Anggaran Awal" (prepared by the accountant, approved and activated by the manager; revenue plus 7 expense accounts,
+  payroll per branch, in each of the 12 periods) and a draft "Revisi 1 (draf)" that raises maintenance by 15% and fuel by 10%. Budget vs Actual reads posted journals only.
+- **Fixed assets**: 3 categories (`KENDARAAN`, `PERALATAN`, `KOMPUTER` with declining balance) and 4 assets: a truck and laptops (ACTIVE), a forklift (DRAFT) and an old
+  Avanza (DISPOSED, sold for 185,000,000 after its depreciation was posted). The last two complete months are posted depreciation runs (the first catches up since
+  capitalization); this month's run is calculated and waits for the manager. Capitalization credits 2140 (dealer payable) or 1120 (laptops). The register equals the ledger.
+- **Tax**: 6 codes with example rates, not tax advice: `PPN-IN` and `PPN-OUT` (10% from 2020-01-01, 11% from 2022-04-01), `PPN-IN-NK` (non-recoverable) and `PPN-OUT-INK`
+  (inclusive), both 11% from 2022-04-01, `PPN-OUT-0` (zero-rated) and `PPH23` (2% withholding, configured for the report; documents cannot use withholding yet). Two purchase and
+  two sales invoices are posted with a tax code per line, so the tax report (all periods) shows output 4,950,000, recoverable input 3,190,000, non-recoverable input 275,000,
+  net payable 1,760,000.
+- **Multi-currency**: USD and SGD with DAILY rates into IDR, days ago 42 / 35 / 28 / 21 / 14 / 7 / 3 / 0: USD 16,080 / 16,150 / 16,230.5 / 16,190 / 16,310.25 / 16,275 / 16,340 / 16,360;
+  SGD the same days except 3: 11,950 / 12,010 / 12,060 / 12,040 / 12,090 / 12,075 / 12,100. A MANUAL USD rate 16,325 is the bank's rate on the payment day. FX posting rules are applied.
+  Vendor `GLOBAL`: USD 12,500 invoice at 16,150, part-paid USD 5,000 at 16,325 (realised loss 875,000, account 6950), plus an unpaid USD 3,200 invoice.
+  Customers `PACIFIC` (USD 8,000 at 16,230.5, part-collected USD 5,000 at 16,275, realised gain 222,500, account 4260) and `SINGMART` (SGD 6,000 at 12,040, unpaid).
+  Aging and the AP and AR reconciliations count the functional (IDR) value and read MATCHED.
+
+Who sees what: `akuntan` prepares budgets, assets, depreciation runs and disposals and reads tax, currencies and rates; it cannot approve, post or configure. `manajer`
+approves and activates budgets, capitalizes, posts runs, approves and posts disposals, and manages tax codes, currencies, rates and asset categories. `viewer@` reads everything.
+`admin@tunggakan.demo.test` reads the OA4 screens but every change is refused (PAST_DUE). CV Sinar Abadi has none of the modules. Re-running the seeder changes nothing.
+
 ## Demo tenants
 
 | Tenant | Tenant status | Bundle | Subscription | Limits |

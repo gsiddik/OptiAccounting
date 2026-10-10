@@ -1,6 +1,7 @@
 import { DataTable } from '../../../components/DataTable'
 import { amountToApi, formatAmount } from '../../../lib/accounting'
 import { formatDate } from '../../../lib/format'
+import { formatRate } from '../foreignSupport'
 import { Money } from '../shared'
 import { exceedsOutstanding, type AllocationInputs, type AllocationPreview } from './paymentForm'
 
@@ -8,14 +9,24 @@ import { exceedsOutstanding, type AllocationInputs, type AllocationPreview } fro
  * One invoice the payment (or customer receipt) may settle. `reference` is the number the other party printed on it (the vendor's invoice
  * number, or the customer's reference). `outstanding_amount` is null for an invoice the draft still names but that is no longer open.
  */
-export type AllocationRow = { id: string; document_number: string | null; reference: string; due_date: string; outstanding_amount: string | null }
+export type AllocationRow = {
+  id: string
+  document_number: string | null
+  reference: string
+  due_date: string
+  outstanding_amount: string | null
+  /** Foreign invoices only: the invoice's currency, the rate it was recognised at and what it still carries in functional currency (as the API returned them). */
+  currency?: string
+  exchange_rate?: string
+  outstanding_functional?: string
+}
 
 /** Wording of the table; the defaults are the payables ones. */
 export type AllocationLabels = { caption: string; reference: string; outstanding: string }
 const PAYABLES_LABELS: AllocationLabels = { caption: 'Faktur terbuka dan alokasi pembayaran', reference: 'No. faktur vendor', outstanding: 'Saldo terutang' }
 
 /** The open invoices of the chosen vendor / customer with an allocation input each. The amounts typed here are sent as they are; the server validates them. */
-export function AllocationTable({ rows, values, onChange, errorFor, labels = PAYABLES_LABELS }: { rows: AllocationRow[]; values: AllocationInputs; onChange: (invoiceId: string, text: string) => void; errorFor?: (invoiceId: string) => string | undefined; labels?: AllocationLabels }) {
+export function AllocationTable({ rows, values, onChange, errorFor, labels = PAYABLES_LABELS, foreign = false }: { rows: AllocationRow[]; values: AllocationInputs; onChange: (invoiceId: string, text: string) => void; errorFor?: (invoiceId: string) => string | undefined; labels?: AllocationLabels; foreign?: boolean }) {
   return (
     <DataTable
       caption={labels.caption}
@@ -26,7 +37,15 @@ export function AllocationTable({ rows, values, onChange, errorFor, labels = PAY
         { header: 'Faktur', primary: true, cell: (r) => <span className="mono">{r.document_number ?? 'Faktur'}</span> },
         { header: labels.reference, cell: (r) => (r.reference ? <span className="mono">{r.reference}</span> : <span className="muted">—</span>) },
         { header: 'Jatuh tempo', cell: (r) => formatDate(r.due_date) },
+        // A foreign payment settles invoices of its own currency: the table then shows what the API returned about each invoice's currency and rate.
+        ...(foreign ? [
+          { header: 'Mata uang', cell: (r: AllocationRow) => (r.currency ? <span className="mono">{r.currency}</span> : <span className="muted">—</span>) },
+          { header: 'Kurs faktur', align: 'right' as const, cell: (r: AllocationRow) => (r.exchange_rate ? <span className="money">{formatRate(r.exchange_rate)}</span> : <span className="muted">—</span>) },
+        ] : []),
         { header: labels.outstanding, align: 'right', cell: (r) => (r.outstanding_amount === null ? <span className="muted">Tidak lagi terbuka</span> : <Money value={r.outstanding_amount} />) },
+        ...(foreign ? [
+          { header: 'Saldo fungsional', align: 'right' as const, cell: (r: AllocationRow) => (r.outstanding_functional ? <Money value={r.outstanding_functional} /> : <span className="muted">—</span>) },
+        ] : []),
         {
           header: 'Alokasi',
           align: 'right',

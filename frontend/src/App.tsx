@@ -21,6 +21,26 @@ import Roles from './pages/tenant/Roles'
 import Subscription from './pages/tenant/Subscription'
 import Usage from './pages/tenant/Usage'
 import Users from './pages/tenant/Users'
+import AssetCategories from './pages/asset/AssetCategories'
+import AssetDetail from './pages/asset/AssetDetail'
+import AssetDisposalDetail from './pages/asset/AssetDisposalDetail'
+import AssetDisposalEditor from './pages/asset/AssetDisposalEditor'
+import AssetDisposals from './pages/asset/AssetDisposals'
+import AssetEditor from './pages/asset/AssetEditor'
+import AssetReconciliation from './pages/asset/AssetReconciliation'
+import Assets from './pages/asset/Assets'
+import DepreciationRunDetail from './pages/asset/DepreciationRunDetail'
+import DepreciationRuns from './pages/asset/DepreciationRuns'
+import BudgetDetail from './pages/budget/BudgetDetail'
+import BudgetVersionDetail from './pages/budget/BudgetVersionDetail'
+import BudgetVsActual from './pages/budget/BudgetVsActual'
+import Budgets from './pages/budget/Budgets'
+import Currencies from './pages/currency/Currencies'
+import ExchangeRates from './pages/currency/ExchangeRates'
+import TaxCodeDetail from './pages/tax/TaxCodeDetail'
+import TaxCodes from './pages/tax/TaxCodes'
+import TaxReport from './pages/tax/TaxReport'
+import TaxTransactions from './pages/tax/TaxTransactions'
 import AccountMappings from './pages/accounting/AccountMappings'
 import AccountingHome from './pages/accounting/AccountingHome'
 import ChartOfAccounts from './pages/accounting/ChartOfAccounts'
@@ -105,9 +125,22 @@ const TENANT_NAV: NavItem[] = [
   { to: '/app/akuntansi/pembayaran-kas', label: 'Pembayaran kas', icon: 'card', permission: 'accounting.cash_transaction.view', module: 'ACCOUNTING_CASH_BANK', feature: 'PAYMENT', group: 'Kas & bank' },
   { to: '/app/akuntansi/penerimaan-kas', label: 'Penerimaan kas', icon: 'box', permission: 'accounting.cash_transaction.view', module: 'ACCOUNTING_CASH_BANK', feature: 'RECEIPT', group: 'Kas & bank' },
   { to: '/app/akuntansi/rekening-koran', label: 'Rekening koran', icon: 'book', permission: 'accounting.bank_reconciliation.view', module: 'ACCOUNTING_CASH_BANK', feature: 'BANK_RECONCILIATION', group: 'Kas & bank' },
+  // OA4 modules (budget, fixed assets, tax, multi-currency): each needs its own module and feature plus the user's permission (cosmetic; the API enforces).
+  { to: '/app/akuntansi/anggaran', label: 'Anggaran', icon: 'book', permission: 'accounting.budget.view', module: 'ACCOUNTING_BUDGET', feature: 'BUDGET', group: 'Anggaran' },
+  { to: '/app/akuntansi/anggaran-vs-aktual', label: 'Anggaran vs aktual', icon: 'chart', permission: 'accounting.budget.view', module: 'ACCOUNTING_BUDGET', feature: 'BUDGET', group: 'Anggaran' },
+  { to: '/app/akuntansi/aset', label: 'Register aset', icon: 'box', permission: 'accounting.asset.view', module: 'ACCOUNTING_FIXED_ASSET', feature: 'ASSET_REGISTER', group: 'Aset tetap' },
+  { to: '/app/akuntansi/kategori-aset', label: 'Kategori aset', icon: 'grid', permission: 'accounting.asset.view', module: 'ACCOUNTING_FIXED_ASSET', feature: 'ASSET_REGISTER', group: 'Aset tetap' },
+  { to: '/app/akuntansi/penyusutan', label: 'Penyusutan', icon: 'calendar', permission: 'accounting.asset.view', module: 'ACCOUNTING_FIXED_ASSET', feature: 'DEPRECIATION', group: 'Aset tetap' },
+  { to: '/app/akuntansi/pelepasan-aset', label: 'Pelepasan aset', icon: 'tag', permission: 'accounting.asset.view', module: 'ACCOUNTING_FIXED_ASSET', feature: 'ASSET_REGISTER', group: 'Aset tetap' },
+  { to: '/app/akuntansi/kode-pajak', label: 'Kode pajak', icon: 'tag', permission: 'accounting.tax.view', module: 'ACCOUNTING_TAX', feature: 'TAX_CONFIGURATION', group: 'Pajak' },
+  { to: '/app/akuntansi/transaksi-pajak', label: 'Transaksi pajak', icon: 'list', permission: 'accounting.tax.report.view', module: 'ACCOUNTING_TAX', feature: 'TAX_REPORT', group: 'Pajak' },
+  { to: '/app/akuntansi/laporan-pajak', label: 'Laporan pajak', icon: 'chart', permission: 'accounting.tax.report.view', module: 'ACCOUNTING_TAX', feature: 'TAX_REPORT', group: 'Pajak' },
+  { to: '/app/akuntansi/mata-uang', label: 'Mata uang', icon: 'card', permission: 'accounting.currency.view', module: 'ACCOUNTING_MULTI_CURRENCY', feature: 'EXCHANGE_RATE', group: 'Mata uang' },
+  { to: '/app/akuntansi/kurs', label: 'Kurs', icon: 'scale', permission: 'accounting.exchange_rate.view', module: 'ACCOUNTING_MULTI_CURRENCY', feature: 'EXCHANGE_RATE', group: 'Mata uang' },
   { to: '/app/akuntansi/rekonsiliasi/utang', label: 'Utang vs buku besar', icon: 'scale', permission: 'accounting.reconciliation.ap.view', module: 'ACCOUNTING_AP', feature: 'AP_AGING', group: 'Rekonsiliasi' },
   { to: '/app/akuntansi/rekonsiliasi/piutang', label: 'Piutang vs buku besar', icon: 'scale', permission: 'accounting.reconciliation.ar.view', module: 'ACCOUNTING_AR', feature: 'AR_AGING', group: 'Rekonsiliasi' },
   { to: '/app/akuntansi/rekonsiliasi/kas-bank', label: 'Kas/bank vs buku besar', icon: 'scale', permission: 'accounting.reconciliation.cash_bank.view', module: 'ACCOUNTING_CASH_BANK', feature: 'BANK_RECONCILIATION', group: 'Rekonsiliasi' },
+  { to: '/app/akuntansi/rekonsiliasi/aset-tetap', label: 'Aset tetap vs buku besar', icon: 'scale', permission: 'accounting.asset.reconciliation.view', module: 'ACCOUNTING_FIXED_ASSET', feature: 'ASSET_REGISTER', group: 'Rekonsiliasi' },
   { to: '/app/akuntansi/profil', label: 'Profil akuntansi', icon: 'cog', permission: 'accounting.profile.view', module: 'ACCOUNTING_CORE', group: 'Konfigurasi akuntansi' },
   { to: '/app/akuntansi/periode', label: 'Tahun fiskal & periode', icon: 'calendar', permission: 'accounting.period.view', module: 'ACCOUNTING_CORE', group: 'Konfigurasi akuntansi' },
   { to: '/app/akuntansi/akun', label: 'Bagan akun', icon: 'grid', permission: 'accounting.coa.view', module: 'ACCOUNTING_CORE', group: 'Konfigurasi akuntansi' },
@@ -246,6 +279,29 @@ export default function App() {
             <Route path="rekening-koran" element={<Guard permission="accounting.bank_reconciliation.view" module="ACCOUNTING_CASH_BANK" feature="BANK_RECONCILIATION"><BankStatements /></Guard>} />
             <Route path="rekening-koran/:id" element={<Guard permission="accounting.bank_reconciliation.view" module="ACCOUNTING_CASH_BANK" feature="BANK_RECONCILIATION"><BankStatementDetail /></Guard>} />
             <Route path="rekonsiliasi/kas-bank" element={<Guard permission="accounting.reconciliation.cash_bank.view" module="ACCOUNTING_CASH_BANK" feature="BANK_RECONCILIATION"><CashBankReconciliation /></Guard>} />
+            {/* OA4 */}
+            <Route path="anggaran" element=<Guard permission="accounting.budget.view" module="ACCOUNTING_BUDGET" feature="BUDGET"><Budgets /></Guard> />
+            <Route path="anggaran/:id" element=<Guard permission="accounting.budget.view" module="ACCOUNTING_BUDGET" feature="BUDGET"><BudgetDetail /></Guard> />
+            <Route path="anggaran/:id/versi/:versionId" element=<Guard permission="accounting.budget.view" module="ACCOUNTING_BUDGET" feature="BUDGET"><BudgetVersionDetail /></Guard> />
+            <Route path="anggaran-vs-aktual" element=<Guard permission="accounting.budget.view" module="ACCOUNTING_BUDGET" feature="BUDGET"><BudgetVsActual /></Guard> />
+            <Route path="kategori-aset" element=<Guard permission="accounting.asset.view" module="ACCOUNTING_FIXED_ASSET" feature="ASSET_REGISTER"><AssetCategories /></Guard> />
+            <Route path="aset" element=<Guard permission="accounting.asset.view" module="ACCOUNTING_FIXED_ASSET" feature="ASSET_REGISTER"><Assets /></Guard> />
+            <Route path="aset/baru" element=<Guard permission="accounting.asset.manage" module="ACCOUNTING_FIXED_ASSET" feature="ASSET_REGISTER"><AssetEditor /></Guard> />
+            <Route path="aset/:id" element=<Guard permission="accounting.asset.view" module="ACCOUNTING_FIXED_ASSET" feature="ASSET_REGISTER"><AssetDetail /></Guard> />
+            <Route path="aset/:id/ubah" element=<Guard permission="accounting.asset.manage" module="ACCOUNTING_FIXED_ASSET" feature="ASSET_REGISTER"><AssetEditor /></Guard> />
+            <Route path="penyusutan" element=<Guard permission="accounting.asset.view" module="ACCOUNTING_FIXED_ASSET" feature="DEPRECIATION"><DepreciationRuns /></Guard> />
+            <Route path="penyusutan/:id" element=<Guard permission="accounting.asset.view" module="ACCOUNTING_FIXED_ASSET" feature="DEPRECIATION"><DepreciationRunDetail /></Guard> />
+            <Route path="pelepasan-aset" element=<Guard permission="accounting.asset.view" module="ACCOUNTING_FIXED_ASSET" feature="ASSET_REGISTER"><AssetDisposals /></Guard> />
+            <Route path="pelepasan-aset/baru" element=<Guard permission="accounting.asset.dispose" module="ACCOUNTING_FIXED_ASSET" feature="ASSET_REGISTER"><AssetDisposalEditor /></Guard> />
+            <Route path="pelepasan-aset/:id" element=<Guard permission="accounting.asset.view" module="ACCOUNTING_FIXED_ASSET" feature="ASSET_REGISTER"><AssetDisposalDetail /></Guard> />
+            <Route path="pelepasan-aset/:id/ubah" element=<Guard permission="accounting.asset.dispose" module="ACCOUNTING_FIXED_ASSET" feature="ASSET_REGISTER"><AssetDisposalEditor /></Guard> />
+            <Route path="rekonsiliasi/aset-tetap" element=<Guard permission="accounting.asset.reconciliation.view" module="ACCOUNTING_FIXED_ASSET" feature="ASSET_REGISTER"><AssetReconciliation /></Guard> />
+            <Route path="kode-pajak" element=<Guard permission="accounting.tax.view" module="ACCOUNTING_TAX" feature="TAX_CONFIGURATION"><TaxCodes /></Guard> />
+            <Route path="kode-pajak/:id" element=<Guard permission="accounting.tax.view" module="ACCOUNTING_TAX" feature="TAX_CONFIGURATION"><TaxCodeDetail /></Guard> />
+            <Route path="transaksi-pajak" element=<Guard permission="accounting.tax.report.view" module="ACCOUNTING_TAX" feature="TAX_REPORT"><TaxTransactions /></Guard> />
+            <Route path="laporan-pajak" element=<Guard permission="accounting.tax.report.view" module="ACCOUNTING_TAX" feature="TAX_REPORT"><TaxReport /></Guard> />
+            <Route path="mata-uang" element=<Guard permission="accounting.currency.view" module="ACCOUNTING_MULTI_CURRENCY" feature="EXCHANGE_RATE"><Currencies /></Guard> />
+            <Route path="kurs" element=<Guard permission="accounting.exchange_rate.view" module="ACCOUNTING_MULTI_CURRENCY" feature="EXCHANGE_RATE"><ExchangeRates /></Guard> />
           </Route>
           <Route path="langganan" element={<Guard permission="account.subscription.view"><Subscription /></Guard>} />
           <Route path="penggunaan" element={<Guard permission="account.subscription.view"><Usage /></Guard>} />

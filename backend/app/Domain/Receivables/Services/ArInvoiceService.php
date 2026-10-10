@@ -16,6 +16,8 @@ use App\Domain\Accounting\Services\ReversalService;
 use App\Domain\Accounting\Services\SegregationOfDuties;
 use App\Domain\Accounting\Support\Money;
 use App\Domain\Audit\Services\AuditService;
+use App\Domain\Currency\Services\ForeignDocumentService;
+use App\Domain\Currency\Services\ForeignPostingService;
 use App\Domain\Identity\Models\User;
 use App\Domain\Payables\Models\PaymentTerm;
 use App\Domain\Payables\Services\PaymentTermService;
@@ -25,6 +27,7 @@ use App\Domain\Receivables\Models\ArInvoiceLine;
 use App\Domain\Receivables\Models\ArReceiptAllocation;
 use App\Domain\Receivables\Models\Customer;
 use App\Domain\Shared\DomainException;
+use App\Domain\Tax\Services\TaxDocumentService;
 use App\Support\TenantContext;
 use Brick\Math\BigDecimal;
 use Brick\Math\RoundingMode;
@@ -56,6 +59,9 @@ class ArInvoiceService
         private readonly ArSubledgerService $subledger,
         private readonly AuditService $audit,
         private readonly TenantContext $context,
+        private readonly TaxDocumentService $taxes,
+        private readonly ForeignDocumentService $foreign,
+        private readonly ForeignPostingService $fxPosting,
     ) {}
 
     // ------------------------------------------------------------------------------------------------ queries
@@ -123,6 +129,7 @@ class ArInvoiceService
             $invoice->created_by = $actor->id;
             $invoice->save();
             $this->writeLines($invoice, $prepared['lines']);
+            $this->syncTax($invoice, $prepared, $actor);
             $this->workflow->created($invoice, $actor->id);
             $this->audit->record('receivables.ar_invoice.created', 'ar_invoice', $invoice->id, null, $this->summary($invoice));
 
@@ -142,6 +149,7 @@ class ArInvoiceService
             $invoice->forceFill($prepared['columns']);
             $invoice->save();
             $this->writeLines($invoice, $prepared['lines']);
+            $this->syncTax($invoice, $prepared, $actor);
             $this->audit->record('receivables.ar_invoice.updated', 'ar_invoice', $invoice->id, $before, $this->summary($invoice->refresh()));
 
             return $this->load($invoice);
@@ -174,7 +182,12 @@ class ArInvoiceService
 
     public function cancel(ArInvoice $invoice, User $actor, string $reason): ArInvoice
     {
-        return $this->load($this->workflow->cancel($invoice, $actor, $reason));
+        return DB::transaction(function () use ($invoice, $actor, $reason) {
+            $cancelled = $this->workflow->cancel($invoice, $actor, $reason);
+            $this->taxes->discard(ArInvoice::DOCUMENT_TYPE, $cancelled->id);
+
+            return $this->load($cancelled);
+        });
     }
 
     // ------------------------------------------------------------------------------------------------ posting
@@ -189,20 +202,28 @@ class ArInvoiceService
         return DB::transaction(function () use ($invoice, $actor) {
             $invoice = ArInvoice::query()->lockForUpdate()->findOrFail($invoice->id);
             $this->workflow->assertMayPost($invoice, $actor);
-            $customer = $this->validateForPosting($invoice, $actor);
+            $customer = $this->validateForPosting($invoice, $actor, true);
 
             $lines = ArInvoiceLine::query()->where('ar_invoice_id', $invoice->id)->orderBy('line_number')->get();
-            $payload = $this->payload($invoice, $lines, $customer, (int) $this->workflow->profile()->currency_scale);
+            $rate = $this->foreign->current($invoice, $invoice->posting_date->toDateString(), true); // the rate row is held until this posting commits
+            $payload = $this->payload($invoice, $lines, $customer, $this->foreign->scaleOf($invoice, $this->workflow->profile()), $this->taxes->postingParts(ArInvoice::DOCUMENT_TYPE, $invoice->id, $rate->foreign()));
+            $converted = $this->fxPosting->invoice($payload, $rate);
+            if ($rate->foreign() && ! $converted['functional_total']->isEqualTo($invoice->functional_total_amount)) {
+                throw new DomainException('The functional total of this invoice no longer matches its exchange rate.', 'EXCHANGE_RATE_CHANGED', 409);
+            }
             $dims = ['branch_id' => $invoice->branch_id, 'business_unit_id' => $invoice->business_unit_id, 'cost_center_id' => $invoice->cost_center_id];
 
             $event = $this->engine->postEvent(
-                'AR_INVOICE_RECOGNIZED', ArInvoice::DOCUMENT_TYPE, $invoice->id, $invoice->posting_date->toDateString(), $payload, $dims, 'POST',
+                'AR_INVOICE_RECOGNIZED', ArInvoice::DOCUMENT_TYPE, $invoice->id, $invoice->posting_date->toDateString(), $converted['payload'], $dims, 'POST',
                 mb_substr("Faktur pelanggan {$customer->code} ".($invoice->customer_reference ?? $invoice->description), 0, 500), $invoice->customer_reference, $actor, $this->authority->canPostSoftClosed($actor),
             );
             $journal = JournalEntry::query()->findOrFail($event->journal_entry_id);
-            $controlAccountId = $this->subledger->controlAccount($journal, $invoice->total_amount);
+            $controlAccountId = $this->subledger->controlAccount($journal, Money::str($converted['functional_total']));
 
-            return $this->load($this->workflow->markPosted($invoice, $actor, $journal, $event, 'AR_INVOICE', 'INV', ['receivable_account_id' => $controlAccountId]));
+            $posted = $this->workflow->markPosted($invoice, $actor, $journal, $event, 'AR_INVOICE', 'INV', ['receivable_account_id' => $controlAccountId]);
+            $this->taxes->markPosted(ArInvoice::DOCUMENT_TYPE, $posted->id, $journal, $posted->document_number, $rate);
+
+            return $this->load($posted);
         });
     }
 
@@ -223,7 +244,10 @@ class ArInvoiceService
             $original = JournalEntry::query()->findOrFail($invoice->journal_entry_id);
             $reversal = $this->reversals->reverse($original, $actor, $reason, $postingDate, $invoice->document_number);
 
-            return $this->load($this->workflow->markReversed($invoice, $actor, $reversal, $reason));
+            $reversed = $this->workflow->markReversed($invoice, $actor, $reversal, $reason);
+            $this->taxes->markReversed(ArInvoice::DOCUMENT_TYPE, $reversed->id, $reversal);
+
+            return $this->load($reversed);
         });
     }
 
@@ -241,7 +265,7 @@ class ArInvoiceService
     // ------------------------------------------------------------------------------------------------ validation
 
     /** Everything posting needs, checked at submit, approve and post: customer, totals, lines, period, readiness. Returns the customer. */
-    private function validateForPosting(ArInvoice $invoice, User $actor): Customer
+    private function validateForPosting(ArInvoice $invoice, User $actor, bool $lock = false): Customer
     {
         $this->authority->assertLedgerWritable($actor);
         $customer = Customer::query()->find($invoice->customer_id) ?? throw new DomainException('The customer no longer exists.', 'CUSTOMER_NOT_FOUND', 422);
@@ -258,7 +282,10 @@ class ArInvoiceService
                 $this->accounts->usable($line->account_id, ['REVENUE'], false, 'account_id', $line->line_number);
             }
         }
+        $this->taxes->assertCurrent(ArInvoice::DOCUMENT_TYPE, $invoice->id, $actor, $lock);
         $postingDate = $invoice->posting_date->toDateString();
+        $this->foreign->assertWritable($actor, $invoice);
+        $this->foreign->current($invoice, $postingDate, $lock);
         $this->readiness->assertCanPost($postingDate, JournalEntry::SYSTEM);
         $this->periods->resolveForPosting($postingDate, $this->authority->canPostSoftClosed($actor));
 
@@ -272,7 +299,6 @@ class ArInvoiceService
      */
     private function prepare(array $data, ?ArInvoice $existing, User $actor, AccountingProfile $profile): array
     {
-        $scale = (int) $profile->currency_scale;
         $field = fn (string $key, mixed $default = null) => array_key_exists($key, $data) ? $data[$key] : ($existing?->{$key} ?? $default);
         $date = fn (mixed $v) => $v instanceof \DateTimeInterface ? $v->format('Y-m-d') : $v;
 
@@ -281,12 +307,12 @@ class ArInvoiceService
         if ($existing === null || $existing->customer_id !== $customer->id) {
             $this->customers->assertUsable($customer);
         }
-        if (isset($data['currency']) && $data['currency'] !== $profile->functional_currency) {
-            throw new DomainException("OA3 books in the functional currency ({$profile->functional_currency}) only.", 'CURRENCY_NOT_SUPPORTED', 422, ['field' => 'currency']);
-        }
 
         $documentDate = $date($field('document_date')) ?? throw new DomainException('The document date is required.', 'DOCUMENT_DATE_REQUIRED', 422);
         $postingDate = $date(array_key_exists('posting_date', $data) ? $data['posting_date'] : ($existing?->posting_date ?? $documentDate));
+        // the currency of the document and the rate for its posting date; amounts are entered with the currency's own decimal places
+        $fx = $this->foreign->prepare($data['currency'] ?? $existing?->currency, $postingDate, $data['exchange_rate_type'] ?? null, $actor, $profile);
+        $scale = $fx['scale'];
 
         $termId = array_key_exists('payment_term_id', $data) ? $data['payment_term_id'] : ($existing ? $existing->payment_term_id : $customer->payment_term_id);
         $term = $termId ? (PaymentTerm::query()->find($termId) ?? throw new DomainException('The payment term does not exist.', 'PAYMENT_TERM_NOT_FOUND', 422, ['field' => 'payment_term_id'])) : null;
@@ -297,9 +323,11 @@ class ArInvoiceService
         $this->scope->assertWritable($dims['branch_id'], $dims['business_unit_id'], $existing?->created_by ?? $actor->id);
 
         $lines = $this->normalizeLines($data['lines'] ?? $this->existingLines($existing), $scale, $dims['branch_id']);
+        $app = $this->taxes->apply(TaxDocumentService::OUTPUT, $lines, substr((string) $documentDate, 0, 10), $scale, $actor);
+        $lines = $app->lines;
         $subtotal = Money::sum(array_column($lines, 'amount'));
         $discount = Money::parse($field('discount_amount'), $scale, 'discount_amount');
-        $tax = Money::parse($field('tax_amount'), $scale, 'tax_amount');
+        $tax = $this->taxes->headerTax($app, $data, $existing?->id ? ArInvoice::DOCUMENT_TYPE : null, $existing?->id, $existing?->tax_amount, $discount, $scale);
         $other = Money::parse($field('other_charges_amount'), $scale, 'other_charges_amount');
         if ($discount->isGreaterThan($subtotal)) {
             throw new DomainException('The discount cannot exceed the subtotal.', 'AR_INVOICE_DISCOUNT_INVALID', 422);
@@ -310,21 +338,30 @@ class ArInvoiceService
             'customer' => $customer,
             'header' => collect($data)->only(['customer_reference', 'document_date', 'posting_date', 'description', 'reference'])->merge(['due_date' => $dueDate])->all(),
             'columns' => [
-                'customer_id' => $customer->id, 'payment_term_id' => $term?->id, 'due_date' => $dueDate, 'due_date_overridden' => $overridden, 'currency' => $profile->functional_currency,
+                'customer_id' => $customer->id, 'payment_term_id' => $term?->id, 'due_date' => $dueDate, 'due_date_overridden' => $overridden,
                 'posting_date' => $postingDate, 'document_date' => $documentDate,
                 'branch_id' => $dims['branch_id'], 'business_unit_id' => $dims['business_unit_id'], 'cost_center_id' => $dims['cost_center_id'],
                 'subtotal_amount' => Money::str($subtotal), 'discount_amount' => Money::str($discount), 'tax_amount' => Money::str($tax),
                 'other_charges_amount' => Money::str($other), 'total_amount' => Money::str($total),
-            ] + ($existing === null ? ['description' => $data['description'] ?? throw new DomainException('The description is required.', 'DESCRIPTION_REQUIRED', 422)] : []),
-            'lines' => $lines,
+            ] + $fx['columns'] + ['functional_total_amount' => $fx['rate']->foreign() ? Money::str($fx['rate']->convert($total)) : null]
+            + ($existing === null ? ['description' => $data['description'] ?? throw new DomainException('The description is required.', 'DESCRIPTION_REQUIRED', 422)] : []),
+            'lines' => $lines, 'tax' => $app, 'tax_date' => substr((string) $documentDate, 0, 10),
         ];
+    }
+
+    /** Keep the DRAFT tax transactions in step with the lines just saved. */
+    private function syncTax(ArInvoice $invoice, array $prepared, User $actor): void
+    {
+        $customer = $prepared['customer'];
+        $this->taxes->sync(ArInvoice::DOCUMENT_TYPE, TaxDocumentService::OUTPUT, $invoice, true, $prepared['tax'], $prepared['tax_date'],
+            ['type' => 'customer', 'id' => $customer->id, 'name' => $customer->name, 'tax_id' => $customer->tax_id], $actor);
     }
 
     /** @return list<array<string,mixed>> */
     private function existingLines(?ArInvoice $invoice): array
     {
         return $invoice === null ? [] : $invoice->lines()->get()->map(fn (ArInvoiceLine $l) => [
-            'description' => $l->description, 'quantity' => $l->quantity, 'unit_price' => $l->unit_price, 'amount' => $l->amount,
+            'description' => $l->description, 'quantity' => $l->quantity, 'unit_price' => $l->unit_price, 'amount' => $l->entered_amount ?? $l->amount, 'tax_code_id' => $l->tax_code_id,
             'account_role' => $l->account_role, 'account_id' => $l->account_id, 'cost_center_id' => $l->cost_center_id, 'metadata' => $l->metadata,
         ])->all();
     }
@@ -377,7 +414,7 @@ class ArInvoiceService
 
             $out[] = [
                 'description' => mb_substr($description, 0, 255), 'quantity' => $quantity ? Money::str($quantity) : null, 'unit_price' => $unitPrice ? Money::str($unitPrice) : null,
-                'amount' => $amount, 'account_role' => $role, 'account_id' => $accountId, 'cost_center_id' => $center,
+                'amount' => $amount, 'tax_code_id' => $line['tax_code_id'] ?? null, 'account_role' => $role, 'account_id' => $accountId, 'cost_center_id' => $center,
                 'metadata' => isset($line['metadata']) && is_array($line['metadata']) ? array_slice($line['metadata'], 0, 20, true) : null,
             ];
         }
@@ -394,6 +431,7 @@ class ArInvoiceService
             $line->forceFill([
                 'ar_invoice_id' => $invoice->id, 'line_number' => $i + 1, 'account_role' => $data['account_role'],
                 'account_id' => $data['account_id'], 'cost_center_id' => $data['cost_center_id'],
+                'tax_code_id' => $data['tax_code_id'] ?? null, 'entered_amount' => isset($data['entered_amount']) ? Money::str($data['entered_amount']) : null,
             ])->save();
         }
     }
@@ -428,7 +466,7 @@ class ArInvoiceService
      * @param  iterable<ArInvoiceLine>  $lines
      * @return array<string,mixed>
      */
-    private function payload(ArInvoice $invoice, iterable $lines, Customer $customer, int $scale): array
+    private function payload(ArInvoice $invoice, iterable $lines, Customer $customer, int $scale, array $tax): array
     {
         $lines = collect($lines)->values();
         $adjustment = BigDecimal::of($invoice->other_charges_amount)->minus($invoice->discount_amount);
@@ -445,10 +483,12 @@ class ArInvoiceService
             ], fn ($v) => $v !== null);
         }
 
-        $net = BigDecimal::of($invoice->subtotal_amount)->minus($invoice->discount_amount)->plus($invoice->other_charges_amount);
+        // with tax codes the output tax is booked by account (the code's role or account); a manual header tax keeps its single tax line
+        $taxAmount = $tax['managed'] ? $tax['recoverable'] : BigDecimal::of($invoice->tax_amount);
+        $net = BigDecimal::of($invoice->total_amount)->minus($taxAmount);
         $payload = [
-            'net' => Money::str($net), 'tax' => Money::str($invoice->tax_amount), 'total' => Money::str($invoice->total_amount),
-            'distribution' => ['net' => $parts],
+            'net' => Money::str($net), 'tax' => Money::str($taxAmount), 'total' => Money::str($invoice->total_amount),
+            'distribution' => ['net' => $parts] + ($tax['parts'] === [] ? [] : ['tax' => $tax['parts']]),
         ];
         if ($customer->receivable_account_id) {
             $payload['role_accounts'] = ['ACCOUNTS_RECEIVABLE' => $customer->receivable_account_id];

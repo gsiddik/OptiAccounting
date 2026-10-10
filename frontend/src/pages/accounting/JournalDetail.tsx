@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ConfirmDialog, FormModal } from '../../components/Modal'
 import { useToast } from '../../components/Toast'
 import { Banner, Button, Card, ErrorNotice, Field, Loading, PageHeader, StatusBadge } from '../../components/ui'
-import { useAccountingAccess, type Journal, type JournalLine } from '../../lib/accounting'
+import { formatAmount, useAccountingAccess, type Journal, type JournalLine } from '../../lib/accounting'
 import { journalTypeLabels } from '../../lib/accountingLabels'
 import { api } from '../../lib/api'
 import { useCapabilities } from '../../lib/capabilities'
@@ -108,7 +108,7 @@ export default function JournalDetail() {
           rows={j.lines ?? []}
           rowKey={(l) => l.id ?? String(l.line_number)}
           columns={[
-            { header: 'Akun', primary: true, cell: (l) => <><span className="mono">{l.account?.code}</span> · {l.account?.name}{l.description && <div className="muted">{l.description}</div>}</> },
+            { header: 'Akun', primary: true, cell: (l) => <><span className="mono">{l.account?.code}</span> · {l.account?.name}{l.description && <div className="muted">{l.description}</div>}{foreignNote(l, j.currency)}</> },
             { header: 'Dimensi', cell: (l) => dimensions(l) },
             { header: 'Debit', align: 'right', cell: (l) => <Side value={l.debit} /> },
             { header: 'Kredit', align: 'right', cell: (l) => <Side value={l.credit} /> },
@@ -182,4 +182,12 @@ function ReverseDialog({ journal, defaultDate, onClose, onDone }: { journal: Jou
       </div>
     </FormModal>
   )
+}
+
+/** What a foreign-currency line was entered as: amount in its own currency and the rate the ledger converted it with (nothing for a functional line). */
+function foreignNote(line: JournalLine, functional: string) {
+  if (line.is_fx_difference) return <div className="muted">Selisih kurs terealisasi</div>
+  if (!line.transaction_currency || line.transaction_currency === functional) return null
+  const amount = /[1-9]/.test(line.transaction_debit ?? '') ? line.transaction_debit : line.transaction_credit
+  return <div className="muted">{line.transaction_currency} <span className="money">{formatAmount(amount)}</span>{line.exchange_rate && <> · kurs <span className="money">{formatAmount(line.exchange_rate)}</span></>}</div>
 }

@@ -36,7 +36,8 @@ class ArAgingService
         foreach ($rows as $row) {
             $overdue = (int) round((strtotime($asOf) - strtotime((string) $row->due_date)) / 86400);
             $bucket = AgingBuckets::keyFor($buckets, $overdue);
-            $amount = BigDecimal::of((string) $row->outstanding_asof);
+            // buckets and totals are in the functional currency; a foreign invoice also shows its own amount and rate in the detail
+            $amount = BigDecimal::of((string) $row->outstanding_functional_asof);
 
             $customers[$row->customer_id] ??= ['customer_id' => $row->customer_id, 'customer_code' => $row->customer_code, 'customer_name' => $row->customer_name, 'invoice_count' => 0, 'buckets' => $zero, 'total' => BigDecimal::zero()];
             $customers[$row->customer_id]['invoice_count']++;
@@ -49,7 +50,8 @@ class ArAgingService
                     'id' => $row->id, 'document_number' => $row->document_number, 'customer_reference' => $row->customer_reference, 'customer_id' => $row->customer_id,
                     'customer_code' => $row->customer_code, 'customer_name' => $row->customer_name, 'posting_date' => substr((string) $row->posting_date, 0, 10), 'due_date' => substr((string) $row->due_date, 0, 10),
                     'days_overdue' => max($overdue, 0), 'bucket' => $bucket, 'total_amount' => Money::str($row->total_amount),
-                    'received_amount' => Money::str($row->received_asof), 'credited_amount' => Money::str($row->credited_asof), 'outstanding_amount' => Money::str($amount),
+                    'received_amount' => Money::str($row->received_asof), 'credited_amount' => Money::str($row->credited_asof), 'outstanding_amount' => Money::str($row->outstanding_asof),
+                    'currency' => $row->currency, 'exchange_rate' => (string) $row->exchange_rate, 'outstanding_functional' => Money::str($amount),
                 ];
             }
         }

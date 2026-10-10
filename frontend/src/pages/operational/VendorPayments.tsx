@@ -10,6 +10,7 @@ import { API, DOC_STATUSES, MODULES, useCashBankAccounts, useModuleAccess, useVe
 import { paymentMethodLabels } from '../../lib/operationalLabels'
 import { useDimensions } from '../accounting/data'
 import { exportQuery, listQuery } from './payables/lists'
+import { DocAmount } from './foreign'
 import type { PaymentRow } from './payables/types'
 import { DimensionFilters, ExportButton, Filters, Money, ReadOnlyNotice } from './shared'
 
@@ -108,7 +109,7 @@ export default function VendorPayments() {
                 { header: 'Tanggal posting', cell: (p) => formatDate(p.posting_date) },
                 { header: 'Akun kas/bank', cell: (p) => (p.cash_bank_account ? <>{p.cash_bank_account.name}<div className="muted mono">{p.cash_bank_account.code}</div></> : <span className="muted">—</span>) },
                 { header: 'Metode', cell: (p) => (p.payment_method ? paymentMethodLabels[p.payment_method] ?? p.payment_method : <span className="muted">—</span>) },
-                { header: 'Jumlah', align: 'right', cell: (p) => <Money value={p.amount} /> },
+                { header: 'Jumlah', align: 'right', cell: (p) => <DocAmount value={p.amount} doc={p} functional={p.functional_amount} /> },
                 { header: 'Dialokasikan', align: 'right', cell: (p) => <Money value={p.allocated_amount} /> },
                 { header: 'Status', cell: (p) => <StatusBadge status={p.status} /> },
               ]}

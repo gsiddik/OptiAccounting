@@ -15,10 +15,12 @@ export type ArLineForm = {
   account_role: string
   account_id: string
   cost_center_id: string
+  /** Optional output tax code (customer invoices with the tax module only; credit notes never carry one). */
+  tax_code_id: string
 }
 
 let counter = 0
-export const emptyArLine = (): ArLineForm => ({ key: `al${++counter}`, description: '', useQuantity: false, quantity: '', unit_price: '', amount: '', account_role: '', account_id: '', cost_center_id: '' })
+export const emptyArLine = (): ArLineForm => ({ key: `al${++counter}`, description: '', useQuantity: false, quantity: '', unit_price: '', amount: '', account_role: '', account_id: '', cost_center_id: '', tax_code_id: '' })
 
 export function arLinesFrom(lines: ArInvoiceLine[] | undefined): ArLineForm[] {
   if (!lines || lines.length === 0) return [emptyArLine()]
@@ -28,10 +30,12 @@ export function arLinesFrom(lines: ArInvoiceLine[] | undefined): ArLineForm[] {
     useQuantity: l.quantity !== null && l.unit_price !== null,
     quantity: plainAmount(l.quantity),
     unit_price: plainAmount(l.unit_price),
-    amount: plainAmount(l.amount),
+    // A taxed line stores the base in `amount`; the editor works with what was entered.
+    amount: plainAmount(l.tax_code_id ? l.entered_amount : l.amount),
     account_role: l.account_role ?? '',
     account_id: l.account_id ?? '',
     cost_center_id: l.cost_center_id ?? '',
+    tax_code_id: l.tax_code_id ?? '',
   }))
 }
 
@@ -42,6 +46,7 @@ export function arLinePayload(l: ArLineForm) {
     account_role: l.account_role || null,
     account_id: l.account_id || null,
     cost_center_id: l.cost_center_id || null,
+    ...(l.tax_code_id ? { tax_code_id: l.tax_code_id } : {}),
   }
 }
 

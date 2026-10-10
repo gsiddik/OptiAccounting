@@ -11,6 +11,7 @@ import { paymentMethodLabels } from '../../lib/operationalLabels'
 import { useDimensions } from '../accounting/data'
 import { exportQuery, listQuery, statusFromSearch } from './payables/lists'
 import { AR_PATH } from './receivables/paths'
+import { DocAmount } from './foreign'
 import type { ReceiptRow } from './receivables/types'
 import { DimensionFilters, ExportButton, Filters, Money, ReadOnlyNotice } from './shared'
 
@@ -110,7 +111,7 @@ export default function CustomerReceipts() {
                 { header: 'Tanggal posting', cell: (r) => formatDate(r.posting_date) },
                 { header: 'Akun kas/bank', cell: (r) => (r.cash_bank_account ? <>{r.cash_bank_account.name}<div className="muted mono">{r.cash_bank_account.code}</div></> : <span className="muted">—</span>) },
                 { header: 'Metode', cell: (r) => (r.receipt_method ? paymentMethodLabels[r.receipt_method] ?? r.receipt_method : <span className="muted">—</span>) },
-                { header: 'Jumlah', align: 'right', cell: (r) => <Money value={r.amount} /> },
+                { header: 'Jumlah', align: 'right', cell: (r) => <DocAmount value={r.amount} doc={r} functional={r.functional_amount} /> },
                 { header: 'Dialokasikan', align: 'right', cell: (r) => <Money value={r.allocated_amount} /> },
                 { header: 'Status', cell: (r) => <StatusBadge status={r.status} /> },
               ]}

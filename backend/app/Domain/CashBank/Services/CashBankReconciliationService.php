@@ -88,12 +88,14 @@ class CashBankReconciliationService
     {
         $live = fn (string $table) => DB::table($table)->where('tenant_id', $tenant)->where('gl_account_id', $gl)->whereDate('posting_date', '<=', $asOf)
             ->where(fn ($q) => $q->where('status', 'POSTED')->orWhere(fn ($r) => $r->where('status', 'REVERSED')->whereDate('reversal_posting_date', '>', $asOf)));
-        $sum = fn ($query, string $column) => BigDecimal::of((string) $query->sum($column));
+        $sum = fn ($query, string $expression) => BigDecimal::of((string) $query->selectRaw("coalesce(sum({$expression}), 0) as total")->value('total'));
 
         $receipts = $sum($live('cash_transactions')->where('kind', 'RECEIPT'), 'amount');
         $payments = $sum($live('cash_transactions')->where('kind', 'PAYMENT'), 'amount');
-        $vendor = $sum($live('vendor_payments'), 'amount');
-        $customer = $sum($live('customer_receipts'), 'amount');
+        // A foreign-currency settlement moves its functional amount through the bank (OA4); a functional one has no functional_amount.
+        $moved = 'coalesce(functional_amount, amount)';
+        $vendor = $sum($live('vendor_payments'), $moved);
+        $customer = $sum($live('customer_receipts'), $moved);
         $expenses = $sum($live('expenses')->where('settlement', 'DIRECT_PAID'), 'total_amount');
 
         return [
