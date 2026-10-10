@@ -106,7 +106,6 @@ export function CurrencyFields({ support, value, onChange, date, doc, error }: {
         <div className="full stack" style={{ gap: 6 }}>
           <RateInfo choice={value} date={date} />
           {savedForeign && <SavedSnapshot doc={savedForeign} functional={support.functional} />}
-          <ExchangeRateLink error={error} />
         </div>
       )}
     </>
