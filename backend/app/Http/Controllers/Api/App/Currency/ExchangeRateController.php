@@ -26,7 +26,10 @@ class ExchangeRateController extends AppController
             'date_from' => ['nullable', 'date_format:Y-m-d'], 'date_to' => ['nullable', 'date_format:Y-m-d'], 'per_page' => ['nullable', 'integer', 'between:1,200'],
         ]);
 
-        return response()->json($this->rates->query($filter)->paginate($filter['per_page'] ?? 50));
+        $page = $this->rates->query($filter)->paginate($filter['per_page'] ?? 50);
+        $this->rates->markInUse($page->getCollection());
+
+        return response()->json($page);
     }
 
     public function show(ExchangeRate $rate): JsonResponse

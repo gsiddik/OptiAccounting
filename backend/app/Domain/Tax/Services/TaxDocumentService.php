@@ -218,9 +218,9 @@ class TaxDocumentService
      * What the Posting Engine books for a document's tax.
      *
      * @return array{managed:bool,recoverable:BigDecimal,total:BigDecimal,parts:list<array<string,mixed>>,cost:array<int,BigDecimal>} `managed`: the document carries tax codes (otherwise its manual header tax stands); `parts`: the recoverable tax by
-     *         account (explicit account or role); `cost`: the non-recoverable tax per line number, added to the cost of that line.
-     *         `$perRow`: one part per tax transaction instead of one per account (a foreign document converts each tax on its own, so the ledger holds the
-     *         exact sum of the functional tax amounts the tax report shows)
+     *                                                                                                                                account (explicit account or role); `cost`: the non-recoverable tax per line number, added to the cost of that line.
+     *                                                                                                                                `$perRow`: one part per tax transaction instead of one per account (a foreign document converts each tax on its own, so the ledger holds the
+     *                                                                                                                                exact sum of the functional tax amounts the tax report shows)
      */
     public function postingParts(string $sourceType, string $docId, bool $perRow = false): array
     {

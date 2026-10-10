@@ -3,7 +3,9 @@
 namespace Tests\Feature\Tax;
 
 use App\Domain\Identity\Models\Tenant;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Tests\Support\AccountingFixtures;
 use Tests\Support\Fixtures;
 use Tests\Support\PayablesFixtures;
@@ -84,7 +86,7 @@ class TaxCodeTest extends TestCase
         $rate = DB::table('tax_rates')->where('tax_code_id', $code['id'])->first();
 
         $this->assertDbRefuses(fn () => DB::table('tax_rates')->insert([
-            'id' => (string) \Illuminate\Support\Str::uuid(), 'tenant_id' => $this->tenant->id, 'tax_code_id' => $code['id'], 'rate' => '5', 'effective_from' => '2026-06-01',
+            'id' => (string) Str::uuid(), 'tenant_id' => $this->tenant->id, 'tax_code_id' => $code['id'], 'rate' => '5', 'effective_from' => '2026-06-01',
             'effective_until' => null, 'created_at' => now(), 'updated_at' => now(),
         ]));
         $this->assertDbRefuses(fn () => DB::table('tax_rates')->where('id', $rate->id)->update(['rate' => '12']));
@@ -153,7 +155,7 @@ class TaxCodeTest extends TestCase
         try {
             DB::transaction($statement);
             $this->fail('The database accepted a change it must refuse.');
-        } catch (\Illuminate\Database\QueryException) {
+        } catch (QueryException) {
             $this->addToAssertionCount(1);
         }
     }

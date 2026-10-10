@@ -229,24 +229,21 @@ return new class extends Migration
     {
         // the per-currency balance of a posted journal leaves out the realised difference line (the functional balance still covers it)
         $patches = [['journal_entries_guard()', [
-            'SELECT transaction_currency FROM journal_lines WHERE tenant_id = NEW.tenant_id AND journal_entry_id = NEW.id'
-                => 'SELECT transaction_currency FROM journal_lines WHERE tenant_id = NEW.tenant_id AND journal_entry_id = NEW.id AND NOT is_fx_difference',
+            'SELECT transaction_currency FROM journal_lines WHERE tenant_id = NEW.tenant_id AND journal_entry_id = NEW.id' => 'SELECT transaction_currency FROM journal_lines WHERE tenant_id = NEW.tenant_id AND journal_entry_id = NEW.id AND NOT is_fx_difference',
         ]]];
 
         // the posted journal carries the functional value of the document
         $patches[] = ['ap_invoices_post_guard()', ['j.total_credit <> NEW.total_amount' => 'j.total_credit <> coalesce(NEW.functional_total_amount, NEW.total_amount)']];
         $patches[] = ['ar_invoices_post_guard()', ['j.total_debit <> NEW.total_amount' => 'j.total_debit <> coalesce(NEW.functional_total_amount, NEW.total_amount)']];
         // a payment's journal balances at the larger of the carrying value and the settlement value: with a loss the cash side is the total, with a gain the payable side is
-        $payment = ['j.total_credit <> NEW.amount OR j.total_debit <> NEW.amount'
-            => 'j.total_credit <> j.total_debit OR j.total_debit <> coalesce(NEW.functional_amount, NEW.amount) + greatest(0, -coalesce(NEW.fx_difference, 0))'];
+        $payment = ['j.total_credit <> NEW.amount OR j.total_debit <> NEW.amount' => 'j.total_credit <> j.total_debit OR j.total_debit <> coalesce(NEW.functional_amount, NEW.amount) + greatest(0, -coalesce(NEW.fx_difference, 0))'];
         $patches[] = ['vendor_payments_post_guard()', $payment];
         $patches[] = ['customer_receipts_post_guard()', $payment];
 
         foreach (['ap_payment_allocations' => ['vendor_payment_id', 'vendor_payments_allocation_check()', 'ap_payment_allocations_guard()'],
             'ar_receipt_allocations' => ['customer_receipt_id', 'customer_receipts_allocation_check()', 'ar_receipt_allocations_guard()']] as $table => [$key, $check, $guard]) {
             // once the allocation took effect its functional values are history
-            $patches[] = [$guard, ['NEW.amount <> OLD.amount OR NEW.tenant_id <> OLD.tenant_id THEN'
-                => 'NEW.amount <> OLD.amount OR NEW.tenant_id <> OLD.tenant_id
+            $patches[] = [$guard, ['NEW.amount <> OLD.amount OR NEW.tenant_id <> OLD.tenant_id THEN' => 'NEW.amount <> OLD.amount OR NEW.tenant_id <> OLD.tenant_id
                    OR (OLD.effective_at IS NOT NULL AND (NEW.carrying_amount IS DISTINCT FROM OLD.carrying_amount OR NEW.settlement_amount IS DISTINCT FROM OLD.settlement_amount)) THEN']];
             // at commit a posted foreign payment settles exactly its functional amount and carries exactly its difference
             $patches[] = [$check, ["IF cur.status <> 'POSTED' AND effective <> 0 THEN" => "IF cur.status = 'POSTED' AND cur.functional_amount IS NOT NULL AND (

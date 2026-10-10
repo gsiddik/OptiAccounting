@@ -3,7 +3,6 @@
 namespace App\Domain\FixedAsset\Services;
 
 use App\Domain\Accounting\Models\Account;
-use App\Domain\Accounting\Models\AccountingProfile;
 use App\Domain\Accounting\Models\FiscalYear;
 use App\Domain\Accounting\Models\JournalEntry;
 use App\Domain\Accounting\Services\AccountGuard;

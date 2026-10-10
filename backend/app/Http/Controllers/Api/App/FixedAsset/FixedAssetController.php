@@ -30,7 +30,10 @@ class FixedAssetController extends AppController
         ]);
         $filter['mine'] = $request->boolean('mine');
 
-        return response()->json($this->assets->query($filter)->paginate($filter['per_page'] ?? 25));
+        $page = $this->assets->query($filter)->paginate($filter['per_page'] ?? 25);
+        $page->getCollection()->transform(fn ($asset) => $asset->setAttribute('net_book_value', $this->assets->netBookValue($asset)));
+
+        return response()->json($page);
     }
 
     public function show(Request $request, FixedAsset $asset): JsonResponse

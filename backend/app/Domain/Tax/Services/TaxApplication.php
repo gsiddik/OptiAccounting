@@ -2,6 +2,8 @@
 
 namespace App\Domain\Tax\Services;
 
+use App\Domain\Tax\Models\TaxCode;
+use App\Domain\Tax\Models\TaxRate;
 use Brick\Math\BigDecimal;
 
 /**
@@ -13,7 +15,7 @@ final class TaxApplication
 {
     /**
      * @param  list<array<string,mixed>>  $lines
-     * @param  array<int,array{code:\App\Domain\Tax\Models\TaxCode,rate:\App\Domain\Tax\Models\TaxRate,calc:array<string,BigDecimal>}>  $facts  line index => facts of a taxed line
+     * @param  array<int,array{code:TaxCode,rate:TaxRate,calc:array<string,BigDecimal>}>  $facts  line index => facts of a taxed line
      */
     public function __construct(public readonly array $lines, public readonly array $facts, public readonly BigDecimal $taxTotal) {}
 

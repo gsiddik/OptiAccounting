@@ -22,6 +22,7 @@ use App\Domain\Shared\DomainException;
 use App\Support\TenantContext;
 use Brick\Math\BigDecimal;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -99,7 +100,7 @@ class AssetDisposalService
             $disposal->created_by = $actor->id;
             try {
                 $disposal->save();
-            } catch (\Illuminate\Database\QueryException $e) {
+            } catch (QueryException $e) {
                 if (($e->errorInfo[0] ?? '') === '23505' && str_contains($e->getMessage(), 'asset_disposals_one_live')) {
                     throw new DomainException('This asset already has a disposal in progress or posted.', 'ASSET_DISPOSAL_EXISTS', 409);
                 }

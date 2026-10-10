@@ -5,6 +5,7 @@ namespace Tests\Feature\FixedAsset;
 use App\Domain\Identity\Models\Tenant;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Tests\Support\AccountingFixtures;
 use Tests\Support\FixedAssetFixtures;
 use Tests\Support\Fixtures;
@@ -296,7 +297,7 @@ class AssetDisposalTest extends TestCase
         $asset = $this->depreciatedAsset();
         $draft = $this->draftDisposal($asset);
         $copy = (array) DB::table('asset_disposals')->where('id', $draft['id'])->first();
-        $copy['id'] = (string) \Illuminate\Support\Str::uuid();
+        $copy['id'] = (string) Str::uuid();
 
         try {
             DB::transaction(fn () => DB::table('asset_disposals')->insert($copy));

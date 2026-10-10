@@ -105,6 +105,9 @@ class FixedAssetRegisterTest extends TestCase
         $after = $this->glFigures($this->tenant);
         $this->assertSame([$before->lines + 2], [(int) $after->lines]);
 
+        $listed = collect($this->getJson(self::FA.'/assets')->assertOk()->json('data'))->firstWhere('id', $asset['id']);
+        $this->assertSame('12000000.0000', $listed['net_book_value'], 'the register list carries the book value');
+
         // A second attempt is refused and posts nothing; the event exists once.
         $this->postJson(self::FA."/assets/{$asset['id']}/capitalize")->assertStatus(409)->assertJsonPath('code', 'ASSET_ALREADY_CAPITALIZED');
         $this->assertEquals($after, $this->glFigures($this->tenant));

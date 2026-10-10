@@ -35,7 +35,8 @@ class DemoSeeder extends Seeder
 
     private const BUNDLES = [
         'STARTER' => ['Starter', ['ACCOUNTING_CORE', 'ACCOUNTING_CASH_BANK', 'ACCOUNTING_REPORTING'], ['USER_LIMIT' => 5, 'BRANCH_LIMIT' => 1, 'BUSINESS_UNIT_LIMIT' => 3]],
-        'BUSINESS' => ['Business', ['ACCOUNTING_CORE', 'ACCOUNTING_CASH_BANK', 'ACCOUNTING_REPORTING', 'ACCOUNTING_AP', 'ACCOUNTING_AR', 'ACCOUNTING_EXPENSE', 'ACCOUNTING_TAX'], ['USER_LIMIT' => 10, 'BRANCH_LIMIT' => 3, 'BUSINESS_UNIT_LIMIT' => 10]],
+        'BUSINESS' => ['Business', ['ACCOUNTING_CORE', 'ACCOUNTING_CASH_BANK', 'ACCOUNTING_REPORTING', 'ACCOUNTING_AP', 'ACCOUNTING_AR', 'ACCOUNTING_EXPENSE', 'ACCOUNTING_TAX',
+            'ACCOUNTING_BUDGET', 'ACCOUNTING_FIXED_ASSET', 'ACCOUNTING_MULTI_CURRENCY'], ['USER_LIMIT' => 10, 'BRANCH_LIMIT' => 3, 'BUSINESS_UNIT_LIMIT' => 10]],
         'ENTERPRISE' => ['Enterprise', null, []], // null = every module in the catalog, no capacity limits
     ];
 
@@ -86,8 +87,9 @@ class DemoSeeder extends Seeder
             'roles' => [
                 'Staf Keuangan' => ['organization.view', 'account.subscription.view', 'audit.view'],
                 'Admin Cabang' => ['organization.view', 'organization.manage', 'access.user.view'],
-                'Akuntan' => [...self::ACCOUNTANT_PERMISSIONS, ...self::ACCOUNTANT_OPERATIONAL_PERMISSIONS],
-                'Manajer Keuangan' => [...self::ACCOUNTANT_PERMISSIONS, ...self::ACCOUNTANT_OPERATIONAL_PERMISSIONS, ...self::MANAGER_OPERATIONAL_PERMISSIONS, 'accounting.journal.approve', 'accounting.journal.post', 'accounting.journal.reverse', 'accounting.period.manage',
+                'Akuntan' => [...self::ACCOUNTANT_PERMISSIONS, ...self::ACCOUNTANT_OPERATIONAL_PERMISSIONS, ...DemoOa4Seeder::ACCOUNTANT_PERMISSIONS],
+                'Manajer Keuangan' => [...self::ACCOUNTANT_PERMISSIONS, ...self::ACCOUNTANT_OPERATIONAL_PERMISSIONS, ...self::MANAGER_OPERATIONAL_PERMISSIONS,
+                    ...DemoOa4Seeder::ACCOUNTANT_PERMISSIONS, ...DemoOa4Seeder::MANAGER_PERMISSIONS, 'accounting.journal.approve', 'accounting.journal.post', 'accounting.journal.reverse', 'accounting.period.manage',
                     'accounting.period.close', 'accounting.opening_balance.manage', 'accounting.opening_balance.post', 'accounting.report.export', 'accounting.coa.manage',
                     'accounting.posting_rule.manage', 'accounting.account_mapping.manage', 'accounting.dimension.manage', 'accounting.profile.manage'],
             ],
@@ -139,6 +141,7 @@ class DemoSeeder extends Seeder
             foreach (self::TENANTS as $definition) {
                 $this->tenant($definition);
             }
+            $this->oa4();
             $this->multiTenantUser();
         });
     }
@@ -146,7 +149,14 @@ class DemoSeeder extends Seeder
     private function bundles(): void
     {
         foreach (self::BUNDLES as $code => [$name, $modules, $capacities]) {
-            if (Bundle::query()->where('code', $code)->exists()) {
+            $existing = Bundle::query()->where('code', $code)->first();
+            if ($existing !== null) {
+                // a demo bundle that predates a module gets it now (the tenants on it follow in oa4())
+                $held = $existing->modules()->pluck('code')->all();
+                if (array_diff($modules ?? [], $held) !== []) {
+                    app(BundleService::class)->update($existing, [], array_values(array_unique([...$held, ...$modules])), null);
+                }
+
                 continue;
             }
             $modules ??= DB::table('modules')->pluck('code')->all();
@@ -213,6 +223,27 @@ class DemoSeeder extends Seeder
 
         if ($d['tenant_status'] !== Tenant::ACTIVE) {
             $tenants->transition($tenant, $d['tenant_status'], 'Demo: '.strtolower($d['tenant_status']));
+        }
+    }
+
+    /**
+     * OA4 for every demo tenant: the entitlements the bundle gained (a database seeded before OA4 lacks them) and, for the tenant with demo books,
+     * the OA4 role permissions and data (budget, fixed assets, tax, multi-currency). Each step skips what exists.
+     */
+    private function oa4(): void
+    {
+        $oa4 = app(DemoOa4Seeder::class);
+        $user = fn (string $email) => User::query()->whereRaw('lower(email) = ?', [strtolower($email)])->firstOrFail();
+
+        foreach (self::TENANTS as $d) {
+            $tenant = Tenant::query()->where('code', $d['code'])->first();
+            if ($tenant === null) {
+                continue;
+            }
+            $oa4->entitle($tenant);
+            if (isset($d['accounting'])) {
+                $oa4->seed($tenant, $user($d['admin'][1]), $user($d['accounting'][0]), $user($d['accounting'][1]));
+            }
         }
     }
 

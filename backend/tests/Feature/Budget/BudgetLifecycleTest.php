@@ -2,9 +2,11 @@
 
 namespace Tests\Feature\Budget;
 
+use App\Domain\Accounting\Services\FiscalCalendarService;
 use App\Domain\Identity\Models\Tenant;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Tests\Support\AccountingFixtures;
 use Tests\Support\BudgetFixtures;
 use Tests\Support\Fixtures;
@@ -33,7 +35,7 @@ class BudgetLifecycleTest extends TestCase
 
         $this->postJson(self::BG.'/budgets', ['code' => 'OPEX-26', 'name' => 'Lain', 'fiscal_year_id' => $this->yearId($this->tenant)])->assertStatus(422)->assertJsonPath('code', 'BUDGET_CODE_TAKEN');
         $this->postJson(self::BG.'/budgets', ['code' => 'bad code!', 'name' => 'X', 'fiscal_year_id' => $this->yearId($this->tenant)])->assertStatus(422)->assertJsonPath('code', 'BUDGET_CODE_INVALID');
-        $this->postJson(self::BG.'/budgets', ['code' => 'NOFY', 'name' => 'X', 'fiscal_year_id' => (string) \Illuminate\Support\Str::uuid()])->assertStatus(422)->assertJsonPath('code', 'FISCAL_YEAR_NOT_FOUND');
+        $this->postJson(self::BG.'/budgets', ['code' => 'NOFY', 'name' => 'X', 'fiscal_year_id' => (string) Str::uuid()])->assertStatus(422)->assertJsonPath('code', 'FISCAL_YEAR_NOT_FOUND');
 
         $this->assertSame(['budget.created'], DB::table('audit_logs')->where('resource_type', 'budget')->where('resource_id', $b['id'])->pluck('action')->all());
         $this->assertSame(['DRAFT'], DB::table('document_transitions')->where('document_type', 'budget')->where('document_id', $b['id'])->pluck('to_status')->all());
@@ -162,7 +164,7 @@ class BudgetLifecycleTest extends TestCase
         $line = DB::table('budget_lines')->where('budget_version_id', $v1)->first();
         $this->assertDbRefuses(fn () => DB::table('budget_lines')->where('id', $line->id)->update(['amount' => '1.0000']));
         $this->assertDbRefuses(fn () => DB::table('budget_lines')->where('id', $line->id)->delete());
-        $this->assertDbRefuses(fn () => DB::table('budget_lines')->insert((array) $line + ['id' => (string) \Illuminate\Support\Str::uuid()] + []));
+        $this->assertDbRefuses(fn () => DB::table('budget_lines')->insert((array) $line + ['id' => (string) Str::uuid()] + []));
 
         // Constraints stand on their own: with the guard trigger off, a second active version or an overlapping window is still refused.
         DB::unprepared('ALTER TABLE budget_versions DISABLE TRIGGER budget_versions_guard');
@@ -182,19 +184,19 @@ class BudgetLifecycleTest extends TestCase
 
         $this->postJson($path, ['amount' => '-5'] + $line)->assertStatus(422)->assertJsonPath('code', 'AMOUNT_INVALID');
         $this->postJson($path, ['amount' => '10.555'] + $line)->assertStatus(422)->assertJsonPath('code', 'AMOUNT_INVALID'); // beyond the currency scale
-        $this->postJson($path, ['account_id' => (string) \Illuminate\Support\Str::uuid()] + $line)->assertStatus(422)->assertJsonPath('code', 'ACCOUNT_NOT_FOUND');
-        $this->postJson($path, ['accounting_period_id' => (string) \Illuminate\Support\Str::uuid()] + $line)->assertStatus(422)->assertJsonPath('code', 'BUDGET_PERIOD_INVALID');
-        $this->postJson($path, ['branch_id' => (string) \Illuminate\Support\Str::uuid()] + $line)->assertStatus(422)->assertJsonPath('code', 'DIMENSION_NOT_FOUND');
+        $this->postJson($path, ['account_id' => (string) Str::uuid()] + $line)->assertStatus(422)->assertJsonPath('code', 'ACCOUNT_NOT_FOUND');
+        $this->postJson($path, ['accounting_period_id' => (string) Str::uuid()] + $line)->assertStatus(422)->assertJsonPath('code', 'BUDGET_PERIOD_INVALID');
+        $this->postJson($path, ['branch_id' => (string) Str::uuid()] + $line)->assertStatus(422)->assertJsonPath('code', 'DIMENSION_NOT_FOUND');
 
         // A period of another fiscal year is refused by the service and by the database.
         $this->inTenant($this->tenant, function () {
-            $calendar = app(\App\Domain\Accounting\Services\FiscalCalendarService::class);
+            $calendar = app(FiscalCalendarService::class);
             $calendar->createFiscalYear(['code' => 'FY2027', 'name' => 'Tahun 2027', 'start_date' => '2027-01-01']);
         });
         $next = $this->period($this->tenant, '2027-01')->id;
         $this->postJson($path, ['accounting_period_id' => $next] + $line)->assertStatus(422)->assertJsonPath('code', 'BUDGET_PERIOD_INVALID');
         $this->assertDbRefuses(fn () => DB::table('budget_lines')->insert([
-            'id' => (string) \Illuminate\Support\Str::uuid(), 'tenant_id' => $this->tenant->id, 'budget_id' => $b['id'], 'budget_version_id' => $v['id'],
+            'id' => (string) Str::uuid(), 'tenant_id' => $this->tenant->id, 'budget_id' => $b['id'], 'budget_version_id' => $v['id'],
             'account_id' => $line['account_id'], 'accounting_period_id' => $next, 'amount' => '1.0000', 'created_at' => now(), 'updated_at' => now(),
         ]), 'fiscal year');
 
@@ -226,7 +228,7 @@ class BudgetLifecycleTest extends TestCase
         $this->putLines($v['id'], [$this->bline($this->tenant, '6100', '2026-03', '10', ['branch_id' => $north]), $this->bline($this->tenant, '6100', '2026-03', '20', ['branch_id' => $south])]);
         $this->postJson(self::BG."/budget-versions/{$v['id']}/lines", $this->bline($this->tenant, '6100', '2026-03', '30'))->assertStatus(422)->assertJsonPath('code', 'BUDGET_LINE_OVERLAP');
         $this->postJson(self::BG."/budget-versions/{$v['id']}/lines", $this->bline($this->tenant, '6100', '2026-03', '30', ['branch_id' => $north]))->assertStatus(422)->assertJsonPath('code', 'BUDGET_LINE_OVERLAP');
-        $this->assertDbRefuses(fn () => DB::table('budget_lines')->insert(['id' => (string) \Illuminate\Support\Str::uuid()] + (array) DB::table('budget_lines')->where('budget_version_id', $v['id'])->first()), 'natural_unique');
+        $this->assertDbRefuses(fn () => DB::table('budget_lines')->insert(['id' => (string) Str::uuid()] + (array) DB::table('budget_lines')->where('budget_version_id', $v['id'])->first()), 'natural_unique');
     }
 
     public function test_a_tenant_cannot_use_accounts_dimensions_budgets_or_versions_of_another_tenant(): void
@@ -255,7 +257,7 @@ class BudgetLifecycleTest extends TestCase
 
         // The database refuses a cross-tenant relation even when the service is bypassed.
         $this->assertDbRefuses(fn () => DB::table('budget_lines')->insert([
-            'id' => (string) \Illuminate\Support\Str::uuid(), 'tenant_id' => $this->tenant->id, 'budget_id' => $b['id'], 'budget_version_id' => $v['id'],
+            'id' => (string) Str::uuid(), 'tenant_id' => $this->tenant->id, 'budget_id' => $b['id'], 'budget_version_id' => $v['id'],
             'account_id' => $foreignAccount, 'accounting_period_id' => $this->periodId($this->tenant, '2026-03'), 'amount' => '1.0000', 'created_at' => now(), 'updated_at' => now(),
         ]), 'foreign key');
     }
@@ -277,7 +279,7 @@ class BudgetLifecycleTest extends TestCase
 
     private function newVersionRow(string $budgetId, int $number): string
     {
-        $id = (string) \Illuminate\Support\Str::uuid();
+        $id = (string) Str::uuid();
         DB::table('budget_versions')->insert(['id' => $id, 'tenant_id' => $this->tenant->id, 'budget_id' => $budgetId, 'version_number' => $number, 'label' => 'Raw', 'status' => 'DRAFT', 'created_at' => now(), 'updated_at' => now()]);
 
         return $id;

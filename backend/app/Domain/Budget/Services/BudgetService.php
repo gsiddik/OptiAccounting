@@ -186,7 +186,7 @@ class BudgetService
                 throw new DomainException('A budget with an approved version cannot be cancelled; close it instead.', 'BUDGET_HAS_APPROVED_VERSION', 409);
             }
             // Open drafts of a cancelled budget are cancelled with it so nothing stays half-finished.
-            BudgetVersion::query()->where('budget_id', $b->id)->whereIn('status', ['DRAFT', 'SUBMITTED', 'REJECTED'])->get()->each(function (BudgetVersion $v) use ($b) {
+            BudgetVersion::query()->where('budget_id', $b->id)->whereIn('status', ['DRAFT', 'SUBMITTED', 'REJECTED'])->get()->each(function (BudgetVersion $v) {
                 $from = $v->status;
                 $v->forceFill(['status' => 'CANCELLED', 'cancelled_by' => $this->context->user()?->id, 'cancelled_at' => now(), 'cancel_reason' => 'Budget cancelled'])->save();
                 $this->workflow->log($v, $from, 'CANCELLED', $this->context->user()?->id, 'Budget cancelled');
@@ -494,7 +494,7 @@ class BudgetService
      * its ancestor (a header covers its subtree); a dimension left empty covers every value of it.
      *
      * @param  list<array<string,mixed>>  $lines
-     * @param  array<string,?string>  $parents account id => parent id
+     * @param  array<string,?string>  $parents  account id => parent id
      */
     private function assertNoOverlap(array $lines, array $parents): void
     {

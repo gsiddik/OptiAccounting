@@ -3,6 +3,7 @@
 namespace Tests\Feature\Tax;
 
 use App\Domain\Identity\Models\Tenant;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Tests\Support\AccountingFixtures;
 use Tests\Support\Fixtures;
@@ -330,14 +331,14 @@ class TaxDocumentTest extends TestCase
             try {
                 DB::transaction(fn () => DB::table('tax_transactions')->where('id', $row->id)->update($change));
                 $this->fail('A posted tax transaction was changed: '.json_encode($change));
-            } catch (\Illuminate\Database\QueryException) {
+            } catch (QueryException) {
                 $this->addToAssertionCount(1);
             }
         }
         try {
             DB::transaction(fn () => DB::table('tax_transactions')->where('id', $row->id)->delete());
             $this->fail('A posted tax transaction was deleted.');
-        } catch (\Illuminate\Database\QueryException) {
+        } catch (QueryException) {
             $this->addToAssertionCount(1);
         }
     }

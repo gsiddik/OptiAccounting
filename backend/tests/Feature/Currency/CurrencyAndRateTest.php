@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Currency;
 
+use App\Domain\Currency\Services\CurrencyService;
 use App\Domain\Identity\Models\Tenant;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
@@ -161,6 +162,8 @@ class CurrencyAndRateTest extends TestCase
 
         $this->deleteJson(self::FX."/exchange-rates/{$used['id']}")->assertStatus(409)->assertJsonPath('code', 'EXCHANGE_RATE_IN_USE');
         $this->getJson(self::FX."/exchange-rates/{$used['id']}")->assertOk()->assertJsonPath('in_use', true);
+        $listed = collect($this->getJson(self::FX.'/exchange-rates')->assertOk()->json('data'))->pluck('in_use', 'id');
+        $this->assertSame([true, false], [$listed[$used['id']], $listed[$unused['id']]], 'the list tells which rates a document cites');
         $this->deleteJson(self::FX."/exchange-rates/{$unused['id']}")->assertNoContent();
         $this->assertSame(1, DB::table('audit_logs')->where('tenant_id', $this->tenant->id)->where('action', 'exchange_rate.deleted')->count());
     }
@@ -220,7 +223,7 @@ class CurrencyAndRateTest extends TestCase
 
         // a tenant that never applied them: the payment is refused and nothing is posted
         $bare = $this->taxTenant('bare');
-        $this->inTenant($bare, fn () => app(\App\Domain\Currency\Services\CurrencyService::class)->create(['code' => 'USD', 'name' => 'US Dollar'], $this->adminOf($bare)));
+        $this->inTenant($bare, fn () => app(CurrencyService::class)->create(['code' => 'USD', 'name' => 'US Dollar'], $this->adminOf($bare)));
         $this->signedIn($bare);
         $this->rate('USD', '15500', '2026-03-01');
         $vendor = $this->vendor($bare);

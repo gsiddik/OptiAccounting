@@ -241,6 +241,23 @@ class ForeignSettlementTest extends TestCase
         $this->assertSame('MATCHED', $this->getJson(self::AR.'/reconciliation/ar?as_of=2026-03-31')->assertOk()->json('status'));
     }
 
+    public function test_the_cash_to_gl_reconciliation_uses_what_the_bank_moved_in_functional_currency(): void
+    {
+        $this->rate('USD', '15800', '2026-03-15');
+        $bank = $this->cashAccount($this->tenant, 'BCA');
+        $vendor = $this->vendor($this->tenant);
+        $customer = $this->customer($this->tenant);
+        $this->postedPayment($vendor, $bank->id, [$this->usdInvoice($vendor, '1000.00')['id'] => '1000.00'], ['currency' => 'USD']);
+        $this->postedReceipt($customer, $bank->id, [$this->usdArInvoice($customer, '500.00')['id'] => '500.00'], ['currency' => 'USD']);
+
+        $row = collect($this->getJson(self::AP.'/reconciliation/cash-bank?as_of=2026-03-31')->assertOk()->json('accounts'))->firstWhere('code', 'BCA');
+        // 1 000 USD paid and 500 USD received, both at 15 800: the bank moved functional amounts, not the USD figures
+        $this->assertSame(['15800000.0000', '7900000.0000', '-7900000.0000', '0.0000', 'MATCHED'], [
+            $row['documents']['vendor_payments'], $row['documents']['customer_receipts'], $row['documents']['net'], $row['documents']['difference'], $row['documents']['status'],
+        ]);
+        $this->assertSame('-7900000.0000', $row['book_balance']);
+    }
+
     public function test_a_credit_note_cannot_be_raised_against_a_foreign_invoice(): void
     {
         $customer = $this->customer($this->tenant);

@@ -33,6 +33,7 @@ use App\Domain\Payables\Services\VendorService;
 use App\Domain\Shared\DomainException;
 use App\Domain\Tax\Services\TaxDocumentService;
 use App\Support\TenantContext;
+use Brick\Math\BigDecimal;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 
@@ -358,7 +359,7 @@ class ExpenseService
         }
         $app = $this->taxes->apply(TaxDocumentService::INPUT, [['amount' => $entered, 'tax_code_id' => $taxCodeId]], substr((string) $expenseDate, 0, 10), $scale, $actor);
         $net = $app->lines[0]['amount'];
-        $tax = $this->taxes->headerTax($app, $data, $existing?->id ? Expense::DOCUMENT_TYPE : null, $existing?->id, $existing?->tax_amount, \Brick\Math\BigDecimal::zero(), $scale);
+        $tax = $this->taxes->headerTax($app, $data, $existing?->id ? Expense::DOCUMENT_TYPE : null, $existing?->id, $existing?->tax_amount, BigDecimal::zero(), $scale);
         $total = $net->plus($tax);
 
         $vendor = $cash = null;
@@ -423,15 +424,15 @@ class ExpenseService
     {
         $accountId = $expense->account_id ?? $category->account_id;
         $part = array_filter([
-            'amount' => Money::str(\Brick\Math\BigDecimal::of($expense->net_amount)->plus($tax['cost'][0] ?? 0)), // a non-recoverable tax is a cost of the expense
+            'amount' => Money::str(BigDecimal::of($expense->net_amount)->plus($tax['cost'][0] ?? 0)), // a non-recoverable tax is a cost of the expense
             'account_id' => $accountId, 'account_role' => $accountId ? null : $category->account_role,
             'description' => mb_substr($expense->description, 0, 255), 'cost_center_id' => $expense->cost_center_id,
         ], fn ($v) => $v !== null);
 
         // with a tax code the recoverable tax is booked by account and the rest sits in the cost; a manual tax keeps its single tax line
-        $taxAmount = $tax['managed'] ? $tax['recoverable'] : \Brick\Math\BigDecimal::of($expense->tax_amount);
+        $taxAmount = $tax['managed'] ? $tax['recoverable'] : BigDecimal::of($expense->tax_amount);
         $payload = [
-            'net' => Money::str(\Brick\Math\BigDecimal::of($expense->total_amount)->minus($taxAmount)), 'tax' => Money::str($taxAmount), 'total' => Money::str($expense->total_amount),
+            'net' => Money::str(BigDecimal::of($expense->total_amount)->minus($taxAmount)), 'tax' => Money::str($taxAmount), 'total' => Money::str($expense->total_amount),
             'distribution' => ['net' => [$part]] + ($tax['parts'] === [] ? [] : ['tax' => $tax['parts']]),
         ];
         if ($expense->settlement === Expense::PAYABLE && $vendor?->payable_account_id) {

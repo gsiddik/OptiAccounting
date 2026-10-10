@@ -12,6 +12,8 @@ use Brick\Math\Exception\MathException;
 use Brick\Math\RoundingMode;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\QueryException;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -40,6 +42,21 @@ class ExchangeRateService
         $rate->setAttribute('in_use', $this->inUse($rate));
 
         return $rate;
+    }
+
+    /** Sets `in_use` on every rate of a list page with one query per document table, not one per rate. @param Collection<int, ExchangeRate> $rates */
+    public function markInUse(Collection $rates): void
+    {
+        $ids = $rates->pluck('id')->all();
+        $used = [];
+        foreach (['ap_invoices', 'ar_invoices', 'vendor_payments', 'customer_receipts'] as $table) {
+            foreach (DB::table($table)->whereIn('exchange_rate_id', $ids)->distinct()->pluck('exchange_rate_id') as $id) {
+                $used[$id] = true;
+            }
+        }
+        foreach ($rates as $rate) {
+            $rate->setAttribute('in_use', isset($used[$rate->id]));
+        }
     }
 
     public function inUse(ExchangeRate $rate): bool
@@ -159,7 +176,7 @@ class ExchangeRateService
     private function date(mixed $value): string
     {
         $value = $value instanceof \DateTimeInterface ? $value->format('Y-m-d') : (is_string($value) ? substr($value, 0, 10) : null);
-        if ($value === null || ! preg_match('/^\d{4}-\d{2}-\d{2}$/', $value) || \Illuminate\Support\Carbon::createFromFormat('Y-m-d', $value)->format('Y-m-d') !== $value) {
+        if ($value === null || ! preg_match('/^\d{4}-\d{2}-\d{2}$/', $value) || Carbon::createFromFormat('Y-m-d', $value)->format('Y-m-d') !== $value) {
             throw new DomainException('The effective date is required (YYYY-MM-DD).', 'EXCHANGE_RATE_DATE_INVALID', 422, ['field' => 'effective_date']);
         }
 

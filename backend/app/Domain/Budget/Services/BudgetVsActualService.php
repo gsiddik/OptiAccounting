@@ -4,8 +4,8 @@ namespace App\Domain\Budget\Services;
 
 use App\Domain\Accounting\Models\Account;
 use App\Domain\Accounting\Models\AccountingPeriod;
-use App\Domain\Accounting\Services\DocumentScope;
 use App\Domain\Accounting\Services\BalanceCalculator;
+use App\Domain\Accounting\Services\DocumentScope;
 use App\Domain\Accounting\Support\Money;
 use App\Domain\Budget\Models\Budget;
 use App\Domain\Budget\Models\BudgetVersion;
@@ -107,6 +107,7 @@ class BudgetVsActualService
 
             if ($match !== null) {
                 $rows[$match]['actual'] = $rows[$match]['actual']->plus(BalanceCalculator::signed($net, $rows[$match]['account']->normal_balance));
+
                 continue;
             }
             $account = $accounts[$fact->account_id];

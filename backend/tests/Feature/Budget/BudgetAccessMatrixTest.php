@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Budget;
 
+use Illuminate\Support\Facades\DB;
 use Tests\Support\AccountingFixtures;
 use Tests\Support\BudgetFixtures;
 use Tests\Support\Fixtures;
@@ -26,7 +27,7 @@ class BudgetAccessMatrixTest extends TestCase
         $draft = $this->newVersion($made['budget']['id'], ['copy_from_version_id' => $made['version']['id']]);
         $this->ids = [
             'budget' => $made['budget']['id'], 'version' => $draft['id'],
-            'line' => (string) \Illuminate\Support\Facades\DB::table('budget_lines')->where('budget_version_id', $draft['id'])->value('id'),
+            'line' => (string) DB::table('budget_lines')->where('budget_version_id', $draft['id'])->value('id'),
         ];
     }
 
