@@ -13,6 +13,7 @@ use Illuminate\Support\Str;
  */
 class OutboxPublisher
 {
+    /** Registered in the OptiNexus event catalog under the original application code; the OptiEntry rename keeps it. */
     public const EVENT_PREFIX = 'optiaccounting.';
 
     public const CHANNEL_OPTINEXUS = 'OPTINEXUS';

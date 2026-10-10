@@ -2,7 +2,7 @@
 # behind nginx, queue worker, scheduler, and the React dev server.
 # MongoDB is intentionally absent until OA7 justifies analytical projections.
 x-backend-env: &backend-env
-  APP_NAME: OptiAccounting
+  APP_NAME: OptiEntry
   APP_ENV: ${APP_ENV:-local}
   APP_KEY: ${APP_KEY:?set APP_KEY in .env (php artisan key:generate --show)}
   APP_DEBUG: ${APP_DEBUG:-true}
@@ -11,6 +11,7 @@ x-backend-env: &backend-env
   DB_CONNECTION: pgsql
   DB_HOST: postgres
   DB_PORT: 5432
+  # Database/volume identifiers keep the former product name (OptiAccounting) so existing installations keep their data.
   DB_DATABASE: ${DB_DATABASE:-optiaccounting}
   DB_USERNAME: ${DB_USERNAME:-optiaccounting}
   DB_PASSWORD: ${DB_PASSWORD:-optiaccounting}
@@ -21,7 +22,7 @@ x-backend-env: &backend-env
   SESSION_DRIVER: redis
   QUEUE_CONNECTION: redis
   LOG_CHANNEL: stderr
-  OPTIACCOUNTING_IDENTITY_MODE: ${OPTIACCOUNTING_IDENTITY_MODE:-standalone}
+  OPTIENTRY_IDENTITY_MODE: ${OPTIENTRY_IDENTITY_MODE:-${OPTIACCOUNTING_IDENTITY_MODE:-standalone}}
   OPTINEXUS_BASE_URL: ${OPTINEXUS_BASE_URL:-}
 
 x-backend-depends: &backend-depends
@@ -63,7 +64,7 @@ services:
     build:
       context: .
       dockerfile: docker/backend/Dockerfile
-    image: optiaccounting-backend:local
+    image: optientry-backend:local
     restart: unless-stopped
     depends_on: *backend-depends
     environment:
@@ -71,14 +72,14 @@ services:
       RUN_MIGRATIONS: "true"
 
   queue-worker:
-    image: optiaccounting-backend:local
+    image: optientry-backend:local
     restart: unless-stopped
     depends_on: *backend-depends
     environment: *backend-env
     command: ["php", "artisan", "queue:work", "--tries=3", "--max-time=3600"]
 
   scheduler:
-    image: optiaccounting-backend:local
+    image: optientry-backend:local
     restart: unless-stopped
     depends_on: *backend-depends
     environment: *backend-env

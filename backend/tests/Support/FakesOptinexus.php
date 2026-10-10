@@ -34,18 +34,18 @@ trait FakesOptinexus
     protected function nexusUp(): void
     {
         config([
-            'optiaccounting.identity_mode' => 'optinexus',
-            'optiaccounting.optinexus.base_url' => self::NEXUS_URL,
-            'optiaccounting.optinexus.application_code' => 'optiaccounting',
-            'optiaccounting.optinexus.sso.client_id' => 'oa-client',
-            'optiaccounting.optinexus.sso.client_secret' => 'oa-secret',
-            'optiaccounting.optinexus.sso.redirect_uri' => 'https://api.test/api/v1/auth/sso/callback',
-            'optiaccounting.optinexus.sso.frontend_url' => self::FRONTEND,
-            'optiaccounting.optinexus.service.client_id' => 'svc-client',
-            'optiaccounting.optinexus.service.client_secret' => 'svc-secret',
-            'optiaccounting.optinexus.provision_tenants' => true,
-            'optiaccounting.optinexus.permission_ttl_seconds' => 300,
-            'optiaccounting.optinexus.entitlement_ttl_seconds' => 300,
+            'optientry.identity_mode' => 'optinexus',
+            'optientry.optinexus.base_url' => self::NEXUS_URL,
+            'optientry.optinexus.application_code' => 'optiaccounting',
+            'optientry.optinexus.sso.client_id' => 'oa-client',
+            'optientry.optinexus.sso.client_secret' => 'oa-secret',
+            'optientry.optinexus.sso.redirect_uri' => 'https://api.test/api/v1/auth/sso/callback',
+            'optientry.optinexus.sso.frontend_url' => self::FRONTEND,
+            'optientry.optinexus.service.client_id' => 'svc-client',
+            'optientry.optinexus.service.client_secret' => 'svc-secret',
+            'optientry.optinexus.provision_tenants' => true,
+            'optientry.optinexus.permission_ttl_seconds' => 300,
+            'optientry.optinexus.entitlement_ttl_seconds' => 300,
         ]);
 
         $this->nexus = [
@@ -95,7 +95,7 @@ trait FakesOptinexus
         return $over + [
             'sub' => self::NEXUS_USER, 'email' => 'siti@example.test', 'email_verified' => true, 'name' => 'Siti Aminah',
             'tenant_id' => self::NEXUS_TENANT, 'tenant_code' => 'ACME-ID', 'tenant_name' => 'PT Acme Indonesia',
-            'groups' => ['optiaccounting'], 'apps' => [['code' => 'optiaccounting', 'name' => 'OptiAccounting', 'launch_url' => self::FRONTEND]],
+            'groups' => ['optiaccounting'], 'apps' => [['code' => 'optiaccounting', 'name' => 'OptiEntry', 'launch_url' => self::FRONTEND]],
         ];
     }
 

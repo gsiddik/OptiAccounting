@@ -10,7 +10,10 @@ use Illuminate\Console\Command;
 
 class NexusSyncEntitlements extends Command
 {
-    protected $signature = 'optiaccounting:nexus:sync-entitlements {--tenant= : Only this local tenant id}';
+    /** Former name (before the OptiEntry rename); kept so existing cron entries and runbooks keep working. */
+    protected $aliases = ['optiaccounting:nexus:sync-entitlements'];
+
+    protected $signature = 'optientry:nexus:sync-entitlements {--tenant= : Only this local tenant id}';
 
     protected $description = 'Project the OptiNexus subscription, modules, features and capacity of linked tenants into the local entitlement tables';
 

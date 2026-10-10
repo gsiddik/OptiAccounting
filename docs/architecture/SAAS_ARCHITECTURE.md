@@ -5,17 +5,17 @@ Status: MASTER baseline. OA0 implements it (`docs/specs/OA0.md`).
 ## 1. Two identity modes, one codebase
 
 Project instruction: in SaaS mode, tenant, user, role, permission and events are
-managed in **OptiNexus**; in standalone mode OptiAccounting uses its own user,
+managed in **OptiNexus**; in standalone mode OptiEntry uses its own user,
 role and permission management. The MASTER/OA0 briefs (written before
 OptiNexus existed) describe the standalone model. Both are kept:
 
 | Concern | `standalone` | `optinexus` |
 |---|---|---|
-| Config | `OPTIACCOUNTING_IDENTITY_MODE=standalone` (default) | `OPTIACCOUNTING_IDENTITY_MODE=optinexus` + `OPTINEXUS_*` |
+| Config | `OPTIENTRY_IDENTITY_MODE=standalone` (default) | `OPTIENTRY_IDENTITY_MODE=optinexus` + `OPTINEXUS_*` |
 | Login | Local password (Sanctum) | OIDC (authorization code + PKCE) against OptiNexus; local password only as break-glass for platform admins |
 | Tenants | Created in the local Platform Portal | Authority: OptiNexus. Local `tenants` row is a projection linked by `optinexus_tenant_id`, created by an admin link or provisioning, never from an unverified claim |
 | Users / memberships | Local | Authority: OptiNexus (`sub`, `tenant_id` claims). Local rows are projections linked by `optinexus_subject`; deactivation via Back-Channel Logout `access-revoked` |
-| Roles / permissions | Local Role Editor | OptiAccounting registers its permission catalog as OptiNexus application capabilities; role composition and assignment happen in OptiNexus; effective permissions are pulled (`/auth/context` or `/authorization/check`) and cached per user+tenant with short TTL and event-driven invalidation. Local Role Editor is read-only |
+| Roles / permissions | Local Role Editor | OptiEntry registers its permission catalog as OptiNexus application capabilities; role composition and assignment happen in OptiNexus; effective permissions are pulled (`/auth/context` or `/authorization/check`) and cached per user+tenant with short TTL and event-driven invalidation. Local Role Editor is read-only |
 | Subscription / module entitlement | Local subscription + entitlements | Authority: OptiNexus subscriptions/entitlements (`/entitlements/check`), projected into local entitlement rows with `source = OPTINEXUS` |
 | Data scope (branch/BU/cost center) | Local | Local (accounting-specific organizational scope), unless OptiNexus later exposes an equivalent scope contract |
 | Business events | Local outbox (consumers: integrations) | Local outbox relayed to OptiNexus `POST /api/v1/events` (`optiaccounting.*` keys), like OptiFleet D9 |

@@ -1,4 +1,6 @@
-# OptiAccounting
+# OptiEntry
+
+_Formerly OptiAccounting. The repository name and a few registered identifiers keep the former name, see `docs/status/RENAME_OPTIENTRY.md`._
 
 Double-entry accounting platform, delivered from one codebase as a multi-tenant
 SaaS in the OptiNexus ecosystem or as a standalone product. Integration-ready
@@ -58,11 +60,11 @@ API on `http://localhost:8000`, SPA on `http://localhost:5173`.
 
 - `php artisan db:seed` — production-safe (catalogs, permissions, templates; no tenants, no passwords).
 - `php artisan db:seed --class=DemoSeeder` — demo data; logins in `docs/DEMO.md`.
-- First platform administrator in a real environment: `php artisan optiaccounting:bootstrap-platform-admin`.
+- First platform administrator in a real environment: `php artisan optientry:bootstrap-platform-admin`.
 
 ## Identity mode
 
-`OPTIACCOUNTING_IDENTITY_MODE=standalone` (default, local users/roles) or
+`OPTIENTRY_IDENTITY_MODE=standalone` (default, local users/roles) or
 `optinexus` (OptiNexus manages tenants, users, roles, permissions and events).
 See `docs/architecture/SAAS_ARCHITECTURE.md`, the adapter design in
 `docs/architecture/OPTINEXUS_ADAPTER.md` and, to connect an installation to

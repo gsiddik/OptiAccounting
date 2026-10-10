@@ -30,7 +30,7 @@ class SsoLoginService
         Cache::put(
             'optinexus.sso.ticket.'.hash('sha256', $ticket),
             ['user_id' => $user->id, 'tenant_id' => $tenant->id],
-            (int) config('optiaccounting.optinexus.sso.ticket_ttl_seconds'),
+            (int) config('optientry.optinexus.sso.ticket_ttl_seconds'),
         );
 
         return $ticket;

@@ -90,7 +90,7 @@ class AccountLinker
 
     private function provision(array $claims): Tenant
     {
-        if (! config('optiaccounting.optinexus.provision_tenants')) {
+        if (! config('optientry.optinexus.provision_tenants')) {
             throw new SsoException('tenant_not_linked');
         }
 

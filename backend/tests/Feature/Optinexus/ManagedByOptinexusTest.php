@@ -5,7 +5,7 @@ namespace Tests\Feature\Optinexus;
 use App\Domain\AccessControl\Models\Role;
 use Illuminate\Support\Facades\DB;
 
-/** OA0-N: what OptiNexus owns is read-only here; what OptiAccounting owns stays editable. */
+/** OA0-N: what OptiNexus owns is read-only here; what OptiEntry owns stays editable. */
 class ManagedByOptinexusTest extends OptinexusTestCase
 {
     public function test_members_and_roles_are_managed_in_optinexus_for_everyone_even_a_full_administrator(): void
@@ -54,7 +54,7 @@ class ManagedByOptinexusTest extends OptinexusTestCase
         $this->assertSame(0, DB::table('subscriptions')->count());
     }
 
-    public function test_what_optiaccounting_owns_stays_editable(): void
+    public function test_what_optientry_owns_stays_editable(): void
     {
         $session = $this->signedIn();
         [, $other] = $this->member($session['tenant']);
@@ -74,7 +74,7 @@ class ManagedByOptinexusTest extends OptinexusTestCase
 
     public function test_standalone_installations_are_unaffected(): void
     {
-        config(['optiaccounting.identity_mode' => 'standalone']);
+        config(['optientry.identity_mode' => 'standalone']);
         $tenant = $this->tenant('plain-co');
         $platform = $this->asPlatform();
 

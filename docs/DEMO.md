@@ -9,7 +9,7 @@ php artisan db:seed --class=DemoSeeder           # demo bundles, operators, 4 te
 ```
 
 Demo password for every account below: `Demo#Passw0rd2026`
-(override with `OPTIACCOUNTING_DEMO_PASSWORD` before seeding). Never reuse it outside demo.
+(override with `OPTIENTRY_DEMO_PASSWORD` before seeding). Never reuse it outside demo.
 
 ## Platform Portal (operators)
 
@@ -84,7 +84,7 @@ platform operator composes bundles in the Platform Portal.
 ## First platform administrator (real installations)
 
 ```bash
-OPTIACCOUNTING_BOOTSTRAP_PASSWORD='<strong password>' php artisan optiaccounting:bootstrap-platform-admin admin@your-company.com --name="Your Name"
+OPTIENTRY_BOOTSTRAP_PASSWORD='<strong password>' php artisan optientry:bootstrap-platform-admin admin@your-company.com --name="Your Name"
 ```
 
 Without the environment variable the command asks for the password (hidden). Running it again changes nothing.

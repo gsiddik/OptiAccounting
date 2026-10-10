@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 
 /**
- * OptiAccounting's machine-to-machine client of the OptiNexus API (client credentials). One platform-level
+ * OptiEntry's machine-to-machine client of the OptiNexus API (client credentials). One platform-level
  * service account acts for every tenant; the tenant is named in the request body or path, never taken from a
  * browser. Any HTTP status is returned to the caller; only "could not talk to OptiNexus at all" raises
  * IdentityProviderUnavailable, so each caller decides what a 4xx means.
@@ -46,7 +46,7 @@ class NexusApi
         $token = $this->token();
         $results = [];
 
-        foreach (array_chunk($bodies, (int) config('optiaccounting.optinexus.permission_pool_size'), true) as $chunk) {
+        foreach (array_chunk($bodies, (int) config('optientry.optinexus.permission_pool_size'), true) as $chunk) {
             try {
                 $responses = Http::pool(function (Pool $pool) use ($chunk, $path, $token) {
                     foreach ($chunk as $key => $body) {
@@ -97,7 +97,7 @@ class NexusApi
     {
         return $request->acceptJson()
             ->withHeaders(['X-Correlation-Id' => (string) Str::uuid()])
-            ->timeout((int) config('optiaccounting.optinexus.service.timeout_seconds'))
+            ->timeout((int) config('optientry.optinexus.service.timeout_seconds'))
             ->withoutRedirecting();
     }
 
@@ -118,11 +118,11 @@ class NexusApi
         }
 
         try {
-            $response = Http::asForm()->timeout((int) config('optiaccounting.optinexus.service.timeout_seconds'))
+            $response = Http::asForm()->timeout((int) config('optientry.optinexus.service.timeout_seconds'))
                 ->post(OptinexusSettings::baseUrl().'/api/v1/oauth/token', [
                     'grant_type' => 'client_credentials',
-                    'client_id' => config('optiaccounting.optinexus.service.client_id'),
-                    'client_secret' => config('optiaccounting.optinexus.service.client_secret'),
+                    'client_id' => config('optientry.optinexus.service.client_id'),
+                    'client_secret' => config('optientry.optinexus.service.client_secret'),
                     'scope' => self::SCOPES,
                 ]);
         } catch (ConnectionException $e) {

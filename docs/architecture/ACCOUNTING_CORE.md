@@ -67,5 +67,5 @@ line is inside the scope, else 404), the dashboard, the dimension catalog, repor
 ## 9. Integration
 `journal.posted` and `journal.reversed` go through the transactional outbox (`optiaccounting.*`, schema_version 1). The OptiNexus manifest is generated from
 the permission table and `EventCatalog`, so OA1 adds its permissions and the two events automatically. **After deploying OA1 an OptiNexus
-administrator must register the new manifest again** (`php artisan optiaccounting:nexus:manifest`, steps in `docs/integration/OPTINEXUS_ONBOARDING.md`);
+administrator must register the new manifest again** (`php artisan optientry:nexus:manifest`, steps in `docs/integration/OPTINEXUS_ONBOARDING.md`);
 until then OptiNexus cannot grant the new `accounting.*` permissions and, in `optinexus` mode, nobody holds them (fails closed). OptiNexus itself is not changed.

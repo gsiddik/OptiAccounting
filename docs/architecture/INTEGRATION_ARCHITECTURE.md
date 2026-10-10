@@ -61,8 +61,8 @@ amounts, tax, currency, vendor, work order and vehicle references.
 
 | Mode | Path | When |
 |---|---|---|
-| A. Via OptiNexus (preferred in `optinexus` mode) | Producer outbox → OptiNexus `POST /api/v1/events` → OptiNexus delivers to OptiAccounting's inbound endpoint (or OptiAccounting pulls a cursor feed through the OptiNexus API Gateway) | Ecosystem SaaS; tenant mapping comes from OptiNexus tenant ids |
-| B. Direct API | Producer → `POST /api/v1/integration/events` with client-credentials token of an OptiAccounting integration connection | Standalone installations, ERP/POS/custom systems |
+| A. Via OptiNexus (preferred in `optinexus` mode) | Producer outbox → OptiNexus `POST /api/v1/events` → OptiNexus delivers to OptiEntry's inbound endpoint (or OptiEntry pulls a cursor feed through the OptiNexus API Gateway) | Ecosystem SaaS; tenant mapping comes from OptiNexus tenant ids |
+| B. Direct API | Producer → `POST /api/v1/integration/events` with client-credentials token of an OptiEntry integration connection | Standalone installations, ERP/POS/custom systems |
 | C. File import | CSVImportAdapter with the same canonical events | Migrations, legacy systems |
 
 Gap recorded for OA6: OptiNexus today fans events out only to its own
@@ -71,7 +71,7 @@ NOTIFICATION; WEBHOOK is declared but not delivered). Mode A needs either an
 application-consumer delivery in OptiNexus or a gateway cursor feed. That is
 an OptiNexus change and an owner decision at OA6 start.
 
-Outbound events from OptiAccounting (e.g. `optiaccounting.journal.posted`,
+Outbound events from OptiEntry (e.g. `optiaccounting.journal.posted`,
 `ap_invoice.paid` callbacks) use a transactional outbox written in the same DB
 transaction as the business change; a relay delivers them after commit with
 retry/backoff. No remote HTTP inside a financial DB transaction.
@@ -95,7 +95,7 @@ AMOUNT_MISMATCH`. An external outage never blocks manual accounting.
 
 OptiFleet owns inventory quantity/valuation source, maintenance, work orders,
 procurement documents, vehicles, tire/component lifecycle and warranty.
-OptiAccounting owns recognition, journals, GL, AP, AR, cash/bank, periods and
+OptiEntry owns recognition, journals, GL, AP, AR, cash/bank, periods and
 statements. Project instruction 8: Cost, Invoice, AP and Payment facts from a
 tenant that also subscribes to OptiFleet-v2 are posted as double-entry journals
 with references back to the source document.
@@ -113,15 +113,15 @@ What OptiFleet-v2 has today (read on 2026-10-08, `main` 7d063c7):
 
 The missing events are OptiFleet-side work (outbox entries) agreed per event
 type at OA6. Payments recorded in OptiFleet are operational records; whether
-they post cash directly or wait for bank confirmation in OptiAccounting is a
+they post cash directly or wait for bank confirmation in OptiEntry is a
 tenant policy (default: post, reconcile in bank reconciliation).
 
 ### 7.1 Owner decision (2026-10-08): direct path, OptiNexus unchanged
 
-- OptiNexus is **not modified** for this integration. OptiFleet-v2 and OptiAccounting talk directly.
-  OptiFleet's existing outbox events to OptiNexus are unaffected; OptiAccounting's own outbound
+- OptiNexus is **not modified** for this integration. OptiFleet-v2 and OptiEntry talk directly.
+  OptiFleet's existing outbox events to OptiNexus are unaffected; OptiEntry's own outbound
   events for OptiNexus remain a separate OA0-N matter.
-- **Chosen shape: OptiAccounting pulls from OptiFleet-v2 on a schedule** (OA6). Reasons:
+- **Chosen shape: OptiEntry pulls from OptiFleet-v2 on a schedule** (OA6). Reasons:
   1. Smallest OptiFleet change: a read-only feed endpoint in new, isolated files; no consumer
      secret, webhook receiver or retry logic inside OptiFleet.
   2. Failure isolation: an OptiFleet outage only delays the next pull; manual accounting never blocks.

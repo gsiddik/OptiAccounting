@@ -39,14 +39,14 @@ class NexusPermissionSource implements PermissionSource
 
                 return $this->pull((string) $link->nexus_tenant, (string) $link->subject)['permissions'];
             },
-            (int) config('optiaccounting.optinexus.permission_ttl_seconds'),
+            (int) config('optientry.optinexus.permission_ttl_seconds'),
         );
     }
 
     /** Stores an answer that was just pulled (sign-in) so the first requests of the session do not ask again. */
     public function prime(string $tenantId, string $tenantUserId, array $permissions): void
     {
-        $ttl = (int) config('optiaccounting.optinexus.permission_ttl_seconds');
+        $ttl = (int) config('optientry.optinexus.permission_ttl_seconds');
         $this->cache->rememberForTenant($tenantId, "nexus-perm:{$tenantUserId}", fn () => array_values($permissions), $ttl);
     }
 

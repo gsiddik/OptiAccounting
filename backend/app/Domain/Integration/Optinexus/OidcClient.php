@@ -34,7 +34,7 @@ class OidcClient
         $verifier = Str::random(64);
         $nonce = Str::random(32);
 
-        Cache::put($this->stateKey($state), ['nonce' => $nonce, 'verifier' => $verifier], (int) config('optiaccounting.optinexus.sso.state_ttl_seconds'));
+        Cache::put($this->stateKey($state), ['nonce' => $nonce, 'verifier' => $verifier], (int) config('optientry.optinexus.sso.state_ttl_seconds'));
 
         return $this->discovery()['authorization_endpoint'].'?'.http_build_query(array_filter([
             'response_type' => 'code',
@@ -66,10 +66,10 @@ class OidcClient
             throw new SsoException('id_token_invalid');
         }
 
-        $timeout = (int) config('optiaccounting.optinexus.service.timeout_seconds');
+        $timeout = (int) config('optientry.optinexus.service.timeout_seconds');
         try {
             $response = Http::asForm()
-                ->withBasicAuth(OptinexusSettings::clientId(), (string) config('optiaccounting.optinexus.sso.client_secret'))
+                ->withBasicAuth(OptinexusSettings::clientId(), (string) config('optientry.optinexus.sso.client_secret'))
                 ->timeout($timeout)
                 ->post($discovery['token_endpoint'], [
                     'grant_type' => 'authorization_code',
@@ -157,7 +157,7 @@ class OidcClient
         // OptiNexus only honours the return address when it is registered on the client (manifest: post_logout_redirect_uris).
         return $endpoint ? $endpoint.'?'.http_build_query([
             'client_id' => OptinexusSettings::clientId(),
-            'post_logout_redirect_uri' => rtrim((string) config('optiaccounting.optinexus.sso.frontend_url'), '/').'/login',
+            'post_logout_redirect_uri' => rtrim((string) config('optientry.optinexus.sso.frontend_url'), '/').'/login',
         ]) : null;
     }
 
@@ -166,7 +166,7 @@ class OidcClient
     {
         return Cache::remember('optinexus.discovery', 3600, function () {
             try {
-                $response = Http::timeout((int) config('optiaccounting.optinexus.service.timeout_seconds'))
+                $response = Http::timeout((int) config('optientry.optinexus.service.timeout_seconds'))
                     ->get(OptinexusSettings::baseUrl().'/.well-known/openid-configuration');
             } catch (ConnectionException $e) {
                 throw new IdentityProviderUnavailable(Str::limit($e->getMessage(), 200));
@@ -219,7 +219,7 @@ class OidcClient
 
         return Cache::remember('optinexus.jwks', 300, function () {
             try {
-                $response = Http::timeout((int) config('optiaccounting.optinexus.service.timeout_seconds'))->get($this->discovery()['jwks_uri']);
+                $response = Http::timeout((int) config('optientry.optinexus.service.timeout_seconds'))->get($this->discovery()['jwks_uri']);
             } catch (ConnectionException $e) {
                 throw new IdentityProviderUnavailable(Str::limit($e->getMessage(), 200));
             }

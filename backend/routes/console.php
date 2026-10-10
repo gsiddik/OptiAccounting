@@ -9,5 +9,5 @@ Artisan::command('inspire', function () {
 })->purpose('Display an inspiring quote');
 
 // OptiNexus adapter (identity mode `optinexus`; both commands do nothing otherwise).
-Schedule::command('optiaccounting:nexus:relay-events')->everyMinute()->withoutOverlapping(10);
-Schedule::command('optiaccounting:nexus:sync-entitlements')->everyFiveMinutes()->withoutOverlapping(10);
+Schedule::command('optientry:nexus:relay-events')->everyMinute()->withoutOverlapping(10);
+Schedule::command('optientry:nexus:sync-entitlements')->everyFiveMinutes()->withoutOverlapping(10);

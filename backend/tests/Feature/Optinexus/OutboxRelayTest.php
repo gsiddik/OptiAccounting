@@ -38,7 +38,7 @@ class OutboxRelayTest extends OptinexusTestCase
 
     public function test_standalone_installations_write_no_outbox_rows(): void
     {
-        config(['optiaccounting.identity_mode' => 'standalone']);
+        config(['optientry.identity_mode' => 'standalone']);
 
         $this->publishEvent();
         app(OutboxPublisher::class)->audit('sso.login', null);
@@ -95,7 +95,7 @@ class OutboxRelayTest extends OptinexusTestCase
 
     public function test_an_unknown_event_type_is_retried_with_backoff_and_parked_after_the_limit(): void
     {
-        config(['optiaccounting.optinexus.relay.max_attempts' => 3]);
+        config(['optientry.optinexus.relay.max_attempts' => 3]);
         $this->publishEvent($this->linkedTenant()->id);
         $this->nexus['event_response'] = [422, ['success' => false, 'error' => ['code' => 'EVENT_INVALID']]];
         $relay = app(OptinexusEventRelay::class);
@@ -115,7 +115,7 @@ class OutboxRelayTest extends OptinexusTestCase
 
         // Once the type is registered, an operator re-queues the parked rows.
         $this->nexus['event_response'] = [201, ['success' => true]];
-        $this->artisan('optiaccounting:nexus:relay-events', ['--retry-failed' => true])->assertSuccessful()->expectsOutputToContain('Delivered 1');
+        $this->artisan('optientry:nexus:relay-events', ['--retry-failed' => true])->assertSuccessful()->expectsOutputToContain('Delivered 1');
         $this->assertSame('DELIVERED', $this->row()->status);
     }
 
@@ -189,7 +189,7 @@ class OutboxRelayTest extends OptinexusTestCase
 
     public function test_the_batch_size_is_respected_and_the_oldest_go_first(): void
     {
-        config(['optiaccounting.optinexus.relay.batch_size' => 2]);
+        config(['optientry.optinexus.relay.batch_size' => 2]);
         $tenant = $this->linkedTenant();
         foreach (['tenant.linked', 'membership.provisioned', 'membership.deactivated'] as $type) {
             $this->publishEvent($tenant->id, $type);
@@ -202,9 +202,9 @@ class OutboxRelayTest extends OptinexusTestCase
     public function test_the_relay_command_does_nothing_outside_optinexus_mode(): void
     {
         $this->publishEvent($this->linkedTenant()->id);
-        config(['optiaccounting.identity_mode' => 'standalone']);
+        config(['optientry.identity_mode' => 'standalone']);
 
-        $this->artisan('optiaccounting:nexus:relay-events')->assertSuccessful()->expectsOutputToContain('nothing to relay');
+        $this->artisan('optientry:nexus:relay-events')->assertSuccessful()->expectsOutputToContain('nothing to relay');
         $this->assertSame('PENDING', $this->row()->status);
     }
 

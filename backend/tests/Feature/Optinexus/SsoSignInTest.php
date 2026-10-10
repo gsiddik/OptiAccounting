@@ -219,7 +219,7 @@ class SsoSignInTest extends TestCase
 
     public function test_provisioning_can_be_switched_off_so_only_linked_tenants_enter(): void
     {
-        config(['optiaccounting.optinexus.provision_tenants' => false]);
+        config(['optientry.optinexus.provision_tenants' => false]);
 
         $this->nexusCallback()->assertRedirectContains('sso_error=tenant_not_linked');
         $this->assertSame(0, Tenant::query()->count());
@@ -266,7 +266,7 @@ class SsoSignInTest extends TestCase
 
     public function test_service_account_failure_at_sign_in_fails_closed_and_creates_nothing(): void
     {
-        config(['optiaccounting.optinexus.service.client_secret' => 'wrong']);
+        config(['optientry.optinexus.service.client_secret' => 'wrong']);
 
         $this->nexusCallback()->assertRedirectContains('sso_error=sso_unavailable');
         $this->assertSame(0, User::query()->count());
@@ -393,16 +393,16 @@ class SsoSignInTest extends TestCase
         $this->getJson('/api/v1/auth/sso/status')->assertOk()
             ->assertExactJson(['identity_mode' => 'optinexus', 'sso_enabled' => true, 'password_login' => true]);
 
-        config(['optiaccounting.optinexus.break_glass_login' => false]);
+        config(['optientry.optinexus.break_glass_login' => false]);
         $this->getJson('/api/v1/auth/sso/status')->assertJsonPath('password_login', false);
 
-        config(['optiaccounting.optinexus.sso.client_secret' => null]);
+        config(['optientry.optinexus.sso.client_secret' => null]);
         $this->getJson('/api/v1/auth/sso/status')->assertJsonPath('sso_enabled', false);
     }
 
     public function test_in_standalone_mode_every_sso_door_is_closed(): void
     {
-        config(['optiaccounting.identity_mode' => 'standalone']);
+        config(['optientry.identity_mode' => 'standalone']);
 
         $this->getJson('/api/v1/auth/sso/status')->assertExactJson(['identity_mode' => 'standalone', 'sso_enabled' => false, 'password_login' => true]);
         $this->get('/api/v1/auth/sso/redirect')->assertRedirectContains('sso_error=sso_disabled');
@@ -422,7 +422,7 @@ class SsoSignInTest extends TestCase
         $this->postJson('/api/v1/auth/login', ['email' => $operator->email, 'password' => self::PASSWORD])
             ->assertOk()->assertJsonPath('scope', 'platform');
 
-        config(['optiaccounting.optinexus.break_glass_login' => false]);
+        config(['optientry.optinexus.break_glass_login' => false]);
         $this->postJson('/api/v1/auth/login', ['email' => $operator->email, 'password' => self::PASSWORD])
             ->assertStatus(403)->assertJsonPath('code', 'LOCAL_LOGIN_DISABLED');
     }

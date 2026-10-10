@@ -1,4 +1,4 @@
-# OptiAccounting — Permanent Development Rules
+# OptiEntry — Permanent Development Rules
 
 Durable rules for every Claude session on this repository. Phase history and
 release status live in `docs/status/*.md`, not here.
@@ -29,14 +29,18 @@ release status live in `docs/status/*.md`, not here.
 
 ## Product boundary
 
-- OptiAccounting owns financial truth (journal, GL, AP, AR, cash/bank, periods,
+- OptiEntry owns financial truth (journal, GL, AP, AR, cash/bank, periods,
   financial statements). External systems (OptiFleet, ERP, POS, …) own their
   operational truth. Never create dual financial truth.
-- OptiAccounting must run, start and be sold without OptiFleet or OptiNexus.
-- Two deployment identity modes from one codebase (`OPTIACCOUNTING_IDENTITY_MODE`):
+- OptiEntry must run, start and be sold without OptiFleet or OptiNexus.
+- Two deployment identity modes from one codebase (`OPTIENTRY_IDENTITY_MODE`):
   `standalone` (local users/tenants/roles/permissions) and `optinexus`
   (OptiNexus is the authority for tenant, user, membership, role, permission,
   application subscription and events). See `SAAS_ARCHITECTURE.md`.
+- Product name: OptiEntry (formerly OptiAccounting). Identifiers already registered in OptiNexus or persisted
+  in databases keep the former name (application code, `optiaccounting.*` permission/event keys, database
+  names); `OPTIACCOUNTING_*` env vars and `optiaccounting:*` artisan names still work as fallbacks. Do not
+  rename them without an owner-approved migration plan (`docs/status/RENAME_OPTIENTRY.md`).
 
 ## Stack and conventions
 

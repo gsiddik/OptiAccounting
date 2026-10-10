@@ -15,7 +15,8 @@ class ManifestAndCommandsTest extends OptinexusTestCase
     {
         $manifest = app(OptinexusManifest::class)->build();
 
-        $this->assertSame('optiaccounting', $manifest['application']['application_code']);
+        $this->assertSame('optiaccounting', $manifest['application']['application_code'], 'the registered application code is kept across the OptiEntry rename');
+        $this->assertSame('OptiEntry', $manifest['application']['name']);
 
         $codes = DB::table('permissions')->where('scope', 'tenant')->pluck('code')->all();
         $this->assertEqualsCanonicalizing(array_map(fn ($c) => "optiaccounting.{$c}", $codes), array_column($manifest['permissions'], 'permission_key'));
@@ -46,7 +47,7 @@ class ManifestAndCommandsTest extends OptinexusTestCase
     public function test_the_manifest_command_prints_json_and_never_a_secret(): void
     {
         $buffer = new BufferedOutput;
-        $this->assertSame(0, Artisan::call('optiaccounting:nexus:manifest', [], $buffer));
+        $this->assertSame(0, Artisan::call('optientry:nexus:manifest', [], $buffer));
 
         $output = $buffer->fetch();
         $decoded = json_decode($output, true);
@@ -58,38 +59,38 @@ class ManifestAndCommandsTest extends OptinexusTestCase
 
     public function test_the_check_command_passes_against_a_healthy_optinexus(): void
     {
-        $this->artisan('optiaccounting:nexus:check')->assertSuccessful()
+        $this->artisan('optientry:nexus:check')->assertSuccessful()
             ->expectsOutputToContain('Discovery document')->expectsOutputToContain('Service account token and scopes');
     }
 
     public function test_the_check_command_names_what_is_wrong(): void
     {
         $this->nexus['service_scopes_ok'] = false;
-        $this->artisan('optiaccounting:nexus:check')->assertFailed()->expectsOutputToContain('lacks a required scope');
+        $this->artisan('optientry:nexus:check')->assertFailed()->expectsOutputToContain('lacks a required scope');
 
         $this->nexus['service_scopes_ok'] = true;
-        config(['optiaccounting.optinexus.service.client_secret' => '']);
-        $this->artisan('optiaccounting:nexus:check')->assertFailed()->expectsOutputToContain('OPTINEXUS_SERVICE_CLIENT_SECRET');
+        config(['optientry.optinexus.service.client_secret' => '']);
+        $this->artisan('optientry:nexus:check')->assertFailed()->expectsOutputToContain('OPTINEXUS_SERVICE_CLIENT_SECRET');
 
-        config(['optiaccounting.optinexus.service.client_secret' => 'svc-secret', 'optiaccounting.optinexus.sso.client_id' => '']);
-        $this->artisan('optiaccounting:nexus:check')->assertFailed()->expectsOutputToContain('OPTINEXUS_SSO_CLIENT_ID');
+        config(['optientry.optinexus.service.client_secret' => 'svc-secret', 'optientry.optinexus.sso.client_id' => '']);
+        $this->artisan('optientry:nexus:check')->assertFailed()->expectsOutputToContain('OPTINEXUS_SSO_CLIENT_ID');
 
-        config(['optiaccounting.optinexus.sso.client_id' => 'oa-client']);
+        config(['optientry.optinexus.sso.client_id' => 'oa-client']);
         $this->nexus['down'] = true;
-        $this->artisan('optiaccounting:nexus:check')->assertFailed();
+        $this->artisan('optientry:nexus:check')->assertFailed();
     }
 
     public function test_the_check_command_reports_an_unregistered_application(): void
     {
-        config(['optiaccounting.optinexus.application_code' => 'not-registered']);
+        config(['optientry.optinexus.application_code' => 'not-registered']);
 
-        $this->artisan('optiaccounting:nexus:check')->assertFailed()->expectsOutputToContain('is not registered in OptiNexus');
+        $this->artisan('optientry:nexus:check')->assertFailed()->expectsOutputToContain('is not registered in OptiNexus');
     }
 
     public function test_the_check_command_is_a_no_op_in_standalone_mode(): void
     {
-        config(['optiaccounting.identity_mode' => 'standalone']);
+        config(['optientry.identity_mode' => 'standalone']);
 
-        $this->artisan('optiaccounting:nexus:check')->assertSuccessful()->expectsOutputToContain('nothing to check');
+        $this->artisan('optientry:nexus:check')->assertSuccessful()->expectsOutputToContain('nothing to check');
     }
 }

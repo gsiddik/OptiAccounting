@@ -67,7 +67,7 @@ feature entitlement, READ_ONLY (mutations only), membership, permission and data
 A document that touches another module (payable expense → AP, paid expense or vendor payment → cash/bank) needs that module writable, and every
 posting or reversal also needs `ACCOUNTING_CORE` writable (`ActorAuthority::assertLedgerWritable`), so a child module that stays ACTIVE cannot
 write to a lost ledger. Lists, exports and the operational summary share one query path and the same `ListFilters`, so tenant, scope and filters
-match the screen; exports are capped (`optiaccounting.export_max_rows`), audited and never contain bank numbers.
+match the screen; exports are capped (`optientry.export_max_rows`), audited and never contain bank numbers.
 
 ## Not in OA2
 

@@ -27,7 +27,7 @@ Open owner decisions (not blocking MASTER):
 
 1. ~~OA0-N placement~~ — decided by the owner: right after OA0.
 2. ~~OA6 transport for OptiFleet events~~ — decided by the owner (2026-10-08):
-   direct between the apps, OptiNexus unchanged; OptiAccounting pulls a
+   direct between the apps, OptiNexus unchanged; OptiEntry pulls a
    cursor feed on a schedule (`INTEGRATION_ARCHITECTURE.md` §7.1).
 3. Memo vs invoice recognition for OptiFleet maintenance costs (accrue at memo
    billing, or recognize only at workshop invoice).

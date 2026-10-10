@@ -1,5 +1,12 @@
 <?php
 
+/*
+| OptiEntry (formerly OptiAccounting). The OPTIENTRY_* variables replace the former OPTIACCOUNTING_* ones; the old
+| names are still read as a fallback so an existing .env keeps working. The OptiNexus application code, the
+| `optiaccounting.*` permission/event keys and the database identifiers are registered or persisted identifiers and
+| were deliberately not renamed (docs/status/RENAME_OPTIENTRY.md).
+*/
+
 return [
 
     /*
@@ -8,7 +15,7 @@ return [
     | "optinexus": OptiNexus is the authority for tenant, user, membership,
     |              role, permission, subscription and events.
     */
-    'identity_mode' => env('OPTIACCOUNTING_IDENTITY_MODE', 'standalone'),
+    'identity_mode' => env('OPTIENTRY_IDENTITY_MODE', env('OPTIACCOUNTING_IDENTITY_MODE', 'standalone')),
 
     'identity_modes' => ['standalone', 'optinexus'],
 
@@ -16,7 +23,7 @@ return [
     | Password of the demo accounts created by DemoSeeder (documented in docs/DEMO.md).
     | Demo environments only; the seeder refuses to run in production.
     */
-    'demo_password' => env('OPTIACCOUNTING_DEMO_PASSWORD'),
+    'demo_password' => env('OPTIENTRY_DEMO_PASSWORD', env('OPTIACCOUNTING_DEMO_PASSWORD')),
 
     /*
     | OptiNexus adapter (docs/architecture/OPTINEXUS_ADAPTER.md). Only read when identity_mode = optinexus.
@@ -61,6 +68,6 @@ return [
     ],
 
     // Most rows one CSV export of an OA2 list may hold; beyond it the request is refused (EXPORT_TOO_LARGE) and the filters must be narrowed.
-    'export_max_rows' => max(1, (int) env('OPTIACCOUNTING_EXPORT_MAX_ROWS', 10000)),
+    'export_max_rows' => max(1, (int) env('OPTIENTRY_EXPORT_MAX_ROWS', env('OPTIACCOUNTING_EXPORT_MAX_ROWS', 10000))),
 
 ];

@@ -6,7 +6,7 @@ use App\Domain\Entitlement\Services\CapacityService;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Everything an OptiNexus administrator has to register for OptiAccounting (application, capabilities, permissions,
+ * Everything an OptiNexus administrator has to register for OptiEntry (application, capabilities, permissions,
  * event catalog, service-account scopes, OIDC client). It is generated from this repository's own catalogs, so the
  * registration can never drift from the code (docs/integration/OPTINEXUS_ONBOARDING.md).
  */
@@ -16,7 +16,7 @@ class OptinexusManifest
     public function build(): array
     {
         $application = OptinexusSettings::applicationCode();
-        $frontend = (string) config('optiaccounting.optinexus.sso.frontend_url');
+        $frontend = (string) config('optientry.optinexus.sso.frontend_url');
 
         $modules = DB::table('modules')->orderBy('sort_order')->get(['id', 'code', 'name', 'description', 'sort_order']);
         $features = DB::table('features')->orderBy('sort_order')->get(['module_id', 'code', 'name', 'sort_order'])->groupBy('module_id');
@@ -35,7 +35,7 @@ class OptinexusManifest
         return [
             'application' => [
                 'application_code' => $application,
-                'name' => 'OptiAccounting',
+                'name' => 'OptiEntry',
                 'description' => 'Double-entry accounting for the organization.',
                 'frontend_url' => $frontend,
             ],

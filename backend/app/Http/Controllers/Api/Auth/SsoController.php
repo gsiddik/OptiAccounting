@@ -36,7 +36,7 @@ class SsoController extends Controller
         return response()->json([
             'identity_mode' => IdentityMode::current(),
             'sso_enabled' => OptinexusSettings::ssoEnabled(),
-            'password_login' => ! OptinexusSettings::active() || (bool) config('optiaccounting.optinexus.break_glass_login'),
+            'password_login' => ! OptinexusSettings::active() || (bool) config('optientry.optinexus.break_glass_login'),
         ]);
     }
 
@@ -96,7 +96,7 @@ class SsoController extends Controller
             return $this->failure('sso_failed');
         }
 
-        return redirect()->away(config('optiaccounting.optinexus.sso.frontend_url').'/sso/callback?'.http_build_query(['ticket' => $ticket]));
+        return redirect()->away(config('optientry.optinexus.sso.frontend_url').'/sso/callback?'.http_build_query(['ticket' => $ticket]));
     }
 
     public function exchange(Request $request): JsonResponse
@@ -131,6 +131,6 @@ class SsoController extends Controller
 
     private function failure(string $code): RedirectResponse
     {
-        return redirect()->away(config('optiaccounting.optinexus.sso.frontend_url').'/login?'.http_build_query(['sso_error' => $code]));
+        return redirect()->away(config('optientry.optinexus.sso.frontend_url').'/login?'.http_build_query(['sso_error' => $code]));
     }
 }
