@@ -1,7 +1,7 @@
 # Rename to OptiEntry, brand assets and page navigation
 
-Branch: `claude/project-thread-b9jx47` (from `main` 9007a4c, after OA3 merged). Status: **COMMIT READY** (PR open, merge only on owner request).
-Not a roadmap phase: OA4 has not been started. OptiFleet-v2 was not modified. OptiNexus changed only in its own PR (logo, icon, breadcrumb, menu, Back).
+Branch: `claude/project-thread-b9jx47` (from `main` 9007a4c, after OA3 merged). Status: **READY FOR REVIEW** (merge only on owner request).
+Not a roadmap phase: OA4 has not been started. OptiFleet-v2 was not modified. OptiNexus changed only in its own PR #8 (frontend: logo, icon, breadcrumb, menu, Back).
 
 ## What was renamed
 - Product name in the UI, API texts, OptiNexus manifest (`application.name`), README, CLAUDE.md, architecture and integration docs, composer and npm package names, `APP_NAME`.
@@ -39,12 +39,15 @@ Not a roadmap phase: OA4 has not been started. OptiFleet-v2 was not modified. Op
 ## Tests (executed this session)
 | Check | Result |
 |---|---|
-| Frontend `vitest` (new: breadcrumb 10, shell 14), `oxlint`, `tsc -b`, `npm run build` | PASS (see report) |
-| Backend renamed areas (OptiNexus adapter, bootstrap, health, exports) + `RenameCompatibilityTest` (5) | PASS |
-| Screenshots 1440 / 820 / 390 in `rebrand-qa/`: no horizontal overflow; only `ERR_ABORTED` of requests cancelled by a page change | PASS (manual review) |
+| Backend full regression (`phpunit`, incl. `RenameCompatibilityTest` 5 and the OptiNexus adapter suite) | PASS: 594 tests, 36,785 assertions |
+| Backend `pint --test`, `composer validate` | PASS |
+| Frontend `vitest` (617 tests; new: breadcrumbs 10, shell 14), `oxlint`, `tsc -b`, `npm run build` | PASS |
+| Screenshots 1440 / 820 / 390 in `rebrand-qa/` (30): no horizontal overflow; only `ERR_ABORTED` of requests cancelled by a page change | PASS (manual review) |
+| Live OptiNexus (fresh DB, current OptiNexus code): renamed manifest registered (same application code, all old permission and event keys present), `optientry:nexus:check` and its old alias OK, SSO sign-in as a tenant user lands on the new shell, `sync-entitlements` and `relay-events` (3 delivered, 0 failed) | PASS |
+| OptiFleet-v2 | No reference to the product name; integration not changed, not exercised again |
 | Docker image build / `compose up` | NOT RUN (sandbox proxy TLS, unchanged since OA0) |
 
 ## Owner steps
 1. Rename the GitHub repository when convenient (nothing in the code depends on its name).
 2. Optional: change the application display name in OptiNexus to OptiEntry; keep the application code.
-3. OptiNexus PR (logo, icon, breadcrumb, menu, Back): review and merge on request.
+3. OptiNexus PR #8 (logo, icon, breadcrumb, menu, Back): review and merge on request.
