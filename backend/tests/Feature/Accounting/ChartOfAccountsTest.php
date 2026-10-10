@@ -27,10 +27,10 @@ class ChartOfAccountsTest extends TestCase
 
         $client->getJson('/api/v1/app/accounting/coa-templates')->assertOk()->assertJsonPath('data.0.code', 'UMUM_ID');
         $client->postJson('/api/v1/app/accounting/coa-templates/apply', ['template' => 'NOPE'])->assertNotFound();
-        $client->postJson('/api/v1/app/accounting/coa-templates/apply', ['template' => 'UMUM_ID'])->assertCreated()->assertJsonPath('accounts', 37)->assertJsonPath('mappings', 10);
+        $client->postJson('/api/v1/app/accounting/coa-templates/apply', ['template' => 'UMUM_ID'])->assertCreated()->assertJsonPath('accounts', 38)->assertJsonPath('mappings', 11);
         $client->postJson('/api/v1/app/accounting/coa-templates/apply', ['template' => 'UMUM_ID'])->assertStatus(409)->assertJsonPath('code', 'COA_NOT_EMPTY');
 
-        $this->assertSame(37, $this->rows('accounts', ['tenant_id' => $tenant->id]));
+        $this->assertSame(38, $this->rows('accounts', ['tenant_id' => $tenant->id]));
         // Tenant rows are copies: no reference to the template exists on them.
         $this->assertFalse(Schema::hasColumn('accounts', 'coa_template_id'));
         $cash = $this->account($tenant, '1110');
@@ -146,7 +146,7 @@ class ChartOfAccountsTest extends TestCase
         $this->accountingTenant('beta');
         $client = $this->asMember($alpha);
 
-        $this->assertCount(37, $client->getJson(self::BASE)->json('data'));
+        $this->assertCount(38, $client->getJson(self::BASE)->json('data'));
         $this->assertSame(['1110'], collect($client->getJson(self::BASE.'?q=kas')->json('data'))->pluck('code')->all());
         $this->assertCount(9, collect($client->getJson(self::BASE.'?type=LIABILITY')->json('data'))->push(1)->all()); // 8 liability accounts + marker
         $client->getJson(self::BASE.'?type=BOGUS')->assertStatus(422);

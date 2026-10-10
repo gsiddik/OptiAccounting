@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Operational;
 
+use App\Domain\Audit\Services\AuditService;
 use App\Domain\Identity\Models\Tenant;
 use Illuminate\Support\Facades\DB;
 use Tests\Support\AccountingFixtures;
@@ -14,7 +15,7 @@ class OperationalRulesAndAuditTest extends TestCase
 {
     use AccountingFixtures, Fixtures, PayablesFixtures;
 
-    private const EVENTS = ['AP_INVOICE_RECOGNIZED', 'VENDOR_PAYMENT', 'EXPENSE_RECOGNIZED', 'EXPENSE_PAID', 'CASH_PAYMENT', 'CASH_RECEIPT'];
+    private const EVENTS = ['AP_INVOICE_RECOGNIZED', 'VENDOR_PAYMENT', 'EXPENSE_RECOGNIZED', 'EXPENSE_PAID', 'CASH_PAYMENT', 'AR_INVOICE_RECOGNIZED', 'CUSTOMER_RECEIPT', 'AR_CREDIT_NOTE_RECOGNIZED', 'CASH_RECEIPT'];
 
     /** @return list<string> */
     private function actions(): array
@@ -24,7 +25,7 @@ class OperationalRulesAndAuditTest extends TestCase
 
     private Tenant $tenant;
 
-    public function test_default_rules_cover_every_oa2_event_are_idempotent_and_audited(): void
+    public function test_default_rules_cover_every_operational_event_are_idempotent_and_audited(): void
     {
         $this->tenant = $this->accountingTenant('alpha');
         $this->signedIn($this->tenant);
@@ -40,9 +41,9 @@ class OperationalRulesAndAuditTest extends TestCase
         $again = $this->postJson(self::AP.'/operational-rules/defaults')->assertCreated()->json();
         $this->assertSame([], $again['created']);
         $this->assertSame(['ALREADY_PUBLISHED'], array_unique(array_column($again['skipped'], 'reason')));
-        $this->assertSame(6, DB::table('posting_rules')->where('tenant_id', $this->tenant->id)->count()); // nothing was duplicated or overwritten
+        $this->assertSame(9, DB::table('posting_rules')->where('tenant_id', $this->tenant->id)->count()); // nothing was duplicated or overwritten
 
-        $this->assertSame(6, DB::table('audit_logs')->where('tenant_id', $this->tenant->id)->where('action', 'accounting.posting_rule.published')->count());
+        $this->assertSame(9, DB::table('audit_logs')->where('tenant_id', $this->tenant->id)->where('action', 'accounting.posting_rule.published')->count());
         $this->as($this->memberToken($this->tenant, ['accounting.posting_rule.view']))->postJson(self::AP.'/operational-rules/defaults')->assertStatus(403);
     }
 
@@ -85,6 +86,19 @@ class OperationalRulesAndAuditTest extends TestCase
         foreach (['audit_logs', 'journal_transitions', 'document_transitions'] as $table) {
             $this->assertSame(6, (int) DB::table('information_schema.columns')->where('table_name', $table)->where('column_name', 'occurred_at')->value('datetime_precision'), $table);
         }
+    }
+
+    public function test_events_written_in_one_second_are_stored_and_read_back_in_the_order_they_happened(): void
+    {
+        $this->tenant = $this->accountingTenant('alpha');
+        $audit = app(AuditService::class);
+        foreach (range(1, 25) as $n) {
+            $audit->record('test.order', 'probe', 'p-'.$n, null, null, $this->tenant->id);
+        }
+
+        $rows = DB::table('audit_logs')->where('action', 'test.order')->orderBy('occurred_at')->pluck('resource_id')->all();
+        $this->assertSame(array_map(fn ($n) => 'p-'.$n, range(1, 25)), $rows, 'a burst keeps its order');
+        $this->assertGreaterThan(1, DB::table('audit_logs')->where('action', 'test.order')->distinct()->count('occurred_at'), 'sub-second resolution is stored, not rounded away');
     }
 
     public function test_the_whole_module_leaves_an_audit_trail_without_bank_numbers(): void
