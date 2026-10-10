@@ -51,7 +51,7 @@ anonymous 401, permission declared on every route, mass-assignment scan (`Securi
 | Demo books: AP control = subledger + opening balance (MATCHED), every journal balanced | PASS |
 | Docker image build / `compose up` | NOT RUN (sandbox proxy TLS, unchanged since OA0) |
 | Load / volume benchmark of AP aging, reconciliations and exports | NOT RUN (query-count guards only) |
-| CI workflow on the PR | PENDING (first run on the PR) |
+| CI workflow on the PR | PASS on e4b0d23 (backend 7 min, frontend 50 s; first run) |
 
 ## Known issues (non-blocking)
 - No attachments: the repository has no secure file storage, documents carry a `supporting_document` reference only.
