@@ -64,6 +64,7 @@ class CashBankReconciliationService
             'book_balance' => Money::str($book),
             'documents' => [
                 'receipts' => Money::str($documents['receipts']), 'cash_payments' => Money::str($documents['cash_payments']), 'vendor_payments' => Money::str($documents['vendor_payments']),
+                'customer_receipts' => Money::str($documents['customer_receipts']),
                 'paid_expenses' => Money::str($documents['paid_expenses']), 'net' => Money::str($documents['net']), 'ledger_net' => Money::str($fromDocuments),
                 'difference' => Money::str($difference), 'status' => $difference->isZero() ? 'MATCHED' : 'MISMATCH',
             ],
@@ -78,10 +79,10 @@ class CashBankReconciliationService
     }
 
     /**
-     * What the OA2 documents say moved this GL account up to $asOf, from the documents themselves: a posted document counts from its
+     * What the OA2 and OA3 documents say moved this GL account up to $asOf, from the documents themselves: a posted document counts from its
      * posting date, and not any more once its reversal is also posted on or before $asOf.
      *
-     * @return array{receipts:BigDecimal,cash_payments:BigDecimal,vendor_payments:BigDecimal,paid_expenses:BigDecimal,net:BigDecimal}
+     * @return array{receipts:BigDecimal,cash_payments:BigDecimal,vendor_payments:BigDecimal,customer_receipts:BigDecimal,paid_expenses:BigDecimal,net:BigDecimal}
      */
     private function documentsNet(string $tenant, string $gl, string $asOf): array
     {
@@ -92,11 +93,12 @@ class CashBankReconciliationService
         $receipts = $sum($live('cash_transactions')->where('kind', 'RECEIPT'), 'amount');
         $payments = $sum($live('cash_transactions')->where('kind', 'PAYMENT'), 'amount');
         $vendor = $sum($live('vendor_payments'), 'amount');
+        $customer = $sum($live('customer_receipts'), 'amount');
         $expenses = $sum($live('expenses')->where('settlement', 'DIRECT_PAID'), 'total_amount');
 
         return [
-            'receipts' => $receipts, 'cash_payments' => $payments, 'vendor_payments' => $vendor, 'paid_expenses' => $expenses,
-            'net' => $receipts->minus($payments)->minus($vendor)->minus($expenses),
+            'receipts' => $receipts, 'cash_payments' => $payments, 'vendor_payments' => $vendor, 'customer_receipts' => $customer, 'paid_expenses' => $expenses,
+            'net' => $receipts->plus($customer)->minus($payments)->minus($vendor)->minus($expenses),
         ];
     }
 
@@ -111,12 +113,14 @@ class CashBankReconciliationService
                 union all select reversal_journal_id from expenses where tenant_id = :t4 and gl_account_id = :g4 and settlement = 'DIRECT_PAID' and reversal_journal_id is not null
                 union all select journal_entry_id from cash_transactions where tenant_id = :t5 and gl_account_id = :g5 and journal_entry_id is not null
                 union all select reversal_journal_id from cash_transactions where tenant_id = :t6 and gl_account_id = :g6 and reversal_journal_id is not null
+                union all select journal_entry_id from customer_receipts where tenant_id = :t7 and gl_account_id = :g7 and journal_entry_id is not null
+                union all select reversal_journal_id from customer_receipts where tenant_id = :t8 and gl_account_id = :g8 and reversal_journal_id is not null
             )
             select coalesce(sum(l.debit - l.credit), 0) as net
             from journal_lines l join journal_entries j on j.id = l.journal_entry_id and j.tenant_id = l.tenant_id
             where l.tenant_id = :t and l.account_id = :g and j.status = 'POSTED' and j.posting_date <= :d and j.id in (select jid from doc_journals)";
         $bindings = ['t' => $tenant, 'g' => $gl, 'd' => $asOf];
-        foreach (range(1, 6) as $i) {
+        foreach (range(1, 8) as $i) {
             $bindings["t{$i}"] = $tenant;
             $bindings["g{$i}"] = $gl;
         }

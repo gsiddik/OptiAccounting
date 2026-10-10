@@ -8,7 +8,7 @@ use App\Domain\Shared\DomainException;
 use Illuminate\Support\Facades\DB;
 
 /**
- * The posting rules the OA2 documents need, as a ready-made set a tenant can apply with one action (and still edit by publishing
+ * The posting rules the OA2 and OA3 documents need, as a ready-made set a tenant can apply with one action (and still edit by publishing
  * new versions). Applying is explicit and idempotent: an event type that already has a published rule is left alone, nothing is
  * ever overwritten, and a rule whose mapped roles are missing is reported instead of half-created.
  */
@@ -35,6 +35,15 @@ class OperationalSetupService
         'CASH_PAYMENT' => ['CASH-PAYMENT', 'Pembayaran kas/bank', [
             ['DEBIT', 'DOCUMENT_ACCOUNT', 'amount', 'Akun tujuan'], ['CREDIT', 'CASH_BANK_ACCOUNT', 'amount', 'Kas atau bank'],
         ]],
+        'AR_INVOICE_RECOGNIZED' => ['AR-INVOICE', 'Faktur pelanggan diakui', [
+            ['DEBIT', 'ACCOUNTS_RECEIVABLE', 'total', 'Piutang usaha'], ['CREDIT', 'REVENUE', 'net', 'Pendapatan'], ['CREDIT', 'TAX_PAYABLE', 'tax', 'PPN keluaran'],
+        ]],
+        'CUSTOMER_RECEIPT' => ['AR-RECEIPT', 'Penerimaan pelanggan', [
+            ['DEBIT', 'CASH_BANK_ACCOUNT', 'amount', 'Kas atau bank'], ['CREDIT', 'ACCOUNTS_RECEIVABLE', 'amount', 'Pelunasan piutang usaha'],
+        ]],
+        'AR_CREDIT_NOTE_RECOGNIZED' => ['AR-CREDIT-NOTE', 'Nota kredit pelanggan diakui', [
+            ['DEBIT', 'REVENUE_ADJUSTMENT', 'net', 'Retur dan potongan penjualan'], ['DEBIT', 'TAX_PAYABLE', 'tax', 'PPN keluaran'], ['CREDIT', 'ACCOUNTS_RECEIVABLE', 'total', 'Piutang usaha'],
+        ]],
         'CASH_RECEIPT' => ['CASH-RECEIPT', 'Penerimaan kas/bank', [
             ['DEBIT', 'CASH_BANK_ACCOUNT', 'amount', 'Kas atau bank'], ['CREDIT', 'DOCUMENT_ACCOUNT', 'amount', 'Akun sumber'],
         ]],
@@ -42,7 +51,7 @@ class OperationalSetupService
 
     public function __construct(private readonly PostingRuleService $rules, private readonly AccountMappingService $mappings) {}
 
-    /** @return list<array{event_type:string,name:string,ready:bool,rule_code:?string,effective_from:?string}> which OA2 events can post today */
+    /** @return list<array{event_type:string,name:string,ready:bool,rule_code:?string,effective_from:?string}> which OA2 and OA3 events can post today */
     public function status(): array
     {
         $published = PostingRule::query()->where('status', PostingRule::PUBLISHED)->get()->groupBy('event_type');

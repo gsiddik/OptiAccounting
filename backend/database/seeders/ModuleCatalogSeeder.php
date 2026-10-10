@@ -24,7 +24,7 @@ class ModuleCatalogSeeder extends Seeder
         'ACCOUNTING_CASH_BANK' => ['Cash & Bank', 'Cash and bank accounts, payments, receipts, bank reconciliation', ['ACCOUNTING_CORE'], [
             'PAYMENT' => 'Payment', 'RECEIPT' => 'Receipt', 'BANK_RECONCILIATION' => 'Bank reconciliation', 'CASH_BANK_ACCOUNT' => 'Cash and bank account']],
         'ACCOUNTING_AR' => ['Accounts Receivable', 'Customers, customer invoices, credit/debit notes, AR aging', ['ACCOUNTING_CORE'], [
-            'CUSTOMER_INVOICE' => 'Customer invoice', 'CREDIT_NOTE' => 'Credit note', 'AR_AGING' => 'AR aging']],
+            'CUSTOMER_INVOICE' => 'Customer invoice', 'CREDIT_NOTE' => 'Credit note', 'AR_AGING' => 'AR aging', 'CUSTOMER' => 'Customer', 'AR_RECEIPT' => 'Customer receipt']],
         'ACCOUNTING_BUDGET' => ['Budget', 'Budgets, versions and budget versus actual', ['ACCOUNTING_CORE'], ['BUDGET' => 'Budget']],
         'ACCOUNTING_FIXED_ASSET' => ['Fixed Asset', 'Asset register, depreciation and disposal', ['ACCOUNTING_CORE'], [
             'ASSET_REGISTER' => 'Asset register', 'DEPRECIATION' => 'Depreciation']],

@@ -10,6 +10,9 @@ use App\Domain\Expense\Services\ExpenseService;
 use App\Domain\Payables\Services\ApInvoiceService;
 use App\Domain\Payables\Services\ApSubledgerService;
 use App\Domain\Payables\Services\VendorPaymentService;
+use App\Domain\Receivables\Services\ArCreditNoteService;
+use App\Domain\Receivables\Services\ArInvoiceService;
+use App\Domain\Receivables\Services\CustomerReceiptService;
 use App\Support\TenantContext;
 use Brick\Math\BigDecimal;
 use Illuminate\Database\Eloquent\Builder;
@@ -34,6 +37,9 @@ class OperationalSummaryService
         private readonly VendorPaymentService $payments,
         private readonly ExpenseService $expenses,
         private readonly CashBankAccountService $cashBank,
+        private readonly ArInvoiceService $arInvoices,
+        private readonly CustomerReceiptService $receipts,
+        private readonly ArCreditNoteService $creditNotes,
     ) {}
 
     /** @return array<string,mixed> */
@@ -47,6 +53,9 @@ class OperationalSummaryService
             'payments' => $this->allowed('accounting.ap_payment.view', 'ACCOUNTING_AP', 'AP_PAYMENT') ? $this->paymentCounts() : null,
             'expenses' => $this->allowed('accounting.expense.view', 'ACCOUNTING_EXPENSE', 'EXPENSE') ? $this->expenseCounts() : null,
             'cash_bank' => $this->allowed('accounting.cash_bank.view', 'ACCOUNTING_CASH_BANK', 'CASH_BANK_ACCOUNT') ? $this->cashBank($today) : null,
+            'receivables' => $this->allowed('accounting.ar_invoice.view', 'ACCOUNTING_AR', 'CUSTOMER_INVOICE') ? $this->receivables($today) : null,
+            'receipts' => $this->allowed('accounting.ar_receipt.view', 'ACCOUNTING_AR', 'AR_RECEIPT') ? $this->pendingCounts($this->receipts->query([]), 'customer_receipts') : null,
+            'credit_notes' => $this->allowed('accounting.ar_credit_note.view', 'ACCOUNTING_AR', 'CREDIT_NOTE') ? $this->pendingCounts($this->creditNotes->query([]), 'ar_credit_notes') : null,
             'complete' => $this->scope->isTenantWide(), // false: the figures cover only what the user's data scope reaches
         ];
     }
@@ -75,10 +84,33 @@ class OperationalSummaryService
         ];
     }
 
+    /** @return array<string,mixed> */
+    private function receivables(string $today): array
+    {
+        $open = $this->totals($this->arInvoices->query(['open' => true]), 'outstanding_amount');
+        $overdue = $this->totals($this->arInvoices->query(['overdue' => true]), 'outstanding_amount');
+        $soon = $this->totals($this->arInvoices->query(['due_within' => self::DUE_SOON_DAYS]), 'outstanding_amount');
+        $pending = $this->arInvoices->query([])->toBase()->whereIn('ar_invoices.status', ['SUBMITTED', 'APPROVED'])->reorder()->select('ar_invoices.status')->selectRaw('count(*) as n')->groupBy('ar_invoices.status')->pluck('n', 'status');
+
+        return [
+            'outstanding' => ['amount' => $open['amount'], 'invoices' => $open['count']],
+            'overdue' => ['amount' => $overdue['amount'], 'invoices' => $overdue['count']],
+            'due_soon' => ['days' => self::DUE_SOON_DAYS, 'amount' => $soon['amount'], 'invoices' => $soon['count']],
+            'pending_approval' => (int) ($pending['SUBMITTED'] ?? 0),
+            'awaiting_posting' => (int) ($pending['APPROVED'] ?? 0),
+        ];
+    }
+
     /** @return array<string,int> */
     private function paymentCounts(): array
     {
-        $pending = $this->payments->query([])->toBase()->whereIn('vendor_payments.status', ['SUBMITTED', 'APPROVED'])->reorder()->select('vendor_payments.status')->selectRaw('count(*) as n')->groupBy('vendor_payments.status')->pluck('n', 'status');
+        return $this->pendingCounts($this->payments->query([]), 'vendor_payments');
+    }
+
+    /** @return array<string,int> documents waiting for an approver and for a poster */
+    private function pendingCounts(Builder $query, string $table): array
+    {
+        $pending = $query->toBase()->whereIn("{$table}.status", ['SUBMITTED', 'APPROVED'])->reorder()->select("{$table}.status")->selectRaw('count(*) as n')->groupBy("{$table}.status")->pluck('n', 'status');
 
         return ['pending_approval' => (int) ($pending['SUBMITTED'] ?? 0), 'awaiting_posting' => (int) ($pending['APPROVED'] ?? 0)];
     }
