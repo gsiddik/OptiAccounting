@@ -54,7 +54,7 @@ class TaxReportService
 
     // ------------------------------------------------------------------------------------------------ summary
 
-    /** @return array<string,mixed> */
+    /** The totals are in the functional currency: a foreign document contributes the functional amounts frozen when it posted. @return array<string,mixed> */
     public function summary(array $filter): array
     {
         $this->assertBasis($filter);
@@ -70,10 +70,10 @@ class TaxReportService
 
         // the original postings, then the reversals as negative movements
         $original = $dateOf("tax_transactions.{$basis}")($base()->whereIn('tax_transactions.status', [TaxTransaction::POSTED, TaxTransaction::REVERSED]))
-            ->select($columns)->selectRaw('1 as sign, tax_transactions.base_amount, tax_transactions.tax_amount');
+            ->select($columns)->selectRaw('1 as sign, coalesce(tax_transactions.functional_base_amount, tax_transactions.base_amount) as base_amount, coalesce(tax_transactions.functional_tax_amount, tax_transactions.tax_amount) as tax_amount');
         $reversal = $base()->where('tax_transactions.status', TaxTransaction::REVERSED)->join('journal_entries as rj', 'rj.id', '=', 'tax_transactions.reversal_journal_id');
         $reversal = $dateOf($basis === 'posting_date' ? 'rj.posting_date' : 'tax_transactions.tax_date')($reversal)
-            ->select($columns)->selectRaw('-1 as sign, tax_transactions.base_amount, tax_transactions.tax_amount');
+            ->select($columns)->selectRaw('-1 as sign, coalesce(tax_transactions.functional_base_amount, tax_transactions.base_amount) as base_amount, coalesce(tax_transactions.functional_tax_amount, tax_transactions.tax_amount) as tax_amount');
 
         $rows = DB::query()->fromSub($original->unionAll($reversal), 'e')
             ->select('tax_code_id', 'tax_code', 'tax_name', 'tax_type', 'direction', 'treatment', 'is_recoverable', 'rate')

@@ -38,6 +38,12 @@ class AccountingProfileService
                 }
             }
 
+            // foreign currencies and their rates are defined against the functional currency: it does not change underneath them
+            if (! $creating && isset($data['functional_currency']) && $data['functional_currency'] !== $profile->functional_currency
+                && (DB::table('currencies')->where('tenant_id', $profile->tenant_id)->exists() || DB::table('exchange_rates')->where('tenant_id', $profile->tenant_id)->exists())) {
+                throw new DomainException('Remove the foreign currencies and exchange rates before changing the functional currency.', 'FUNCTIONAL_CURRENCY_HAS_RATES', 409);
+            }
+
             $before = $creating ? null : $profile->only(array_keys($data));
             $profile->fill($data);
             if ($creating) {

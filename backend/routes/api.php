@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\App;
 use App\Http\Controllers\Api\App\Accounting;
 use App\Http\Controllers\Api\App\Budget;
 use App\Http\Controllers\Api\App\CashBank;
+use App\Http\Controllers\Api\App\Currency;
 use App\Http\Controllers\Api\App\Expense;
 use App\Http\Controllers\Api\App\FixedAsset;
 use App\Http\Controllers\Api\App\Tax;
@@ -487,6 +488,26 @@ Route::prefix('v1')->middleware('request.id')->group(function () {
             Route::get('tax-transactions', [Tax\TaxReportController::class, 'transactions'])->middleware($tx('accounting.tax.report.view', 'TAX_REPORT'));
             Route::get('tax-report', [Tax\TaxReportController::class, 'summary'])->middleware($tx('accounting.tax.report.view', 'TAX_REPORT'));
             Route::get('tax-report/export', [Tax\TaxReportController::class, 'export'])->middleware($tx('accounting.report.export', 'TAX_REPORT'));
+
+            // ------------------------------------------------ OA4: multi-currency (ACCOUNTING_MULTI_CURRENCY). Currencies and rates are tenant data; documents keep their own copy of the rate they used.
+            $fx = fn (string $permission, string $feature = 'EXCHANGE_RATE') => "access:{$permission},module=ACCOUNTING_MULTI_CURRENCY,feature={$feature}";
+            Route::get('currencies', [Currency\CurrencyController::class, 'index'])->middleware($fx('accounting.currency.view'));
+            Route::post('currencies', [Currency\CurrencyController::class, 'store'])->middleware($fx('accounting.currency.manage'));
+            Route::get('currencies/{currency}', [Currency\CurrencyController::class, 'show'])->middleware($fx('accounting.currency.view'));
+            Route::patch('currencies/{currency}', [Currency\CurrencyController::class, 'update'])->middleware($fx('accounting.currency.manage'));
+            Route::post('currencies/{currency}/activate', [Currency\CurrencyController::class, 'activate'])->middleware($fx('accounting.currency.manage'));
+            Route::post('currencies/{currency}/deactivate', [Currency\CurrencyController::class, 'deactivate'])->middleware($fx('accounting.currency.manage'));
+            Route::delete('currencies/{currency}', [Currency\CurrencyController::class, 'destroy'])->middleware($fx('accounting.currency.manage'));
+            Route::get('exchange-rates', [Currency\ExchangeRateController::class, 'index'])->middleware($fx('accounting.exchange_rate.view'));
+            Route::get('exchange-rates/lookup', [Currency\ExchangeRateController::class, 'lookup'])->middleware($fx('accounting.exchange_rate.view'));
+            Route::post('exchange-rates', [Currency\ExchangeRateController::class, 'store'])->middleware($fx('accounting.exchange_rate.manage'));
+            Route::get('exchange-rates/{rate}', [Currency\ExchangeRateController::class, 'show'])->middleware($fx('accounting.exchange_rate.view'));
+            Route::patch('exchange-rates/{rate}', [Currency\ExchangeRateController::class, 'update'])->middleware($fx('accounting.exchange_rate.manage'));
+            Route::post('exchange-rates/{rate}/activate', [Currency\ExchangeRateController::class, 'activate'])->middleware($fx('accounting.exchange_rate.manage'));
+            Route::post('exchange-rates/{rate}/deactivate', [Currency\ExchangeRateController::class, 'deactivate'])->middleware($fx('accounting.exchange_rate.manage'));
+            Route::delete('exchange-rates/{rate}', [Currency\ExchangeRateController::class, 'destroy'])->middleware($fx('accounting.exchange_rate.manage'));
+            Route::get('fx-rules', [Currency\CurrencyController::class, 'setupStatus'])->middleware($fx('accounting.exchange_rate.view'));
+            Route::post('fx-rules/defaults', [Currency\CurrencyController::class, 'applyDefaults'])->middleware($fx('accounting.posting_rule.manage'));
         });
     });
 });

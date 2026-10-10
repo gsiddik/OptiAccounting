@@ -7,6 +7,7 @@ use App\Domain\Audit\Services\AuditService;
 use App\Domain\Identity\Models\User;
 use App\Domain\Integration\Services\OutboxPublisher;
 use App\Domain\Shared\DomainException;
+use Brick\Math\BigDecimal;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -49,6 +50,10 @@ class ReversalService
             $lines = $original->lines()->with('dimensions')->get()->map(fn ($l) => [
                 'account_id' => $l->account_id, 'description' => $l->description, 'reference' => $l->reference,
                 'debit' => $l->credit, 'credit' => $l->debit, // swapped
+                // the foreign leg is mirrored with the rate of the original: a reversal restores exactly what was booked
+                'transaction' => $l->transaction_currency !== $profile->functional_currency
+                    ? ['currency' => $l->transaction_currency, 'amount' => BigDecimal::of($l->transaction_debit)->isPositive() ? $l->transaction_debit : $l->transaction_credit, 'rate' => $l->exchange_rate] : null,
+                'fx_difference' => (bool) $l->is_fx_difference,
                 'branch_id' => $l->branch_id, 'business_unit_id' => $l->business_unit_id, 'cost_center_id' => $l->cost_center_id,
                 'dimensions' => $l->dimensions->map(fn ($d) => ['type' => $d->dimension_type, 'reference_id' => $d->reference_id, 'reference_label' => $d->reference_label])->all(),
             ])->all();

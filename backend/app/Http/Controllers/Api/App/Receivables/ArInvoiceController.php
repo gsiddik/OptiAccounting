@@ -109,7 +109,7 @@ class ArInvoiceController extends AppController
         return $request->validate([
             'customer_id' => [$req, 'uuid'], 'customer_reference' => ['nullable', 'string', 'max:100'],
             'document_date' => [$req, 'date_format:Y-m-d'], 'posting_date' => ['nullable', 'date_format:Y-m-d'], 'due_date' => ['nullable', 'date_format:Y-m-d'],
-            'payment_term_id' => ['nullable', 'uuid'], 'currency' => ['nullable', 'regex:/^[A-Z]{3}$/'],
+            'payment_term_id' => ['nullable', 'uuid'], 'currency' => ['nullable', 'regex:/^[A-Z]{3}$/'], 'exchange_rate_type' => ['nullable', 'in:SPOT,DAILY,MONTH_END,MANUAL'],
             'description' => [$req, 'string', 'max:500'], 'reference' => ['nullable', 'string', 'max:100'],
             'branch_id' => ['nullable', 'uuid'], 'business_unit_id' => ['nullable', 'uuid'], 'cost_center_id' => ['nullable', 'uuid'],
             'discount_amount' => ['nullable'], 'tax_amount' => ['nullable'], 'other_charges_amount' => ['nullable'],

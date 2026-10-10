@@ -40,13 +40,14 @@ class ApReportController extends AppController
         $this->audit->record('payables.report.exported', 'report', 'ap_aging', null, ['as_of' => $asOf, 'filters' => $filter, 'buckets' => $buckets, 'invoices' => count($report['invoices'])]);
 
         return CsvExporter::stream("umur-utang_{$asOf}.csv",
-            ['Vendor', 'Nama vendor', 'No. dokumen', 'No. faktur vendor', 'Tanggal posting', 'Jatuh tempo', 'Hari lewat', 'Kelompok', 'Nilai faktur', 'Dibayar', 'Saldo'],
+            ['Vendor', 'Nama vendor', 'No. dokumen', 'No. faktur vendor', 'Tanggal posting', 'Jatuh tempo', 'Hari lewat', 'Kelompok', 'Nilai faktur', 'Dibayar', 'Saldo', 'Mata uang', 'Kurs', 'Saldo fungsional'],
             (function () use ($report) {
                 foreach ($report['invoices'] as $i) {
                     yield [$i['vendor_code'], $i['vendor_name'], $i['document_number'], $i['vendor_invoice_number'],
-                        $i['posting_date'], $i['due_date'], $i['days_overdue'], $i['bucket'], CsvExporter::number($i['total_amount']), CsvExporter::number($i['paid_amount']), CsvExporter::number($i['outstanding_amount'])];
+                        $i['posting_date'], $i['due_date'], $i['days_overdue'], $i['bucket'], CsvExporter::number($i['total_amount']), CsvExporter::number($i['paid_amount']), CsvExporter::number($i['outstanding_amount']),
+                        $i['currency'], CsvExporter::number($i['exchange_rate']), CsvExporter::number($i['outstanding_functional'])];
                 }
-                yield ['', 'Total', '', '', '', '', '', '', '', '', CsvExporter::number($report['totals']['total'])];
+                yield ['', 'Total (mata uang fungsional)', '', '', '', '', '', '', '', '', '', '', '', CsvExporter::number($report['totals']['total'])];
             })());
     }
 

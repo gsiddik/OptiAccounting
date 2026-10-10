@@ -5,6 +5,7 @@ namespace App\Domain\Tax\Services;
 use App\Domain\Accounting\Models\JournalEntry;
 use App\Domain\Accounting\Services\ActorAuthority;
 use App\Domain\Accounting\Support\Money;
+use App\Domain\Currency\Services\ResolvedRate;
 use App\Domain\Identity\Models\User;
 use App\Domain\Shared\DomainException;
 use App\Domain\Tax\Models\TaxCode;
@@ -217,9 +218,11 @@ class TaxDocumentService
      * What the Posting Engine books for a document's tax.
      *
      * @return array{managed:bool,recoverable:BigDecimal,total:BigDecimal,parts:list<array<string,mixed>>,cost:array<int,BigDecimal>} `managed`: the document carries tax codes (otherwise its manual header tax stands); `parts`: the recoverable tax by
-     *         account (explicit account or role); `cost`: the non-recoverable tax per line number, added to the cost of that line
+     *         account (explicit account or role); `cost`: the non-recoverable tax per line number, added to the cost of that line.
+     *         `$perRow`: one part per tax transaction instead of one per account (a foreign document converts each tax on its own, so the ledger holds the
+     *         exact sum of the functional tax amounts the tax report shows)
      */
-    public function postingParts(string $sourceType, string $docId): array
+    public function postingParts(string $sourceType, string $docId, bool $perRow = false): array
     {
         $rows = TaxTransaction::query()->where('source_type', $sourceType)->where('source_id', $docId)->where('status', TaxTransaction::DRAFT)->orderBy('line_number')->get();
         $recoverable = $total = BigDecimal::zero();
@@ -237,7 +240,7 @@ class TaxDocumentService
 
                 continue;
             }
-            $key = $row->account_id ? "A:{$row->account_id}" : "R:{$row->account_role}";
+            $key = ($row->account_id ? "A:{$row->account_id}" : "R:{$row->account_role}").($perRow ? ":{$row->line_number}" : '');
             $groups[$key] ??= ['amount' => BigDecimal::zero(), 'codes' => [], 'account_id' => $row->account_id, 'account_role' => $row->account_id ? null : $row->account_role];
             $groups[$key]['amount'] = $groups[$key]['amount']->plus($tax);
             $groups[$key]['codes'][$row->tax_code] = true;
@@ -252,11 +255,19 @@ class TaxDocumentService
         return ['managed' => $rows->isNotEmpty(), 'recoverable' => $recoverable, 'total' => $total, 'parts' => $parts, 'cost' => $cost];
     }
 
-    public function markPosted(string $sourceType, string $docId, JournalEntry $journal, string $documentNumber): void
+    public function markPosted(string $sourceType, string $docId, JournalEntry $journal, string $documentNumber, ?ResolvedRate $rate = null): void
     {
         $count = TaxTransaction::query()->where('source_type', $sourceType)->where('source_id', $docId)->where('status', TaxTransaction::DRAFT)->count();
         if ($count === 0) {
             return;
+        }
+        if ($rate?->foreign()) { // a foreign document freezes the functional amounts the tax report adds up, each converted on its own like the ledger parts
+            foreach (TaxTransaction::query()->where('source_type', $sourceType)->where('source_id', $docId)->where('status', TaxTransaction::DRAFT)->get() as $row) {
+                DB::table('tax_transactions')->where('id', $row->id)->update([
+                    'currency' => $rate->currency, 'exchange_rate' => $rate->rateString(),
+                    'functional_base_amount' => Money::str($rate->convert(BigDecimal::of($row->base_amount))), 'functional_tax_amount' => Money::str($rate->convert(BigDecimal::of($row->tax_amount))),
+                ]);
+            }
         }
         $updated = DB::table('tax_transactions')->where('tenant_id', $journal->tenant_id)->where('source_type', $sourceType)->where('source_id', $docId)->where('status', TaxTransaction::DRAFT)
             ->update([

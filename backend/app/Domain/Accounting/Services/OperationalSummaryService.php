@@ -70,9 +70,9 @@ class OperationalSummaryService
     /** @return array<string,mixed> */
     private function payables(string $today): array
     {
-        $open = $this->totals($this->invoices->query(['open' => true]), 'outstanding_amount');
-        $overdue = $this->totals($this->invoices->query(['overdue' => true]), 'outstanding_amount');
-        $soon = $this->totals($this->invoices->query(['due_within' => self::DUE_SOON_DAYS]), 'outstanding_amount');
+        $open = $this->totals($this->invoices->query(['open' => true]), 'outstanding_functional');
+        $overdue = $this->totals($this->invoices->query(['overdue' => true]), 'outstanding_functional');
+        $soon = $this->totals($this->invoices->query(['due_within' => self::DUE_SOON_DAYS]), 'outstanding_functional');
         $pending = $this->invoices->query([])->toBase()->whereIn('ap_invoices.status', ['SUBMITTED', 'APPROVED'])->reorder()->select('ap_invoices.status')->selectRaw('count(*) as n')->groupBy('ap_invoices.status')->pluck('n', 'status');
 
         return [
@@ -87,9 +87,9 @@ class OperationalSummaryService
     /** @return array<string,mixed> */
     private function receivables(string $today): array
     {
-        $open = $this->totals($this->arInvoices->query(['open' => true]), 'outstanding_amount');
-        $overdue = $this->totals($this->arInvoices->query(['overdue' => true]), 'outstanding_amount');
-        $soon = $this->totals($this->arInvoices->query(['due_within' => self::DUE_SOON_DAYS]), 'outstanding_amount');
+        $open = $this->totals($this->arInvoices->query(['open' => true]), 'outstanding_functional');
+        $overdue = $this->totals($this->arInvoices->query(['overdue' => true]), 'outstanding_functional');
+        $soon = $this->totals($this->arInvoices->query(['due_within' => self::DUE_SOON_DAYS]), 'outstanding_functional');
         $pending = $this->arInvoices->query([])->toBase()->whereIn('ar_invoices.status', ['SUBMITTED', 'APPROVED'])->reorder()->select('ar_invoices.status')->selectRaw('count(*) as n')->groupBy('ar_invoices.status')->pluck('n', 'status');
 
         return [

@@ -17,6 +17,9 @@ use App\Domain\Accounting\Support\Money;
 use App\Domain\Audit\Services\AuditService;
 use App\Domain\CashBank\Models\CashBankAccount;
 use App\Domain\CashBank\Services\CashBankAccountService;
+use App\Domain\Currency\Services\ForeignDocumentService;
+use App\Domain\Currency\Services\ForeignPostingService;
+use App\Domain\Currency\Services\ResolvedRate;
 use App\Domain\Identity\Models\User;
 use App\Domain\Payables\Models\ApInvoice;
 use App\Domain\Payables\Models\ApPaymentAllocation;
@@ -37,6 +40,11 @@ use Illuminate\Support\Str;
  * shared mechanism and releases the allocations in the same transaction. Outstanding is derived (see ApSubledgerService); no
  * balance is ever written. A payment is allocated in full: vendor advances and prepayments do not exist in OA2, so nothing can make
  * a payable negative.
+ *
+ * A payment in a foreign currency settles invoices of that currency only. It has its own rate (the one in force on its posting date); the
+ * invoices keep the value they were recognised at (`carrying`), the bank moves the payment at its own rate (`settlement`) and the difference
+ * is the realised exchange gain or loss, booked by VENDOR_PAYMENT_FX in the same journal. The partition of both values over the allocations
+ * is computed at posting, under the invoice locks, from what each invoice still carries (ForeignPostingService::settle).
  */
 class VendorPaymentService
 {
@@ -55,6 +63,8 @@ class VendorPaymentService
         private readonly ApSubledgerService $subledger,
         private readonly AuditService $audit,
         private readonly TenantContext $context,
+        private readonly ForeignDocumentService $foreign,
+        private readonly ForeignPostingService $fxPosting,
     ) {}
 
     // ------------------------------------------------------------------------------------------------ queries
@@ -178,18 +188,24 @@ class VendorPaymentService
             $invoices = ApInvoice::query()->whereIn('id', $allocations->pluck('ap_invoice_id'))->orderBy('id')->lockForUpdate()->get()->keyBy('id');
             $this->assertSettleable($payment, $allocations->all(), $invoices->all());
 
-            $payload = $this->payload($payment, $allocations->all(), $invoices->all(), $cash->account_id, (int) $this->workflow->profile()->currency_scale);
+            $profile = $this->workflow->profile();
+            $rate = $this->foreign->current($payment, $payment->posting_date->toDateString(), true); // the rate row is held until this posting commits
+            $settlement = $rate->foreign() ? $this->settlement($payment, $allocations->all(), $invoices->all(), $rate, $profile) : null;
+            $payload = $settlement === null
+                ? $this->payload($payment, $allocations->all(), $invoices->all(), $cash->account_id, (int) $profile->currency_scale)
+                : $this->foreignPayload($payment, $allocations->all(), $invoices->all(), $cash->account_id, $rate, $settlement);
             $dims = ['branch_id' => $payment->branch_id, 'business_unit_id' => $payment->business_unit_id, 'cost_center_id' => $payment->cost_center_id];
 
             $event = $this->engine->postEvent(
-                'VENDOR_PAYMENT', VendorPayment::DOCUMENT_TYPE, $payment->id, $payment->posting_date->toDateString(), $payload, $dims, 'POST',
+                $settlement === null ? 'VENDOR_PAYMENT' : 'VENDOR_PAYMENT_FX', VendorPayment::DOCUMENT_TYPE, $payment->id, $payment->posting_date->toDateString(), $payload, $dims, 'POST',
                 mb_substr("Pembayaran vendor {$payment->vendor->code}", 0, 500), $payment->reference, $actor, $this->authority->canPostSoftClosed($actor),
             );
             $journal = JournalEntry::query()->findOrFail($event->journal_entry_id);
-            $this->assertJournal($journal, $payment->amount);
+            $settlement === null ? $this->assertJournal($journal, $payment->amount) : $this->assertForeignJournal($journal, $settlement);
 
-            $this->workflow->markPosted($payment, $actor, $journal, $event, 'VENDOR_PAYMENT', 'PAY', ['gl_account_id' => $cash->account_id]);
-            $this->makeEffective($payment, $allocations->all(), $invoices->all());
+            $this->workflow->markPosted($payment, $actor, $journal, $event, 'VENDOR_PAYMENT', 'PAY', ['gl_account_id' => $cash->account_id]
+                + ($settlement === null ? [] : ['functional_amount' => Money::str($settlement['settlement']), 'fx_difference' => Money::str($settlement['difference'])]));
+            $this->makeEffective($payment, $allocations->all(), $invoices->all(), $settlement);
 
             return $this->load($payment);
         });
@@ -204,6 +220,7 @@ class VendorPaymentService
                 throw new DomainException($payment->status === VendorPayment::REVERSED ? 'This payment has already been reversed.' : 'Only a posted payment can be reversed.', $payment->status === VendorPayment::REVERSED ? 'AP_PAYMENT_ALREADY_REVERSED' : 'AP_PAYMENT_NOT_POSTED', 409, ['status' => $payment->status]);
             }
             $this->authority->assertLedgerWritable($actor);
+            $this->foreign->assertWritable($actor, $payment);
             $allocations = ApPaymentAllocation::query()->where('vendor_payment_id', $payment->id)->orderBy('ap_invoice_id')->get();
             ApInvoice::query()->whereIn('id', $allocations->pluck('ap_invoice_id'))->orderBy('id')->lockForUpdate()->get();
 
@@ -247,6 +264,11 @@ class VendorPaymentService
         }
 
         $postingDate = $payment->posting_date->toDateString();
+        $this->foreign->assertWritable($actor, $payment);
+        $rate = $this->foreign->current($payment, $postingDate, $lock);
+        if ($rate->foreign() && ! $rate->convert(BigDecimal::of($payment->amount))->isEqualTo($payment->functional_amount)) {
+            throw new DomainException('The functional amount of this payment no longer matches its exchange rate.', 'EXCHANGE_RATE_CHANGED', 409);
+        }
         $this->readiness->assertCanPost($postingDate, JournalEntry::SYSTEM);
         $this->periods->resolveForPosting($postingDate, $this->authority->canPostSoftClosed($actor));
 
@@ -273,6 +295,9 @@ class VendorPaymentService
             if ($invoice->vendor_id !== $payment->vendor_id) {
                 throw new DomainException('A payment settles invoices of its own vendor only.', 'AP_ALLOCATION_VENDOR_MISMATCH', 422, ['ap_invoice_id' => $invoice->id]);
             }
+            if ($invoice->currency !== $payment->currency) {
+                throw new DomainException('A payment settles invoices in its own currency only.', 'AP_ALLOCATION_CURRENCY_MISMATCH', 422, ['ap_invoice_id' => $invoice->id, 'invoice_currency' => $invoice->currency, 'payment_currency' => $payment->currency]);
+            }
             if ($invoice->posting_date->toDateString() > $payment->posting_date->toDateString()) {
                 throw new DomainException('A payment cannot be posted before the invoice it settles.', 'AP_PAYMENT_BEFORE_INVOICE', 422, ['document_number' => $invoice->document_number]);
             }
@@ -292,7 +317,6 @@ class VendorPaymentService
      */
     private function prepare(array $data, ?VendorPayment $existing, User $actor, AccountingProfile $profile): array
     {
-        $scale = (int) $profile->currency_scale;
         $field = fn (string $key, mixed $default = null) => array_key_exists($key, $data) ? $data[$key] : ($existing?->{$key} ?? $default);
         $date = fn (mixed $v) => $v instanceof \DateTimeInterface ? $v->format('Y-m-d') : $v;
 
@@ -304,15 +328,15 @@ class VendorPaymentService
         if ($existing !== null && $existing->vendor_id !== $vendor->id && ! array_key_exists('allocations', $data) && ! ($data['auto_allocate'] ?? false)) {
             throw new DomainException('Changing the vendor requires new allocations.', 'AP_ALLOCATION_VENDOR_MISMATCH', 422, ['field' => 'allocations']);
         }
-        if (isset($data['currency']) && $data['currency'] !== $profile->functional_currency) {
-            throw new DomainException("OA2 books in the functional currency ({$profile->functional_currency}) only.", 'CURRENCY_NOT_SUPPORTED', 422, ['field' => 'currency']);
-        }
 
         $cashId = $data['cash_bank_account_id'] ?? $existing?->cash_bank_account_id ?? throw new DomainException('The cash or bank account is required.', 'CASH_BANK_ACCOUNT_REQUIRED', 422, ['field' => 'cash_bank_account_id']);
         $cash = $this->cashAccounts->usable($cashId);
 
         $paymentDate = $date($field('payment_date')) ?? throw new DomainException('The payment date is required.', 'PAYMENT_DATE_REQUIRED', 422);
         $postingDate = $date(array_key_exists('posting_date', $data) && $data['posting_date'] !== null ? $data['posting_date'] : ($existing?->posting_date ?? $paymentDate));
+        // the currency of the payment and the rate for its posting date; the amount is entered with the currency's own decimal places
+        $fx = $this->foreign->prepare($data['currency'] ?? $existing?->currency, $postingDate, $data['exchange_rate_type'] ?? null, $actor, $profile);
+        $scale = $fx['scale'];
         $amount = Money::parse($field('amount'), $scale, 'amount');
         if ($amount->isLessThanOrEqualTo(0)) {
             throw new DomainException('The payment amount must be greater than zero.', 'PAYMENT_AMOUNT_INVALID', 422, ['field' => 'amount']);
@@ -325,15 +349,15 @@ class VendorPaymentService
         $dims = $this->dimensions->resolve($field('branch_id', $cash->branch_id), $field('business_unit_id', $cash->business_unit_id), $field('cost_center_id'));
         $this->scope->assertWritable($dims['branch_id'], $dims['business_unit_id'], $existing?->created_by ?? $actor->id);
 
-        $allocations = $this->allocations($data, $existing, $vendor, $amount, $postingDate, $scale);
+        $allocations = $this->allocations($data, $existing, $vendor, $amount, $postingDate, $scale, $fx['currency']);
 
         return [
             'header' => collect($data)->only(['payment_date', 'posting_date', 'payment_method', 'reference', 'description'])->all(),
             'columns' => [
-                'vendor_id' => $vendor->id, 'cash_bank_account_id' => $cash->id, 'currency' => $profile->functional_currency, 'amount' => Money::str($amount),
+                'vendor_id' => $vendor->id, 'cash_bank_account_id' => $cash->id, 'amount' => Money::str($amount),
                 'payment_date' => $paymentDate, 'posting_date' => $postingDate,
                 'branch_id' => $dims['branch_id'], 'business_unit_id' => $dims['business_unit_id'], 'cost_center_id' => $dims['cost_center_id'],
-            ],
+            ] + $fx['columns'] + ['functional_amount' => $fx['rate']->foreign() ? Money::str($fx['rate']->convert($amount)) : null, 'fx_difference' => null],
             'allocations' => $allocations,
         ];
     }
@@ -344,11 +368,11 @@ class VendorPaymentService
      *
      * @return list<array{ap_invoice_id:string,amount:string}>
      */
-    public function suggest(Vendor $vendor, BigDecimal $amount, ?string $postingDate = null): array
+    public function suggest(Vendor $vendor, BigDecimal $amount, ?string $postingDate = null, ?string $currency = null): array
     {
         $rows = [];
         $left = $amount;
-        foreach ($this->subledger->openInvoices($vendor->id) as $invoice) {
+        foreach ($this->subledger->openInvoices($vendor->id, $currency) as $invoice) {
             if ($left->isLessThanOrEqualTo(0)) {
                 break;
             }
@@ -365,11 +389,11 @@ class VendorPaymentService
     }
 
     /** @return list<array{invoice:ApInvoice,amount:BigDecimal}> */
-    private function allocations(array $data, ?VendorPayment $existing, Vendor $vendor, BigDecimal $amount, string $postingDate, int $scale): array
+    private function allocations(array $data, ?VendorPayment $existing, Vendor $vendor, BigDecimal $amount, string $postingDate, int $scale, string $currency): array
     {
         $rows = [];
         if ($data['auto_allocate'] ?? false) {
-            $rows = $this->suggest($vendor, $amount, $postingDate);
+            $rows = $this->suggest($vendor, $amount, $postingDate, $currency);
         } elseif (array_key_exists('allocations', $data)) {
             $rows = (array) $data['allocations'];
         } elseif ($existing !== null) {
@@ -394,6 +418,9 @@ class VendorPaymentService
             }
             if ($invoice->status !== ApInvoice::POSTED) {
                 throw new DomainException('Only posted invoices can be settled.', 'AP_INVOICE_NOT_PAYABLE', 422, ['allocation' => $n, 'status' => $invoice->status]);
+            }
+            if ($invoice->currency !== $currency) {
+                throw new DomainException('A payment settles invoices in its own currency only.', 'AP_ALLOCATION_CURRENCY_MISMATCH', 422, ['allocation' => $n, 'document_number' => $invoice->document_number, 'invoice_currency' => $invoice->currency, 'payment_currency' => $currency]);
             }
             if ($invoice->posting_date->toDateString() > $postingDate) {
                 throw new DomainException('A payment cannot be posted before the invoice it settles.', 'AP_PAYMENT_BEFORE_INVOICE', 422, ['allocation' => $n, 'document_number' => $invoice->document_number]);
@@ -460,6 +487,98 @@ class VendorPaymentService
         ];
     }
 
+    /**
+     * What each allocation releases from its invoice and what the bank moves for it, in functional currency (see ForeignPostingService::settle).
+     * Runs under the invoice locks: the committed effective allocations are what each invoice still carries.
+     *
+     * @param  list<ApPaymentAllocation>  $allocations
+     * @param  array<string,ApInvoice>  $invoices
+     * @return array{rows:list<array{carrying:BigDecimal,settlement:BigDecimal}>,carrying:BigDecimal,settlement:BigDecimal,difference:BigDecimal}
+     */
+    private function settlement(VendorPayment $payment, array $allocations, array $invoices, ResolvedRate $rate, AccountingProfile $profile): array
+    {
+        $effective = ApPaymentAllocation::query()->whereIn('ap_invoice_id', array_keys($invoices))->where('is_effective', true)->groupBy('ap_invoice_id')
+            ->selectRaw('ap_invoice_id, sum(amount) as paid, sum(coalesce(carrying_amount, amount)) as carried')->get()->keyBy('ap_invoice_id');
+        $rows = [];
+        foreach ($allocations as $allocation) {
+            $invoice = $invoices[$allocation->ap_invoice_id];
+            $rows[] = [
+                'foreign' => BigDecimal::of($allocation->amount),
+                'outstanding' => BigDecimal::of($invoice->total_amount)->minus($effective[$invoice->id]->paid ?? '0'),
+                'carrying_left' => BigDecimal::of($invoice->functional_total_amount)->minus($effective[$invoice->id]->carried ?? '0'),
+            ];
+        }
+
+        return $this->fxPosting->settle($rate->convert(BigDecimal::of($payment->amount)), $rows, (int) $profile->currency_scale);
+    }
+
+    /**
+     * The business fact of a foreign payment: the value the invoices carried (debit the payable accounts, one part per invoice with its own
+     * rate), the value the bank moves (credit cash/bank, with the payment's foreign amount and rate) and the difference, which the rule
+     * books as exchange gain or loss. The foreign legs of the payable and cash lines are equal, so the journal balances in the currency too.
+     *
+     * @param  list<ApPaymentAllocation>  $allocations
+     * @param  array<string,ApInvoice>  $invoices
+     * @param  array{rows:list<array{carrying:BigDecimal,settlement:BigDecimal}>,carrying:BigDecimal,settlement:BigDecimal,difference:BigDecimal}  $settlement
+     * @return array<string,mixed>
+     */
+    private function foreignPayload(VendorPayment $payment, array $allocations, array $invoices, string $cashGlAccountId, ResolvedRate $rate, array $settlement): array
+    {
+        $parts = [];
+        foreach (array_values($allocations) as $i => $allocation) {
+            $invoice = $invoices[$allocation->ap_invoice_id];
+            $carrying = $settlement['rows'][$i]['carrying'];
+            if ($carrying->isZero()) {
+                continue; // nothing left to carry on this invoice; its settlement is all difference
+            }
+            $parts[] = [
+                'amount' => Money::str($carrying), 'account_id' => $invoice->payable_account_id, 'description' => mb_substr("Pelunasan {$invoice->document_number}", 0, 255),
+                'transaction' => ['currency' => $invoice->currency, 'amount' => Money::str($allocation->amount), 'rate' => (string) $invoice->exchange_rate],
+            ];
+        }
+        $difference = $settlement['difference'];
+
+        return [
+            'carrying' => Money::str($settlement['carrying']),
+            'settlement' => Money::str($settlement['settlement']),
+            'fx_loss' => Money::str($difference->isPositive() ? $difference : '0'),
+            'fx_gain' => Money::str($difference->isNegative() ? $difference->negated() : '0'),
+            'role_accounts' => ['CASH_BANK_ACCOUNT' => $cashGlAccountId],
+            'distribution' => [
+                'carrying@ACCOUNTS_PAYABLE' => $parts,
+                'settlement@CASH_BANK_ACCOUNT' => [['amount' => Money::str($settlement['settlement']), 'transaction' => $this->fxPosting->leg($rate, BigDecimal::of($payment->amount))]],
+            ],
+            'fx' => ['currency' => $rate->currency, 'rate' => $rate->rateString(), 'rate_id' => $rate->id, 'rate_date' => $rate->effectiveDate, 'rate_type' => $rate->type, 'source' => $rate->source],
+        ];
+    }
+
+    /**
+     * The journal of a foreign payment: payables debited by what the invoices carried, cash/bank credited by what the bank moves, the
+     * difference as loss (debit) or gain (credit), and nothing else.
+     *
+     * @param  array{carrying:BigDecimal,settlement:BigDecimal,difference:BigDecimal}  $settlement
+     */
+    private function assertForeignJournal(JournalEntry $journal, array $settlement): void
+    {
+        $lines = collect($journal->posting_snapshot['lines'] ?? []);
+        $sum = fn (string $role, string $side) => Money::sum($lines->where('account_role', $role)->where('side', $side)->pluck('amount')->all());
+        $difference = $settlement['difference'];
+        $expected = [
+            'payable' => $settlement['carrying'], 'cash' => $settlement['settlement'],
+            'loss' => $difference->isPositive() ? $difference : BigDecimal::zero(), 'gain' => $difference->isNegative() ? $difference->negated() : BigDecimal::zero(),
+        ];
+        $actual = ['payable' => $sum('ACCOUNTS_PAYABLE', 'DEBIT'), 'cash' => $sum('CASH_BANK_ACCOUNT', 'CREDIT'), 'loss' => $sum('FX_LOSS', 'DEBIT'), 'gain' => $sum('FX_GAIN', 'CREDIT')];
+        $roles = ['ACCOUNTS_PAYABLE', 'CASH_BANK_ACCOUNT', 'FX_LOSS', 'FX_GAIN'];
+        foreach ($expected as $key => $value) {
+            if (! $actual[$key]->isEqualTo($value)) {
+                throw new DomainException('The foreign vendor payment posting rule must debit accounts payable and the exchange loss, and credit cash and bank and the exchange gain, with the amounts of the settlement.', 'AP_POSTING_RULE_INVALID', 422, ['component' => $key]);
+            }
+        }
+        if ($lines->count() !== $lines->whereIn('account_role', $roles)->count()) {
+            throw new DomainException('The foreign vendor payment posting rule books accounts the settlement does not use.', 'AP_POSTING_RULE_INVALID', 422);
+        }
+    }
+
     /** The journal the rule built must debit the payable accounts and credit the cash/bank account by exactly the payment amount. */
     private function assertJournal(JournalEntry $journal, string $amount): void
     {
@@ -472,13 +591,14 @@ class VendorPaymentService
     }
 
     /** Make the allocations effective after the payment is POSTED (the database checks the invoice locks, the remaining amount and the full allocation at commit). */
-    private function makeEffective(VendorPayment $payment, array $allocations, array $invoices): void
+    private function makeEffective(VendorPayment $payment, array $allocations, array $invoices, ?array $settlement = null): void
     {
-        foreach ($allocations as $allocation) {
-            $allocation->forceFill(['is_effective' => true, 'effective_at' => now()])->save();
+        foreach (array_values($allocations) as $i => $allocation) {
+            $functional = $settlement === null ? [] : ['carrying_amount' => Money::str($settlement['rows'][$i]['carrying']), 'settlement_amount' => Money::str($settlement['rows'][$i]['settlement'])];
+            $allocation->forceFill(['is_effective' => true, 'effective_at' => now()] + $functional)->save();
             $this->audit->record('payables.vendor_payment.allocated', 'vendor_payment', $payment->id, null, [
                 'ap_invoice_id' => $allocation->ap_invoice_id, 'invoice_number' => $invoices[$allocation->ap_invoice_id]->document_number, 'amount' => $allocation->amount,
-            ]);
+            ] + ($functional === [] ? [] : ['currency' => $payment->currency, 'carrying_amount' => $functional['carrying_amount'], 'settlement_amount' => $functional['settlement_amount']]));
         }
     }
 
@@ -493,6 +613,6 @@ class VendorPaymentService
 
     private function summary(VendorPayment $payment): array
     {
-        return $payment->only(['document_number', 'vendor_id', 'cash_bank_account_id', 'status', 'payment_date', 'posting_date', 'amount']);
+        return $payment->only(['document_number', 'vendor_id', 'cash_bank_account_id', 'status', 'payment_date', 'posting_date', 'amount', 'currency', 'exchange_rate']);
     }
 }

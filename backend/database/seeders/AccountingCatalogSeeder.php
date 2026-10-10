@@ -23,6 +23,7 @@ class AccountingCatalogSeeder extends Seeder
         'REVENUE_ADJUSTMENT' => 'Pengurang pendapatan (retur dan potongan penjualan)',
         'FIXED_ASSET' => 'Aset tetap (harga perolehan)', 'ACCUMULATED_DEPRECIATION' => 'Akumulasi penyusutan', 'DEPRECIATION_EXPENSE' => 'Beban penyusutan',
         'ASSET_DISPOSAL_GAIN_LOSS' => 'Laba (rugi) pelepasan aset',
+        'FX_GAIN' => 'Laba selisih kurs (terealisasi)', 'FX_LOSS' => 'Rugi selisih kurs (terealisasi)',
     ];
 
     /** OA2: roles whose account is named by the source document, not by a tenant mapping (code => name). */
@@ -45,6 +46,8 @@ class AccountingCatalogSeeder extends Seeder
         'ASSET_CAPITALIZED' => ['Aset tetap dikapitalisasi', 'Komponen: cost. Diaktifkan oleh OA4.', ['cost']],
         'DEPRECIATION_RECOGNIZED' => ['Penyusutan diakui', 'Komponen: amount. Diaktifkan oleh OA4.', ['amount']],
         'ASSET_DISPOSED' => ['Aset tetap dilepas', 'Komponen: cost, accumulated, proceeds, gain, loss. Diaktifkan oleh OA4.', ['cost', 'accumulated', 'proceeds', 'gain', 'loss']],
+        'VENDOR_PAYMENT_FX' => ['Pembayaran vendor mata uang asing', 'Komponen: carrying, settlement, fx_gain, fx_loss. Diaktifkan oleh OA4.', ['carrying', 'settlement', 'fx_gain', 'fx_loss']],
+        'CUSTOMER_RECEIPT_FX' => ['Penerimaan pelanggan mata uang asing', 'Komponen: carrying, settlement, fx_gain, fx_loss. Diaktifkan oleh OA4.', ['carrying', 'settlement', 'fx_gain', 'fx_loss']],
     ];
 
     /** code, name, parent, type, postable, control, role */
@@ -78,6 +81,7 @@ class AccountingCatalogSeeder extends Seeder
         ['4150', 'Retur dan Potongan Penjualan', '4000', 'REVENUE', true, false, 'REVENUE_ADJUSTMENT', 'DEBIT'],
         ['4200', 'Pendapatan Lain-lain', '4000', 'REVENUE', true, false, null],
         ['4250', 'Laba (Rugi) Pelepasan Aset', '4000', 'REVENUE', true, false, 'ASSET_DISPOSAL_GAIN_LOSS'],
+        ['4260', 'Laba Selisih Kurs', '4000', 'REVENUE', true, false, 'FX_GAIN'],
         ['5000', 'Harga Pokok Penjualan', null, 'EXPENSE', false, false, null],
         ['5100', 'Harga Pokok Penjualan', '5000', 'EXPENSE', true, false, null],
         ['6000', 'Beban Operasional', null, 'EXPENSE', false, false, null],
@@ -88,15 +92,18 @@ class AccountingCatalogSeeder extends Seeder
         ['6500', 'Beban BBM', '6000', 'EXPENSE', true, false, null],
         ['6600', 'Beban Penyusutan', '6000', 'EXPENSE', true, false, 'DEPRECIATION_EXPENSE'],
         ['6900', 'Beban Umum dan Administrasi', '6000', 'EXPENSE', true, false, 'EXPENSE'],
+        ['6950', 'Rugi Selisih Kurs', '6000', 'EXPENSE', true, false, 'FX_LOSS'],
     ];
 
     /** role code => the only event types whose posting rules may use the role */
     private const RESTRICTED_ROLES = [
-        'ACCOUNTS_PAYABLE' => ['AP_INVOICE_RECOGNIZED', 'VENDOR_PAYMENT', 'EXPENSE_RECOGNIZED'],
-        'ACCOUNTS_RECEIVABLE' => ['AR_INVOICE_RECOGNIZED', 'CUSTOMER_RECEIPT', 'AR_CREDIT_NOTE_RECOGNIZED'],
+        'ACCOUNTS_PAYABLE' => ['AP_INVOICE_RECOGNIZED', 'VENDOR_PAYMENT', 'VENDOR_PAYMENT_FX', 'EXPENSE_RECOGNIZED'],
+        'ACCOUNTS_RECEIVABLE' => ['AR_INVOICE_RECOGNIZED', 'CUSTOMER_RECEIPT', 'CUSTOMER_RECEIPT_FX', 'AR_CREDIT_NOTE_RECOGNIZED'],
         'FIXED_ASSET' => ['ASSET_CAPITALIZED', 'ASSET_DISPOSED'],
         'ACCUMULATED_DEPRECIATION' => ['DEPRECIATION_RECOGNIZED', 'ASSET_DISPOSED'],
         'ASSET_DISPOSAL_GAIN_LOSS' => ['ASSET_DISPOSED'],
+        'FX_GAIN' => ['VENDOR_PAYMENT_FX', 'CUSTOMER_RECEIPT_FX'],
+        'FX_LOSS' => ['VENDOR_PAYMENT_FX', 'CUSTOMER_RECEIPT_FX'],
     ];
 
     public function run(): void

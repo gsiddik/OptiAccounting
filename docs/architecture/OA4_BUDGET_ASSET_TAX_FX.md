@@ -49,3 +49,54 @@ Modules: `ACCOUNTING_BUDGET` (BUDGET), `ACCOUNTING_FIXED_ASSET` (ASSET_REGISTER,
   reports a difference as it is; nothing is adjusted. Scoped users get `complete = false`. The journal reverse endpoint refuses journals owned by an asset document.
 - **Limits.** Book depreciation only (no tax depreciation law), monthly granularity, no revaluation/impairment, no component split, single functional currency
   until the multi-currency batch; asset transfer between branches is not modelled (an asset keeps its capitalization dimensions).
+
+## 3. Tax (configuration, one calculator, a frozen snapshot per document line)
+- **Master data.** `tax_codes` (type INPUT_TAX / OUTPUT_TAX / WITHHOLDING / OTHER, EXCLUSIVE or INCLUSIVE, STANDARD / ZERO_RATED / EXEMPT, recoverable flag, account role or
+  explicit account) with effective-dated `tax_rates` (rate % with six decimals). Nothing is a statutory rule: the tenant enters the codes and rates it needs. A rate change is a
+  new rate from a date (the previous one closes the day before, the timeline only moves forward, never behind a date a posted tax used). A used code is deactivated, never deleted.
+- **One calculator** (`TaxCalculator`, pure `BigDecimal`): EXCLUSIVE tax = base x rate / 100; INCLUSIVE tax = entered x rate / (100 + rate) and base = entered - tax; HALF_UP at the
+  currency scale, once per line. Zero-rated, exempt or a zero rate give no tax. AP, expense, AR, the API preview and the tests all call it; no controller or React code repeats it.
+- **Documents** (`TaxDocumentService`): a line naming a tax code gets base + tax at the rate in force on the tax date (document date, not posting date). DRAFT `tax_transactions` follow the
+  saved lines; approval and posting re-check that the configuration still gives the same amounts (`TAX_CONFIGURATION_CHANGED` otherwise: reopen and recalculate, no silent drift).
+  Posting holds the code row FOR SHARE and the configuration change takes it FOR UPDATE, so a posting sees the old configuration whole or finds the new one. At posting the
+  snapshot (code, type, rate, method, base, tax, account role / account, document number, journal) is frozen with the journal; reversal marks it REVERSED.
+- **Posting.** Output and recoverable input tax go to the code's account role through the Posting Engine (`TAX_PAYABLE` / `TAX_RECEIVABLE`, or the explicit account). A non-recoverable
+  input tax is folded into the cost of its line. Controllers and the tax module never name an account number.
+- **Report** (`TaxReportService`): sums POSTED tax snapshots (reversals as negative movements) by code and rate, output vs input recoverable vs input non-recoverable, on
+  posting-date or tax-date basis; CSV export under `accounting.report.export`; data scope applies through the owning document. Amounts are functional (see §4).
+- **Known limitations.** WITHHOLDING codes can be configured but are not usable on documents yet; a header discount cannot be combined with tax codes (per-line tax needs per-line
+  discount first); the tax of an AR credit note stays a manual header amount, shown as informational in the report; an APPROVED document whose tax configuration changed must be
+  cancelled or reopened (it cannot post).
+
+## 4. Multi-currency (functional ledger, foreign snapshot, realised difference)
+- **Principle.** The ledger, the GL and every report stay in the functional currency (`accounting_profile`, frozen after the first posting, and refused while currencies or rates
+  exist). A foreign amount is a snapshot beside the functional amount, never a second ledger. `journal_lines` carry `transaction_currency / transaction_debit / transaction_credit /
+  exchange_rate`; a posted journal balances in functional currency AND in every transaction currency (DB trigger `journal_entries_guard`).
+- **Masters.** `currencies` (tenant rows, ISO code, 0-4 decimal places; code and, once rates or documents exist, precision are fixed; deactivated, never deleted when used) and
+  `exchange_rates` (from a currency into the functional one; value, date and type never change; a correction withdraws the rate and enters another; one live rate per
+  currency / date / type is a partial unique index; a rate cited by a document cannot be deleted). Permissions `accounting.currency.{view,manage}`, `accounting.exchange_rate.{view,manage}`;
+  routes under `module=ACCOUNTING_MULTI_CURRENCY,feature=EXCHANGE_RATE`.
+- **One resolver** (`ExchangeRateResolver`). Latest active rate on or before the document date, no older than `OPTIENTRY_FX_RATE_MAX_AGE_DAYS` (31); same date: MANUAL, SPOT, DAILY,
+  MONTH_END unless a type is asked for. Never assumes 1 for two different currencies: no rate means `EXCHANGE_RATE_NOT_FOUND` and nothing is saved. The chosen rate (id, value, date,
+  type) is stored on the document. Submit, approve and post re-resolve it (posting holds the rate row FOR SHARE): a rate withdrawn or replaced in between gives
+  `EXCHANGE_RATE_NOT_FOUND` / `EXCHANGE_RATE_CHANGED` instead of a silent change. After posting the document owns its rate; the master can change freely.
+- **Conversion.** `ResolvedRate::convert` is the only place a foreign amount becomes functional (HALF_UP at the functional scale). An invoice converts each part (net lines, tax) on its
+  own; the control line is the converted document total; the few smallest units of difference are added to the largest net part, never to a tax part, so the tax a report shows is
+  the tax the ledger holds (`ForeignPostingService::invoice`). The rules and the engine only ever see functional amounts; the foreign leg travels as `transaction` on each part.
+- **Invoices.** AP / AR invoices accept `currency` + `exchange_rate_type`; stored: `exchange_rate`, `exchange_rate_id/date/type`, `functional_total_amount` (NULL = functional document).
+  The DB guards compare the posted journal with the functional total. Outstanding is kept in the invoice currency (`outstanding_amount`) and in functional carrying value
+  (`outstanding_functional`); aging buckets, reconciliation and dashboard totals use the functional figure, aging detail also shows the foreign amount and rate.
+- **Settlement and realised difference.** A foreign payment / receipt settles invoices of its own currency only (`*_ALLOCATION_CURRENCY_MISMATCH`) at its own rate (the rate for
+  its posting date). At posting, under the invoice locks, `ForeignPostingService::settle` computes per allocation the value released from the invoice (`carrying_amount`: remaining
+  carrying x foreign amount / foreign outstanding, all of it when the invoice is settled in full, so no rounding residue) and the value the bank moves
+  (`settlement_amount`: the payment's functional amount spread by largest remainder). `fx_difference = settlement - carrying`. Events `VENDOR_PAYMENT_FX` /
+  `CUSTOMER_RECEIPT_FX` (rules from `FxSetupService`, applied explicitly like the asset rules) debit / credit the control account by `carrying`, cash / bank by `settlement` and
+  `FX_LOSS` / `FX_GAIN` (functional-only lines, `is_fx_difference`) by the difference. AP: payment above carrying = loss; AR: receipt above carrying = gain. The DB checks that a
+  posted foreign payment's effective allocations add up to its functional amount and its difference. Reversal mirrors the journal with the original rates and releases the allocations.
+- **Entitlement.** A foreign document needs `ACCOUNTING_MULTI_CURRENCY` / `EXCHANGE_RATE` writable (READ_ONLY, SUSPENDED, DISABLED refuse it, including reversal); functional documents never
+  touch it, so single-currency tenants and old data behave exactly as before.
+- **Contradiction recorded.** The brief lists FX revaluation; OA4 implements realised differences only. **FX Revaluation is NOT IMPLEMENTED** (feature `FX_REVALUATION` exists in the catalog
+  for a later phase): unrealised gain / loss on open balances needs period-end revaluation journals with auto-reversal, which would be a financial feature without the owner's accounting-policy decision.
+- **Known limitations.** Credit notes, expenses, cash / bank transactions, bank accounts and manual journals are functional only (a credit note against a foreign invoice is refused:
+  `AR_CREDIT_NOTE_FOREIGN_INVOICE`); the settlement rate comes from the rate master (enter a MANUAL rate for the actual bank rate); a payment cannot span currencies; foreign tax codes
+  use the invoice rate; no automatic rate feed.

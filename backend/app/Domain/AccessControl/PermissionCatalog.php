@@ -207,6 +207,12 @@ final class PermissionCatalog
                     'accounting.tax.manage' => 'Create and edit tax codes, add rates, activate and deactivate codes',
                     'accounting.tax.report.view' => 'View the tax report',
                 ],
+                'Multi-currency' => [
+                    'accounting.currency.view' => 'View the foreign currencies of the tenant',
+                    'accounting.currency.manage' => 'Add and edit foreign currencies, activate and deactivate them',
+                    'accounting.exchange_rate.view' => 'View exchange rates',
+                    'accounting.exchange_rate.manage' => 'Enter, withdraw and delete exchange rates',
+                ],
                 'Audit' => [
                     'audit.view' => 'View the tenant audit log',
                 ],

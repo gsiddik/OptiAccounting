@@ -110,10 +110,19 @@ class JournalService
             $row->reference = $line['reference'];
             $row->debit = Money::str($line['debit']);
             $row->credit = Money::str($line['credit']);
-            $row->transaction_currency = $currency; // OA4 adds real transaction currencies; rate 1 until then
-            $row->transaction_debit = Money::str($line['debit']);
-            $row->transaction_credit = Money::str($line['credit']);
-            $row->exchange_rate = '1';
+            if ($line['transaction'] ?? null) { // a foreign-currency leg of a system posting: the snapshot beside the functional amount
+                $leg = $line['transaction'];
+                $row->transaction_currency = $leg['currency'];
+                $row->transaction_debit = $line['debit']->isZero() ? '0' : Money::str($leg['amount']);
+                $row->transaction_credit = $line['credit']->isZero() ? '0' : Money::str($leg['amount']);
+                $row->exchange_rate = (string) $leg['rate']->toScale(10);
+            } else {
+                $row->transaction_currency = $currency;
+                $row->transaction_debit = Money::str($line['debit']);
+                $row->transaction_credit = Money::str($line['credit']);
+                $row->exchange_rate = '1';
+            }
+            $row->is_fx_difference = (bool) ($line['fx_difference'] ?? false);
             $row->branch_id = $line['branch_id'];
             $row->business_unit_id = $line['business_unit_id'];
             $row->cost_center_id = $line['cost_center_id'];
