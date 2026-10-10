@@ -21,11 +21,16 @@ use App\Domain\Payables\Services\ApInvoiceService;
 use App\Domain\Payables\Services\PaymentTermService;
 use App\Domain\Payables\Services\VendorPaymentService;
 use App\Domain\Payables\Services\VendorService;
+use App\Domain\Receivables\Models\Customer;
+use App\Domain\Receivables\Services\ArCreditNoteService;
+use App\Domain\Receivables\Services\ArInvoiceService;
+use App\Domain\Receivables\Services\CustomerReceiptService;
+use App\Domain\Receivables\Services\CustomerService;
 use App\Support\TenantContext;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Demo payables, expenses and cash/bank for one tenant whose demo books already exist (called by DemoSeeder after DemoAccountingSeeder; never
+ * Demo payables, expenses, receivables and cash/bank for one tenant whose demo books already exist (called by DemoSeeder after DemoAccountingSeeder; never
  * by DatabaseSeeder). Everything goes through the same services as the API, with the accountant preparing and the manager approving and
  * posting, so the segregation-of-duties policy and every accounting invariant apply to the demo data too. Dates are relative to today and stay
  * inside the open periods (DemoAccountingSeeder closes January and soft-closes February).
@@ -61,6 +66,7 @@ class DemoOperationalSeeder
             $bank = $this->as($manager, fn () => $this->cashAccounts($jakarta));
             $this->payables($vendors, $bank['bca'], $accountant, $manager, $jakarta);
             $this->expenses($vendors, $bank['kas'], $accountant, $manager, $jakarta);
+            $this->receivables($bank['bca'], $accountant, $manager, $jakarta);
             $this->cashAndReconciliation($bank['bca'], $accountant, $manager, $jakarta);
         });
     }
@@ -131,6 +137,67 @@ class DemoOperationalSeeder
         $settle($pay($vendors['listrik'], [$power->id => 4440000], 12, 'TRF-0002'));
         $waiting = $pay($vendors['servis'], [$service->id => 3000000], 1, 'TRF-0003');
         $this->as($accountant, fn () => $payments->submit($waiting, $accountant));
+    }
+
+    /** Customers, invoices in every state, partly and fully settled ones, a credit note and a receipt waiting for approval (OA3). */
+    private function receivables(CashBankAccount $bank, User $accountant, User $manager, ?string $branchId): void
+    {
+        $term = fn (string $code) => PaymentTerm::query()->where('code', $code)->value('id');
+        $customers = app(CustomerService::class);
+        $make = fn (string $code, string $name, string $termCode, array $extra = []) => $this->as($manager, fn () => $customers->create($extra + ['code' => $code, 'name' => $name, 'payment_term_id' => $term($termCode)]));
+        /** @var array<string,Customer> $c */
+        $c = [
+            'logistik' => $make('LOGISTIK', 'PT Logistik Nusantara', 'NET30', ['email' => 'keuangan@logistiknusantara.demo.test', 'credit_limit' => '50000000']),
+            'retail' => $make('RETAIL', 'CV Retail Mandiri', 'NET14'),
+            'tambang' => $make('TAMBANG', 'PT Tambang Karya', 'NET30'),
+            'toko' => $make('TOKO', 'Toko Maju Jaya', 'COD'),
+        ];
+
+        $invoices = app(ArInvoiceService::class);
+        $receipts = app(CustomerReceiptService::class);
+        $notes = app(ArCreditNoteService::class);
+        $draft = fn (Customer $customer, string $reference, string $description, string $amount, int $daysAgo) => $this->as($accountant, fn () => $invoices->create([
+            'customer_id' => $customer->id, 'customer_reference' => $reference, 'document_date' => $this->date($daysAgo), 'posting_date' => $this->date($daysAgo),
+            'description' => $description, 'branch_id' => $branchId, 'lines' => [['description' => $description, 'amount' => $amount]],
+        ], $accountant));
+        $submit = fn ($invoice) => $this->as($accountant, fn () => $invoices->submit($invoice, $accountant));
+        $approve = fn ($invoice) => $this->as($manager, fn () => $invoices->approve($invoice, $manager));
+        $post = fn ($invoice) => $this->as($manager, fn () => $invoices->post($invoice, $manager));
+        $posted = fn (Customer $customer, string $reference, string $description, string $amount, int $daysAgo) => $post($approve($submit($draft($customer, $reference, $description, $amount, $daysAgo))));
+
+        $old = $posted($c['logistik'], 'PO-LN-0412', 'Jasa angkut kontainer bulanan', '18500000', 58);
+        $mid = $posted($c['retail'], 'PO-RM-118', 'Distribusi barang retail', '9600000', 26);
+        $new = $posted($c['tambang'], 'PO-TK-077', 'Sewa armada dan pengemudi', '22000000', 11);
+        $cod = $posted($c['toko'], 'PO-TMJ-31', 'Pengiriman paket ekspres', '2750000', 3);
+        $submit($draft($c['logistik'], 'PO-LN-0455', 'Jasa angkut tambahan', '4200000', 2));
+        $approve($submit($draft($c['retail'], 'PO-RM-131', 'Distribusi barang retail minggu ini', '3300000', 1)));
+        $draft($c['tambang'], 'PO-TK-081', 'Sewa armada (draf)', '7500000', 0);
+
+        // Partly settled, fully settled, a receipt waiting for approval.
+        $collect = fn (Customer $customer, array $allocations, int $daysAgo, string $reference) => $this->as($accountant, fn () => $receipts->create([
+            'customer_id' => $customer->id, 'cash_bank_account_id' => $bank->id, 'receipt_date' => $this->date($daysAgo), 'posting_date' => $this->date($daysAgo),
+            'amount' => (string) array_sum($allocations), 'receipt_method' => 'TRANSFER', 'reference' => $reference, 'branch_id' => $branchId,
+            'allocations' => array_map(fn ($id, $amount) => ['ar_invoice_id' => $id, 'amount' => (string) $amount], array_keys($allocations), $allocations),
+        ], $accountant));
+        $settle = function ($receipt) use ($receipts, $accountant, $manager) {
+            $receipt = $this->as($accountant, fn () => $receipts->submit($receipt, $accountant));
+            $receipt = $this->as($manager, fn () => $receipts->approve($receipt, $manager));
+
+            return $this->as($manager, fn () => $receipts->post($receipt, $manager));
+        };
+        $settle($collect($c['logistik'], [$old->id => 10000000], 40, 'TRF-IN-0001'));
+        $settle($collect($c['retail'], [$mid->id => 9600000], 15, 'TRF-IN-0002'));
+        $waiting = $collect($c['tambang'], [$new->id => 8000000], 1, 'TRF-IN-0003');
+        $this->as($accountant, fn () => $receipts->submit($waiting, $accountant));
+
+        // A posted credit note for a partial return on the oldest invoice.
+        $note = $this->as($accountant, fn () => $notes->create([
+            'ar_invoice_id' => $old->id, 'document_date' => $this->date(20), 'posting_date' => $this->date(20), 'reason' => 'Retur sebagian layanan yang tidak terlaksana',
+            'lines' => [['description' => 'Pengurangan jasa angkut', 'amount' => '1500000']],
+        ], $accountant));
+        $note = $this->as($accountant, fn () => $notes->submit($note, $accountant));
+        $note = $this->as($manager, fn () => $notes->approve($note, $manager));
+        $this->as($manager, fn () => $notes->post($note, $manager));
     }
 
     /** @param array<string,Vendor> $vendors */

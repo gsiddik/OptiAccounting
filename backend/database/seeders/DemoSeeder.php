@@ -53,6 +53,10 @@ class DemoSeeder extends Seeder
         'accounting.expense.view', 'accounting.expense.create', 'accounting.expense.update', 'accounting.expense.submit',
         'accounting.cash_bank.view', 'accounting.cash_transaction.view', 'accounting.cash_transaction.create',
         'accounting.bank_reconciliation.view', 'accounting.bank_reconciliation.manage', 'accounting.reconciliation.cash_bank.view',
+        // receivables (OA3)
+        'accounting.customer.view', 'accounting.ar_invoice.view', 'accounting.ar_invoice.create', 'accounting.ar_invoice.update', 'accounting.ar_invoice.submit',
+        'accounting.ar_receipt.view', 'accounting.ar_receipt.create', 'accounting.ar_receipt.submit', 'accounting.ar_credit_note.view', 'accounting.ar_credit_note.create',
+        'accounting.ar_credit_note.submit', 'accounting.ar_aging.view', 'accounting.reconciliation.ar.view',
     ];
 
     /** What the finance manager adds: vendor and account administration, approval, posting and reversal of every OA2 document. */
@@ -61,6 +65,9 @@ class DemoSeeder extends Seeder
         'accounting.ap_payment.approve', 'accounting.ap_payment.post', 'accounting.ap_payment.reverse',
         'accounting.expense.approve', 'accounting.expense.post', 'accounting.expense.reverse', 'accounting.expense_category.manage',
         'accounting.cash_bank.manage', 'accounting.cash_transaction.post', 'accounting.cash_transaction.reverse',
+        'accounting.customer.manage', 'accounting.ar_invoice.approve', 'accounting.ar_invoice.post', 'accounting.ar_invoice.reverse',
+        'accounting.ar_receipt.approve', 'accounting.ar_receipt.post', 'accounting.ar_receipt.reverse',
+        'accounting.ar_credit_note.approve', 'accounting.ar_credit_note.post', 'accounting.ar_credit_note.reverse',
     ];
 
     private const PLATFORM_USERS = [
@@ -200,7 +207,7 @@ class DemoSeeder extends Seeder
             if (isset($d['accounting'])) {
                 [$accountant, $manager] = array_map(fn ($email) => User::query()->whereRaw('lower(email) = ?', [$email])->firstOrFail(), $d['accounting']);
                 app(DemoAccountingSeeder::class)->seed($tenant, $accountant, $manager);
-                app(DemoOperationalSeeder::class)->seed($tenant, $accountant, $manager); // payables, expenses, cash/bank (OA2)
+                app(DemoOperationalSeeder::class)->seed($tenant, $accountant, $manager); // payables, expenses, cash/bank (OA2) and receivables (OA3)
             }
         });
 
