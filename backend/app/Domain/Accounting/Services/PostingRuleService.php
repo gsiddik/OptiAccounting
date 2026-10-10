@@ -2,6 +2,7 @@
 
 namespace App\Domain\Accounting\Services;
 
+use App\Domain\Accounting\Models\Account;
 use App\Domain\Accounting\Models\PostingRule;
 use App\Domain\Accounting\Models\PostingRuleLine;
 use App\Domain\Accounting\Support\Money;
@@ -197,6 +198,14 @@ class PostingRuleService
      * Rule + payload -> journal lines (account ids resolved through the mappings). Used by the posting engine and by the
      * simulation, so a preview is exactly what posting would do. Amounts are decimal strings; zero lines may be skipped.
      *
+     * Source documents may refine the account resolution without touching the rule (the rule still decides sides, roles and
+     * amounts); both refinements are explicit data in the payload and therefore part of the stored posting snapshot:
+     *  - `role_accounts`: {ROLE: account_id} the account this document names for a role (a vendor's payable override, the GL
+     *    account of the cash/bank account chosen on a payment);
+     *  - `distribution`: {amount_key: [{amount, account_id?|account_role?, description?, cost_center_id?}]} spreads one rule line
+     *    over several destinations (invoice lines classified to different expense accounts); the parts must add up to the component.
+     * Resolution order for a line: the part's account, the document's role account, the tenant mapping (DOCUMENT-bound roles have no mapping).
+     *
      * @param  array<string,mixed>  $payload
      * @param  array{branch_id?:?string,business_unit_id?:?string,cost_center_id?:?string}  $dimensions
      * @return array{lines: list<array<string,mixed>>, trace: list<array<string,mixed>>}
@@ -205,6 +214,8 @@ class PostingRuleService
     {
         $branch = $dimensions['branch_id'] ?? null;
         $unit = $dimensions['business_unit_id'] ?? null;
+        $roleAccounts = (array) ($payload['role_accounts'] ?? []);
+        $distribution = (array) ($payload['distribution'] ?? []);
         $lines = [];
         $trace = [];
 
@@ -217,20 +228,59 @@ class PostingRuleService
                 continue;
             }
 
-            $resolved = $this->mappings->resolve($line->account_role, $branch, $unit);
+            // A distribution may target one rule line by its role ("amount@ACCOUNTS_PAYABLE") when two lines share a component.
+            $parts = $distribution["{$line->amount_key}@{$line->account_role}"] ?? $distribution[$line->amount_key] ?? null;
+            $distributed = is_array($parts) && $parts !== [];
+            $parts = $distributed ? array_values($parts) : [['amount' => Money::str($amount)]];
+            $spread = Money::sum(array_map(fn ($p) => Money::parse($p['amount'] ?? null, $scale, "{$line->amount_key} distribution"), $parts));
+            if (! $spread->isEqualTo($amount)) {
+                throw new DomainException("The distribution of {$line->amount_key} does not add up to the component.", 'EVENT_DISTRIBUTION_MISMATCH', 422, ['component' => $line->amount_key, 'distributed' => Money::str($spread), 'amount' => Money::str($amount)]);
+            }
+
             $side = $line->side === 'DEBIT' ? 'debit' : 'credit';
-            $lines[] = [
-                'account_id' => $resolved['account']->id, $side => Money::str($amount), 'description' => $line->description,
-                'branch_id' => $branch, 'business_unit_id' => $unit, 'cost_center_id' => $dimensions['cost_center_id'] ?? null,
-            ];
-            $trace[] = [
-                'line' => $line->line_number, 'side' => $line->side, 'account_role' => $line->account_role, 'amount_key' => $line->amount_key, 'amount' => Money::str($amount),
-                'account_id' => $resolved['account']->id, 'account_code' => $resolved['account']->code, 'account_name' => $resolved['account']->name,
-                'mapping_id' => $resolved['mapping_id'], 'mapping_scope' => $resolved['specificity'],
-            ];
+            foreach ($parts as $part) {
+                $partAmount = Money::parse($part['amount'] ?? null, $scale, "{$line->amount_key} distribution");
+                if ($distributed && $partAmount->isZero()) {
+                    continue; // a distribution part of zero adds nothing; an undistributed zero line is the rule's business (skip_if_zero)
+                }
+                $role = (string) ($part['account_role'] ?? $line->account_role);
+                $resolved = $this->resolveAccount($role, $part['account_id'] ?? null, $roleAccounts, $branch, $unit);
+                $lines[] = [
+                    'account_id' => $resolved['account']->id, $side => Money::str($partAmount), 'description' => $part['description'] ?? $line->description,
+                    'branch_id' => $branch, 'business_unit_id' => $unit, 'cost_center_id' => $part['cost_center_id'] ?? $dimensions['cost_center_id'] ?? null,
+                ];
+                $trace[] = [
+                    'line' => $line->line_number, 'side' => $line->side, 'account_role' => $role, 'amount_key' => $line->amount_key, 'amount' => Money::str($partAmount),
+                    'account_id' => $resolved['account']->id, 'account_code' => $resolved['account']->code, 'account_name' => $resolved['account']->name,
+                    'mapping_id' => $resolved['mapping_id'], 'mapping_scope' => $resolved['specificity'],
+                ];
+            }
         }
 
         return ['lines' => $lines, 'trace' => $trace];
+    }
+
+    /**
+     * @param  array<string,string>  $roleAccounts
+     * @return array{account: Account, mapping_id: ?string, specificity: string}
+     */
+    private function resolveAccount(string $role, ?string $accountId, array $roleAccounts, ?string $branch, ?string $unit): array
+    {
+        $named = $accountId ?? ($roleAccounts[$role] ?? null);
+        if ($named !== null) {
+            $account = Account::query()->find($named);
+            if (! $account || $account->status !== 'ACTIVE' || ! $account->is_postable) {
+                throw new DomainException("The account named by the document for the role {$role} is not an active posting account.", 'ACCOUNT_MAPPING_INVALID', 422, ['account_role' => $role]);
+            }
+
+            return ['account' => $account, 'mapping_id' => null, 'specificity' => $accountId !== null ? 'DOCUMENT_LINE' : 'DOCUMENT'];
+        }
+
+        if (DB::table('account_roles')->where('code', $role)->value('binding') === 'DOCUMENT') {
+            throw new DomainException("The document must name the account for the role {$role}.", 'EVENT_ACCOUNT_MISSING', 422, ['account_role' => $role]);
+        }
+
+        return $this->mappings->resolve($role, $branch, $unit);
     }
 
     /** Dry run of a rule against a sample payload: the journal it would build, whether it balances, nothing stored. */
@@ -296,7 +346,18 @@ class PostingRuleService
             throw new DomainException('A posting rule needs at least one debit line and one credit line.', 'POSTING_RULE_INCOMPLETE', 422);
         }
 
-        $unmapped = $rule->lines->pluck('account_role')->unique()->filter(function ($role) {
+        $roles = DB::table('account_roles')->whereIn('code', $rule->lines->pluck('account_role')->unique()->all())->get()->keyBy('code');
+        foreach ($roles as $role) {
+            $restricted = json_decode($role->restricted_events ?? 'null', true);
+            if (is_array($restricted) && ! in_array($rule->event_type, $restricted, true)) {
+                throw new DomainException("The role {$role->code} belongs to its subledger and cannot be used by {$rule->event_type} rules.", 'POSTING_RULE_ROLE_RESTRICTED', 422, ['account_role' => $role->code, 'allowed_events' => $restricted]);
+            }
+        }
+
+        $unmapped = $rule->lines->pluck('account_role')->unique()->filter(function ($role) use ($roles) {
+            if (($roles[$role]->binding ?? 'MAPPED') === 'DOCUMENT') {
+                return false; // the document names the account
+            }
             try {
                 $this->mappings->resolve($role);
 

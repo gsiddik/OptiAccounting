@@ -7,9 +7,9 @@ data-driven compositions of these modules and are never hardcoded.
 | Code | Purpose | Requires | Initial features | Phase |
 |---|---|---|---|---|
 | `ACCOUNTING_CORE` | Profile, fiscal year, periods, COA, dimensions, journals, posting engine, GL, trial balance, opening balance | — | `ACCOUNTING_CONFIGURATION`, `JOURNAL`, `GENERAL_LEDGER`, `OPENING_BALANCE` | OA1 |
-| `ACCOUNTING_AP` | Vendors, vendor invoices, AP subledger, AP aging | CORE | `VENDOR_INVOICE`, `AP_AGING` | OA2 |
+| `ACCOUNTING_AP` | Vendors, vendor invoices, payments, AP subledger, AP aging | CORE | `VENDOR`, `VENDOR_INVOICE`, `AP_PAYMENT`, `AP_AGING` | OA2 |
 | `ACCOUNTING_EXPENSE` | Expense categories and expense claims | CORE | `EXPENSE` | OA2 |
-| `ACCOUNTING_CASH_BANK` | Cash/bank accounts, payments, receipts, bank transactions, bank reconciliation | CORE | `PAYMENT`, `RECEIPT`, `BANK_RECONCILIATION` | OA2 |
+| `ACCOUNTING_CASH_BANK` | Cash/bank accounts, payments, receipts, bank transactions, bank reconciliation | CORE | `CASH_BANK_ACCOUNT`, `PAYMENT`, `RECEIPT`, `BANK_RECONCILIATION` | OA2 |
 | `ACCOUNTING_AR` | Customers, customer invoices, credit/debit notes, receipts allocation, AR aging | CORE | `CUSTOMER_INVOICE`, `CREDIT_NOTE`, `AR_AGING` | OA3 |
 | `ACCOUNTING_BUDGET` | Budgets, versions, budget vs actual | CORE | `BUDGET` | OA4 |
 | `ACCOUNTING_FIXED_ASSET` | Asset register, depreciation, disposal | CORE | `ASSET_REGISTER`, `DEPRECIATION` | OA4 |

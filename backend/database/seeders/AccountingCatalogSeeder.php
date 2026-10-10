@@ -22,6 +22,12 @@ class AccountingCatalogSeeder extends Seeder
         'TAX_RECEIVABLE' => 'Pajak dibayar di muka / PPN masukan', 'TAX_PAYABLE' => 'Utang pajak / PPN keluaran', 'RETAINED_EARNINGS' => 'Laba ditahan',
     ];
 
+    /** OA2: roles whose account is named by the source document, not by a tenant mapping (code => name). */
+    private const DOCUMENT_ROLES = [
+        'CASH_BANK_ACCOUNT' => 'Akun kas/bank pada dokumen (dari akun kas atau bank yang dipilih)',
+        'DOCUMENT_ACCOUNT' => 'Akun lawan pada baris dokumen (klasifikasi akun di dokumen)',
+    ];
+
     /** code => [name, description, components]. The components are the only amount keys a posting rule line may use. */
     private const EVENT_TYPES = [
         'EXPENSE_RECOGNIZED' => ['Beban diakui', 'Komponen: net, tax, total.', ['net', 'tax', 'total']],
@@ -29,6 +35,9 @@ class AccountingCatalogSeeder extends Seeder
         'VENDOR_PAYMENT' => ['Pembayaran vendor', 'Komponen: amount. Diaktifkan oleh OA2.', ['amount']],
         'AR_INVOICE_RECOGNIZED' => ['Faktur pelanggan diakui', 'Komponen: net, tax, total. Diaktifkan oleh OA3.', ['net', 'tax', 'total']],
         'CUSTOMER_RECEIPT' => ['Penerimaan pelanggan', 'Komponen: amount. Diaktifkan oleh OA3.', ['amount']],
+        'EXPENSE_PAID' => ['Beban dibayar langsung', 'Komponen: net, tax, total. Beban yang langsung dibayar dari kas/bank (OA2).', ['net', 'tax', 'total']],
+        'CASH_PAYMENT' => ['Pembayaran kas/bank', 'Komponen: amount. Pembayaran di luar utang usaha (OA2).', ['amount']],
+        'CASH_RECEIPT' => ['Penerimaan kas/bank', 'Komponen: amount. Penerimaan di luar piutang usaha (OA2).', ['amount']],
     ];
 
     /** code, name, parent, type, postable, control, role */
@@ -72,6 +81,9 @@ class AccountingCatalogSeeder extends Seeder
         ['6900', 'Beban Umum dan Administrasi', '6000', 'EXPENSE', true, false, 'EXPENSE'],
     ];
 
+    /** role code => the only event types whose posting rules may use the role */
+    private const RESTRICTED_ROLES = ['ACCOUNTS_PAYABLE' => ['AP_INVOICE_RECOGNIZED', 'VENDOR_PAYMENT', 'EXPENSE_RECOGNIZED']];
+
     public function run(): void
     {
         DB::transaction(function () {
@@ -84,6 +96,17 @@ class AccountingCatalogSeeder extends Seeder
             $order = 10;
             foreach (self::ACCOUNT_ROLES as $code => $name) {
                 DB::table('account_roles')->insertOrIgnore(['code' => $code, 'name' => $name, 'status' => 'ACTIVE', 'sort_order' => $order, 'created_at' => $now, 'updated_at' => $now]);
+                $order += 10;
+            }
+
+            // A subledger control role may only be used by the events of its own subledger. Set here as well as by the migration that introduced the
+            // column: on a fresh install the migration runs before this seeder has created the role, so only the seeder can apply it.
+            foreach (self::RESTRICTED_ROLES as $code => $events) {
+                DB::table('account_roles')->where('code', $code)->update(['restricted_events' => json_encode($events)]);
+            }
+
+            foreach (self::DOCUMENT_ROLES as $code => $name) {
+                DB::table('account_roles')->insertOrIgnore(['code' => $code, 'name' => $name, 'binding' => 'DOCUMENT', 'status' => 'ACTIVE', 'sort_order' => $order, 'created_at' => $now, 'updated_at' => $now]);
                 $order += 10;
             }
 

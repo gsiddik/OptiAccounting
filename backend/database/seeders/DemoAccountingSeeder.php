@@ -12,8 +12,6 @@ use App\Domain\Accounting\Services\FiscalCalendarService;
 use App\Domain\Accounting\Services\JournalService;
 use App\Domain\Accounting\Services\JournalWorkflow;
 use App\Domain\Accounting\Services\OpeningBalanceService;
-use App\Domain\Accounting\Services\PostingEngine;
-use App\Domain\Accounting\Services\PostingRuleService;
 use App\Domain\Accounting\Services\ReversalService;
 use App\Domain\Identity\Models\Tenant;
 use App\Domain\Identity\Models\User;
@@ -24,7 +22,7 @@ use Carbon\CarbonInterface;
 /**
  * Demo books for one tenant (called by DemoSeeder; never by DatabaseSeeder): profile, fiscal year of the current calendar
  * year, chart of accounts, an opening balance, posted journals through the real approval workflow, a few pending ones,
- * one reversal, a posting rule with two accounting events and closed / soft-closed early periods. Everything goes through
+ * one reversal and closed / soft-closed early periods. The accounting events (posting rules) are published by DemoOperationalSeeder. Everything goes through
  * the same services as production code, so the demo data obeys every accounting invariant.
  */
 class DemoAccountingSeeder
@@ -66,7 +64,6 @@ class DemoAccountingSeeder
 
             $this->as($manager, fn () => $this->openingBalance($year, $manager));
             $this->monthlyJournals($year, $today, $accountant, $manager);
-            $this->events($year, $today, $manager);
             $this->pendingJournals($today, $accountant, $manager);
             $this->as($manager, fn () => $this->closeEarlyPeriods($year, $today->month));
         });
@@ -116,29 +113,6 @@ class DemoAccountingSeeder
         if ($reversible) { // a correction: the March rent was booked twice by mistake, so reverse one posting
             $this->as($manager, fn () => app(ReversalService::class)->reverse($reversible, $manager, 'Salah input: sewa tercatat dua kali', $reversible->posting_date->toDateString()));
         }
-    }
-
-    /** Two accounting events through the posting rule, as a future subledger would send them. */
-    private function events(int $year, $today, User $manager): void
-    {
-        $this->as($manager, function () use ($year, $today) {
-            $rules = app(PostingRuleService::class);
-            $rule = $rules->create(['code' => 'BEBAN-DIAKUI', 'event_type' => 'EXPENSE_RECOGNIZED', 'name' => 'Beban diakui (utang usaha)', 'lines' => [
-                ['side' => 'DEBIT', 'account_role' => 'EXPENSE', 'amount_key' => 'net', 'description' => 'Beban'],
-                ['side' => 'DEBIT', 'account_role' => 'TAX_RECEIVABLE', 'amount_key' => 'tax', 'description' => 'PPN masukan'],
-                ['side' => 'CREDIT', 'account_role' => 'ACCOUNTS_PAYABLE', 'amount_key' => 'total', 'description' => 'Utang usaha'],
-            ]]);
-            $rules->publish($rule, "{$year}-01-01");
-
-            foreach (array_slice(range(1, $today->month), -2) as $n => $month) {
-                $date = sprintf('%04d-%02d-%02d', $year, $month, 15);
-                if ($date > $today->toDateString()) {
-                    $date = $today->toDateString();
-                }
-                app(PostingEngine::class)->postEvent('EXPENSE_RECOGNIZED', 'DEMO_BILL', 'LISTRIK-'.$month, $date, ['net' => '2000000', 'tax' => '220000', 'total' => '2220000'],
-                    ['branch_id' => $this->branches['JKT'] ?? null], 'POST', 'Tagihan listrik '.$this->monthName($month));
-            }
-        });
     }
 
     /** What an accountant's desk looks like today: two drafts, one waiting for approval, one approved and waiting to post. */

@@ -81,8 +81,20 @@ enabled) and the person, then projects the subscription.
   supported in place (SAAS_ARCHITECTURE §1); such a tenant keeps its local
   subscription and is skipped by the projection with a warning.
 
-## 4. After an upgrade that adds permissions or events
+## 4. After an upgrade that adds permissions, features or events
 
-A release that adds `accounting.*` permissions or events (OA1 added 27 permissions and `journal.posted` / `journal.reversed`) needs
-section 1 repeated for the **new entries only**: re-run `optiaccounting:nexus:manifest`, register the missing `permissions[]` (step 3) and `events[]`
-(step 5), then attach the new permissions to the application roles (step 8) and run `optiaccounting:nexus:sync-entitlements`. Entries that are already registered need no change. Until it is done, people sign in as before but hold none of the new permissions.
+A release that adds `accounting.*` permissions, features or events needs section 1 repeated for the **new entries only**: re-run
+`optiaccounting:nexus:manifest`, register the missing `capabilities[]` (step 2, modules before features), `permissions[]` (step 3) and `events[]`
+(step 5), add new features to the plan of every product that already carries the module (step 6), then attach the new permissions to the
+application roles (step 8) and run `optiaccounting:nexus:sync-entitlements`. Entries that are already registered need no change. Until it is done,
+people sign in as before but hold none of the new permissions, and a tenant keeps its existing modules.
+
+| Release | New permissions | New capabilities (features) | New events |
+|---|---|---|---|
+| OA1 | 27 (`accounting.profile`, `period`, `coa`, `journal`, `gl`, `posting_rule`, ...) | see the manifest | `journal.posted`, `journal.reversed` |
+| OA2 | 35: `vendor.{view,manage}`, `ap_invoice.{view,create,update,submit,approve,post,reverse,override_duplicate}`, `ap_payment.{view,create,submit,approve,post,reverse}`, `ap_aging.view`, `reconciliation.ap.view`, `expense.{view,create,update,submit,approve,post,reverse}`, `expense_category.manage`, `cash_bank.{view,manage}`, `cash_transaction.{view,create,post,reverse}`, `bank_reconciliation.{view,manage}`, `reconciliation.cash_bank.view` (all prefixed `accounting.`) | `VENDOR` and `AP_PAYMENT` (module `ACCOUNTING_AP`), `CASH_BANK_ACCOUNT` (module `ACCOUNTING_CASH_BANK`) | none (AP, expense and cash postings go through the Posting Engine and are announced by the existing `journal.posted` / `journal.reversed`) |
+
+Locally, OA2 needs nothing from the operator: migration `2026_10_10_100003` gives every tenant that already holds `ACCOUNTING_AP` or
+`ACCOUNTING_CASH_BANK` through a bundle the new features too (same windows, source `BUNDLE`; operator overrides are never touched), and in `optinexus` mode
+a tenant receives them from the next entitlement sync once its plan carries the features (step 6). Run `php artisan optiaccounting:nexus:check` afterwards: it names any
+capability, permission or event that is still unregistered.

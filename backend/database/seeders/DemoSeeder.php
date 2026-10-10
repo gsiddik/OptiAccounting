@@ -46,6 +46,23 @@ class DemoSeeder extends Seeder
         'accounting.gl.view', 'accounting.trial_balance.view',
     ];
 
+    /** What the same bookkeeper prepares in payables, expenses and cash/bank (OA2): drafts and submissions, reading and reconciling. */
+    private const ACCOUNTANT_OPERATIONAL_PERMISSIONS = [
+        'accounting.vendor.view', 'accounting.ap_invoice.view', 'accounting.ap_invoice.create', 'accounting.ap_invoice.update', 'accounting.ap_invoice.submit',
+        'accounting.ap_payment.view', 'accounting.ap_payment.create', 'accounting.ap_payment.submit', 'accounting.ap_aging.view', 'accounting.reconciliation.ap.view',
+        'accounting.expense.view', 'accounting.expense.create', 'accounting.expense.update', 'accounting.expense.submit',
+        'accounting.cash_bank.view', 'accounting.cash_transaction.view', 'accounting.cash_transaction.create',
+        'accounting.bank_reconciliation.view', 'accounting.bank_reconciliation.manage', 'accounting.reconciliation.cash_bank.view',
+    ];
+
+    /** What the finance manager adds: vendor and account administration, approval, posting and reversal of every OA2 document. */
+    private const MANAGER_OPERATIONAL_PERMISSIONS = [
+        'accounting.vendor.manage', 'accounting.ap_invoice.approve', 'accounting.ap_invoice.post', 'accounting.ap_invoice.reverse', 'accounting.ap_invoice.override_duplicate',
+        'accounting.ap_payment.approve', 'accounting.ap_payment.post', 'accounting.ap_payment.reverse',
+        'accounting.expense.approve', 'accounting.expense.post', 'accounting.expense.reverse', 'accounting.expense_category.manage',
+        'accounting.cash_bank.manage', 'accounting.cash_transaction.post', 'accounting.cash_transaction.reverse',
+    ];
+
     private const PLATFORM_USERS = [
         ['platform.admin@demo.test', 'Admin Platform Demo', 'Platform Administrator'],
         ['platform.support@demo.test', 'Support Platform Demo', 'Platform Support (read-only)'],
@@ -62,8 +79,8 @@ class DemoSeeder extends Seeder
             'roles' => [
                 'Staf Keuangan' => ['organization.view', 'account.subscription.view', 'audit.view'],
                 'Admin Cabang' => ['organization.view', 'organization.manage', 'access.user.view'],
-                'Akuntan' => self::ACCOUNTANT_PERMISSIONS,
-                'Manajer Keuangan' => [...self::ACCOUNTANT_PERMISSIONS, 'accounting.journal.approve', 'accounting.journal.post', 'accounting.journal.reverse', 'accounting.period.manage',
+                'Akuntan' => [...self::ACCOUNTANT_PERMISSIONS, ...self::ACCOUNTANT_OPERATIONAL_PERMISSIONS],
+                'Manajer Keuangan' => [...self::ACCOUNTANT_PERMISSIONS, ...self::ACCOUNTANT_OPERATIONAL_PERMISSIONS, ...self::MANAGER_OPERATIONAL_PERMISSIONS, 'accounting.journal.approve', 'accounting.journal.post', 'accounting.journal.reverse', 'accounting.period.manage',
                     'accounting.period.close', 'accounting.opening_balance.manage', 'accounting.opening_balance.post', 'accounting.report.export', 'accounting.coa.manage',
                     'accounting.posting_rule.manage', 'accounting.account_mapping.manage', 'accounting.dimension.manage', 'accounting.profile.manage'],
             ],
@@ -183,6 +200,7 @@ class DemoSeeder extends Seeder
             if (isset($d['accounting'])) {
                 [$accountant, $manager] = array_map(fn ($email) => User::query()->whereRaw('lower(email) = ?', [$email])->firstOrFail(), $d['accounting']);
                 app(DemoAccountingSeeder::class)->seed($tenant, $accountant, $manager);
+                app(DemoOperationalSeeder::class)->seed($tenant, $accountant, $manager); // payables, expenses, cash/bank (OA2)
             }
         });
 

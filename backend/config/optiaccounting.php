@@ -60,4 +60,7 @@ return [
         'relay' => ['batch_size' => 100, 'max_attempts' => 20],
     ],
 
+    // Most rows one CSV export of an OA2 list may hold; beyond it the request is refused (EXPORT_TOO_LARGE) and the filters must be narrowed.
+    'export_max_rows' => max(1, (int) env('OPTIACCOUNTING_EXPORT_MAX_ROWS', 10000)),
+
 ];

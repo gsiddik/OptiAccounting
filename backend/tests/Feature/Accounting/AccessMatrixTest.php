@@ -66,6 +66,9 @@ class AccessMatrixTest extends TestCase
             $this->assertNotNull($gate, 'no access gate on '.$route->uri());
             $parts = explode(',', substr($gate, 7));
             $options = collect(array_slice($parts, 1))->mapWithKeys(fn ($p) => [explode('=', $p)[0] => explode('=', $p)[1] ?? null]);
+            if (($options['module'] ?? null) !== 'ACCOUNTING_CORE') {
+                continue; // the OA2 modules have their own matrix (Payables/OperationalAccessMatrixTest)
+            }
             foreach (array_diff($route->methods(), ['HEAD']) as $method) {
                 $routes[] = [
                     'method' => $method, 'uri' => $route->uri(), 'permission' => $parts[0], 'module' => $options['module'] ?? null, 'feature' => $options['feature'] ?? null,
@@ -217,6 +220,9 @@ class AccessMatrixTest extends TestCase
             'PUT opening-balance' => 'accounting.opening_balance.manage',
             'POST opening-balance/cancel' => 'accounting.opening_balance.manage',
             'POST opening-balance/post' => 'accounting.opening_balance.post',
+            'GET operational-rules' => 'accounting.posting_rule.view',
+            'GET operational-summary' => 'accounting.journal.view',
+            'POST operational-rules/defaults' => 'accounting.posting_rule.manage',
             'POST periods/{period}/close' => 'accounting.period.close',
             'POST periods/{period}/open' => 'accounting.period.manage',
             'POST periods/{period}/soft-close' => 'accounting.period.manage',

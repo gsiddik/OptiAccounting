@@ -2,6 +2,10 @@
 
 use App\Http\Controllers\Api\App;
 use App\Http\Controllers\Api\App\Accounting;
+use App\Http\Controllers\Api\App\CashBank;
+use App\Http\Controllers\Api\App\Expense;
+use App\Http\Controllers\Api\App\Operational;
+use App\Http\Controllers\Api\App\Payables;
 use App\Http\Controllers\Api\Auth\AuthController;
 use App\Http\Controllers\Api\Auth\SsoController;
 use App\Http\Controllers\Api\HealthController;
@@ -185,6 +189,8 @@ Route::prefix('v1')->middleware('request.id')->group(function () {
             Route::put('account-mappings', [Accounting\PostingConfigurationController::class, 'saveMapping'])->middleware($gate('accounting.account_mapping.manage', $config));
             Route::post('account-mappings/{mapping}/deactivate', [Accounting\PostingConfigurationController::class, 'deactivateMapping'])->middleware($gate('accounting.account_mapping.manage', $config));
             Route::get('accounting-events', [Accounting\PostingConfigurationController::class, 'events'])->middleware($gate('accounting.posting_rule.view', $config));
+            Route::get('operational-rules', [Accounting\OperationalSetupController::class, 'status'])->middleware($gate('accounting.posting_rule.view', $config));
+            Route::post('operational-rules/defaults', [Accounting\OperationalSetupController::class, 'apply'])->middleware($gate('accounting.posting_rule.manage', $config));
 
             $opening = 'OPENING_BALANCE';
             Route::get('opening-balance', [Accounting\OpeningBalanceController::class, 'show'])->middleware($gate('accounting.opening_balance.view', $opening));
@@ -205,6 +211,128 @@ Route::prefix('v1')->middleware('request.id')->group(function () {
             Route::post('cost-centers', [Accounting\DimensionController::class, 'storeCostCenter'])->middleware($gate('accounting.dimension.manage', $config));
             Route::patch('cost-centers/{costCenter}', [Accounting\DimensionController::class, 'updateCostCenter'])->middleware($gate('accounting.dimension.manage', $config));
             Route::post('cost-centers/{costCenter}/status', [Accounting\DimensionController::class, 'costCenterStatus'])->middleware($gate('accounting.dimension.manage', $config));
+
+            // ------------------------------------------------ OA2: payables, expense, cash & bank. Each module has its own entitlement; all depend on ACCOUNTING_CORE.
+            $ap = fn (string $permission, string $feature) => "access:{$permission},module=ACCOUNTING_AP,feature={$feature}";
+
+            Route::get('vendors', [Payables\VendorController::class, 'index'])->middleware($ap('accounting.vendor.view', 'VENDOR'));
+            Route::post('vendors', [Payables\VendorController::class, 'store'])->middleware($ap('accounting.vendor.manage', 'VENDOR'));
+            Route::get('vendors/export', [Operational\OperationalExportController::class, 'vendors'])->middleware($ap('accounting.report.export', 'VENDOR'));
+            Route::get('vendors/{vendor}', [Payables\VendorController::class, 'show'])->middleware($ap('accounting.vendor.view', 'VENDOR'));
+            Route::patch('vendors/{vendor}', [Payables\VendorController::class, 'update'])->middleware($ap('accounting.vendor.manage', 'VENDOR'));
+            Route::post('vendors/{vendor}/status', [Payables\VendorController::class, 'status'])->middleware($ap('accounting.vendor.manage', 'VENDOR'));
+            Route::delete('vendors/{vendor}', [Payables\VendorController::class, 'destroy'])->middleware($ap('accounting.vendor.manage', 'VENDOR'));
+            Route::get('payment-terms', [Payables\VendorController::class, 'terms'])->middleware($ap('accounting.vendor.view', 'VENDOR'));
+            Route::post('payment-terms', [Payables\VendorController::class, 'storeTerm'])->middleware($ap('accounting.vendor.manage', 'VENDOR'));
+            Route::post('payment-terms/defaults', [Payables\VendorController::class, 'applyTermDefaults'])->middleware($ap('accounting.vendor.manage', 'VENDOR'));
+            Route::patch('payment-terms/{term}', [Payables\VendorController::class, 'updateTerm'])->middleware($ap('accounting.vendor.manage', 'VENDOR'));
+            Route::post('payment-terms/{term}/status', [Payables\VendorController::class, 'termStatus'])->middleware($ap('accounting.vendor.manage', 'VENDOR'));
+            Route::delete('payment-terms/{term}', [Payables\VendorController::class, 'destroyTerm'])->middleware($ap('accounting.vendor.manage', 'VENDOR'));
+
+            $inv = 'VENDOR_INVOICE';
+            Route::get('ap-invoices', [Payables\ApInvoiceController::class, 'index'])->middleware($ap('accounting.ap_invoice.view', $inv));
+            Route::post('ap-invoices', [Payables\ApInvoiceController::class, 'store'])->middleware($ap('accounting.ap_invoice.create', $inv));
+            Route::get('ap-invoices/check-duplicate', [Payables\ApInvoiceController::class, 'checkDuplicate'])->middleware($ap('accounting.ap_invoice.view', $inv));
+            Route::get('ap-invoices/export', [Operational\OperationalExportController::class, 'invoices'])->middleware($ap('accounting.report.export', $inv));
+            Route::get('ap-invoices/{invoice}', [Payables\ApInvoiceController::class, 'show'])->middleware($ap('accounting.ap_invoice.view', $inv));
+            Route::patch('ap-invoices/{invoice}', [Payables\ApInvoiceController::class, 'update'])->middleware($ap('accounting.ap_invoice.update', $inv));
+            Route::post('ap-invoices/{invoice}/submit', [Payables\ApInvoiceController::class, 'submit'])->middleware($ap('accounting.ap_invoice.submit', $inv));
+            Route::post('ap-invoices/{invoice}/approve', [Payables\ApInvoiceController::class, 'approve'])->middleware($ap('accounting.ap_invoice.approve', $inv));
+            Route::post('ap-invoices/{invoice}/reject', [Payables\ApInvoiceController::class, 'reject'])->middleware($ap('accounting.ap_invoice.approve', $inv));
+            Route::post('ap-invoices/{invoice}/reopen', [Payables\ApInvoiceController::class, 'reopen'])->middleware($ap('accounting.ap_invoice.update', $inv));
+            Route::post('ap-invoices/{invoice}/cancel', [Payables\ApInvoiceController::class, 'cancel'])->middleware($ap('accounting.ap_invoice.update', $inv));
+            Route::post('ap-invoices/{invoice}/post', [Payables\ApInvoiceController::class, 'post'])->middleware($ap('accounting.ap_invoice.post', $inv));
+            Route::post('ap-invoices/{invoice}/reverse', [Payables\ApInvoiceController::class, 'reverse'])->middleware($ap('accounting.ap_invoice.reverse', $inv));
+
+            // AP aging and AP-to-GL reconciliation (feature AP_AGING).
+            Route::get('ap-aging', [Payables\ApReportController::class, 'aging'])->middleware($ap('accounting.ap_aging.view', 'AP_AGING'));
+            Route::get('ap-aging/export', [Payables\ApReportController::class, 'exportAging'])->middleware($ap('accounting.report.export', 'AP_AGING'));
+            Route::get('reconciliation/ap', [Payables\ApReportController::class, 'reconciliation'])->middleware($ap('accounting.reconciliation.ap.view', 'AP_AGING'));
+            Route::get('reconciliation/ap/export', [Operational\OperationalExportController::class, 'apReconciliation'])->middleware($ap('accounting.report.export', 'AP_AGING'));
+
+            // Vendor payments and allocations (ACCOUNTING_AP, feature AP_PAYMENT).
+            $pay = 'AP_PAYMENT';
+            Route::get('vendor-payments', [Payables\VendorPaymentController::class, 'index'])->middleware($ap('accounting.ap_payment.view', $pay));
+            Route::post('vendor-payments', [Payables\VendorPaymentController::class, 'store'])->middleware($ap('accounting.ap_payment.create', $pay));
+            Route::get('vendor-payments/export', [Operational\OperationalExportController::class, 'payments'])->middleware($ap('accounting.report.export', $pay));
+            Route::get('vendor-payments/{payment}', [Payables\VendorPaymentController::class, 'show'])->middleware($ap('accounting.ap_payment.view', $pay));
+            Route::patch('vendor-payments/{payment}', [Payables\VendorPaymentController::class, 'update'])->middleware($ap('accounting.ap_payment.create', $pay));
+            Route::post('vendor-payments/{payment}/submit', [Payables\VendorPaymentController::class, 'submit'])->middleware($ap('accounting.ap_payment.submit', $pay));
+            Route::post('vendor-payments/{payment}/approve', [Payables\VendorPaymentController::class, 'approve'])->middleware($ap('accounting.ap_payment.approve', $pay));
+            Route::post('vendor-payments/{payment}/reject', [Payables\VendorPaymentController::class, 'reject'])->middleware($ap('accounting.ap_payment.approve', $pay));
+            Route::post('vendor-payments/{payment}/reopen', [Payables\VendorPaymentController::class, 'reopen'])->middleware($ap('accounting.ap_payment.create', $pay));
+            Route::post('vendor-payments/{payment}/cancel', [Payables\VendorPaymentController::class, 'cancel'])->middleware($ap('accounting.ap_payment.create', $pay));
+            Route::post('vendor-payments/{payment}/post', [Payables\VendorPaymentController::class, 'post'])->middleware($ap('accounting.ap_payment.post', $pay));
+            Route::post('vendor-payments/{payment}/reverse', [Payables\VendorPaymentController::class, 'reverse'])->middleware($ap('accounting.ap_payment.reverse', $pay));
+            Route::get('vendors/{vendor}/open-invoices', [Payables\VendorPaymentController::class, 'openInvoices'])->middleware($ap('accounting.ap_payment.view', $pay));
+            Route::get('vendors/{vendor}/allocation-suggestion', [Payables\VendorPaymentController::class, 'suggest'])->middleware($ap('accounting.ap_payment.create', $pay));
+
+            // OA2 counters for the accounting home: reachable like the home itself (journal view); each section is additionally gated inside the service by module, feature and permission.
+            Route::get('operational-summary', [Operational\OperationalDashboardController::class, 'show'])->middleware($gate('accounting.journal.view', $journal));
+
+            // Cash and bank accounts (ACCOUNTING_CASH_BANK).
+            $cb = fn (string $permission, string $feature) => "access:{$permission},module=ACCOUNTING_CASH_BANK,feature={$feature}";
+            Route::get('cash-bank-accounts', [CashBank\CashBankAccountController::class, 'index'])->middleware($cb('accounting.cash_bank.view', 'CASH_BANK_ACCOUNT'));
+            Route::post('cash-bank-accounts', [CashBank\CashBankAccountController::class, 'store'])->middleware($cb('accounting.cash_bank.manage', 'CASH_BANK_ACCOUNT'));
+            Route::get('cash-bank-accounts/{cashBankAccount}', [CashBank\CashBankAccountController::class, 'show'])->middleware($cb('accounting.cash_bank.view', 'CASH_BANK_ACCOUNT'));
+            Route::patch('cash-bank-accounts/{cashBankAccount}', [CashBank\CashBankAccountController::class, 'update'])->middleware($cb('accounting.cash_bank.manage', 'CASH_BANK_ACCOUNT'));
+            Route::post('cash-bank-accounts/{cashBankAccount}/status', [CashBank\CashBankAccountController::class, 'status'])->middleware($cb('accounting.cash_bank.manage', 'CASH_BANK_ACCOUNT'));
+            Route::delete('cash-bank-accounts/{cashBankAccount}', [CashBank\CashBankAccountController::class, 'destroy'])->middleware($cb('accounting.cash_bank.manage', 'CASH_BANK_ACCOUNT'));
+
+            // Controlled cash and bank payments and receipts (features PAYMENT and RECEIPT). The kind comes from the route, never from the body.
+            foreach (['PAYMENT' => ['cash-payments', 'PAYMENT'], 'RECEIPT' => ['cash-receipts', 'RECEIPT']] as $kind => [$path, $feature]) {
+                $ct = fn (string $permission) => "access:{$permission},module=ACCOUNTING_CASH_BANK,feature={$feature}";
+                Route::get($path, [CashBank\CashTransactionController::class, 'index'])->defaults('kind', $kind)->middleware($ct('accounting.cash_transaction.view'));
+                Route::post($path, [CashBank\CashTransactionController::class, 'store'])->defaults('kind', $kind)->middleware($ct('accounting.cash_transaction.create'));
+                Route::get("{$path}/export", [Operational\OperationalExportController::class, 'cashTransactions'])->defaults('kind', $kind)->middleware($ct('accounting.report.export'));
+                Route::get("{$path}/{cashTransaction}", [CashBank\CashTransactionController::class, 'show'])->defaults('kind', $kind)->middleware($ct('accounting.cash_transaction.view'));
+                Route::patch("{$path}/{cashTransaction}", [CashBank\CashTransactionController::class, 'update'])->defaults('kind', $kind)->middleware($ct('accounting.cash_transaction.create'));
+                Route::post("{$path}/{cashTransaction}/cancel", [CashBank\CashTransactionController::class, 'cancel'])->defaults('kind', $kind)->middleware($ct('accounting.cash_transaction.create'));
+                Route::post("{$path}/{cashTransaction}/post", [CashBank\CashTransactionController::class, 'post'])->defaults('kind', $kind)->middleware($ct('accounting.cash_transaction.post'));
+                Route::post("{$path}/{cashTransaction}/reverse", [CashBank\CashTransactionController::class, 'reverse'])->defaults('kind', $kind)->middleware($ct('accounting.cash_transaction.reverse'));
+            }
+
+            // Bank history, manual bank reconciliation and the cash/bank to general ledger reconciliation (feature BANK_RECONCILIATION). Nothing here writes to the ledger.
+            $br = fn (string $permission) => "access:{$permission},module=ACCOUNTING_CASH_BANK,feature=BANK_RECONCILIATION";
+            Route::get('cash-bank-accounts/{cashBankAccount}/transactions', [CashBank\BankReconciliationController::class, 'transactions'])->middleware($cb('accounting.cash_bank.view', 'CASH_BANK_ACCOUNT'));
+            Route::get('cash-bank-accounts/{cashBankAccount}/transactions/export', [Operational\OperationalExportController::class, 'accountMovements'])->middleware($cb('accounting.report.export', 'CASH_BANK_ACCOUNT'));
+            Route::get('reconciliation/cash-bank', [CashBank\BankReconciliationController::class, 'report'])->middleware($br('accounting.reconciliation.cash_bank.view'));
+            Route::get('reconciliation/cash-bank/export', [Operational\OperationalExportController::class, 'cashBankReconciliation'])->middleware($br('accounting.report.export'));
+            Route::get('bank-statements/{statement}/export', [Operational\OperationalExportController::class, 'statement'])->middleware($br('accounting.report.export'));
+            Route::get('bank-statements', [CashBank\BankReconciliationController::class, 'index'])->middleware($br('accounting.bank_reconciliation.view'));
+            Route::post('bank-statements', [CashBank\BankReconciliationController::class, 'store'])->middleware($br('accounting.bank_reconciliation.manage'));
+            Route::get('bank-statements/{statement}', [CashBank\BankReconciliationController::class, 'show'])->middleware($br('accounting.bank_reconciliation.view'));
+            Route::patch('bank-statements/{statement}', [CashBank\BankReconciliationController::class, 'update'])->middleware($br('accounting.bank_reconciliation.manage'));
+            Route::delete('bank-statements/{statement}', [CashBank\BankReconciliationController::class, 'destroy'])->middleware($br('accounting.bank_reconciliation.manage'));
+            Route::post('bank-statements/{statement}/complete', [CashBank\BankReconciliationController::class, 'complete'])->middleware($br('accounting.bank_reconciliation.manage'));
+            Route::post('bank-statements/{statement}/items', [CashBank\BankReconciliationController::class, 'addItems'])->middleware($br('accounting.bank_reconciliation.manage'));
+            Route::patch('bank-statements/{statement}/items/{item}', [CashBank\BankReconciliationController::class, 'updateItem'])->middleware($br('accounting.bank_reconciliation.manage'));
+            Route::delete('bank-statements/{statement}/items/{item}', [CashBank\BankReconciliationController::class, 'destroyItem'])->middleware($br('accounting.bank_reconciliation.manage'));
+            Route::get('bank-statements/{statement}/items/{item}/candidates', [CashBank\BankReconciliationController::class, 'candidates'])->middleware($br('accounting.bank_reconciliation.view'));
+            Route::post('bank-statements/{statement}/items/{item}/match', [CashBank\BankReconciliationController::class, 'match'])->middleware($br('accounting.bank_reconciliation.manage'));
+            Route::post('bank-statements/{statement}/items/{item}/unmatch', [CashBank\BankReconciliationController::class, 'unmatch'])->middleware($br('accounting.bank_reconciliation.manage'));
+            Route::post('bank-statements/{statement}/items/{item}/exception', [CashBank\BankReconciliationController::class, 'exception'])->middleware($br('accounting.bank_reconciliation.manage'));
+
+            // Expense categories and expenses (ACCOUNTING_EXPENSE). A payable expense also needs ACCOUNTING_AP and a directly paid one ACCOUNTING_CASH_BANK, checked at submit/approve/post.
+            $ex = fn (string $permission) => "access:{$permission},module=ACCOUNTING_EXPENSE,feature=EXPENSE";
+            Route::get('expense-categories', [Expense\ExpenseCategoryController::class, 'index'])->middleware($ex('accounting.expense.view'));
+            Route::post('expense-categories', [Expense\ExpenseCategoryController::class, 'store'])->middleware($ex('accounting.expense_category.manage'));
+            Route::post('expense-categories/defaults', [Expense\ExpenseCategoryController::class, 'applyDefaults'])->middleware($ex('accounting.expense_category.manage'));
+            Route::patch('expense-categories/{category}', [Expense\ExpenseCategoryController::class, 'update'])->middleware($ex('accounting.expense_category.manage'));
+            Route::post('expense-categories/{category}/status', [Expense\ExpenseCategoryController::class, 'status'])->middleware($ex('accounting.expense_category.manage'));
+            Route::delete('expense-categories/{category}', [Expense\ExpenseCategoryController::class, 'destroy'])->middleware($ex('accounting.expense_category.manage'));
+            Route::get('expenses', [Expense\ExpenseController::class, 'index'])->middleware($ex('accounting.expense.view'));
+            Route::post('expenses', [Expense\ExpenseController::class, 'store'])->middleware($ex('accounting.expense.create'));
+            Route::get('expenses/export', [Operational\OperationalExportController::class, 'expenses'])->middleware($ex('accounting.report.export'));
+            Route::get('expenses/{expense}', [Expense\ExpenseController::class, 'show'])->middleware($ex('accounting.expense.view'));
+            Route::patch('expenses/{expense}', [Expense\ExpenseController::class, 'update'])->middleware($ex('accounting.expense.update'));
+            Route::post('expenses/{expense}/submit', [Expense\ExpenseController::class, 'submit'])->middleware($ex('accounting.expense.submit'));
+            Route::post('expenses/{expense}/approve', [Expense\ExpenseController::class, 'approve'])->middleware($ex('accounting.expense.approve'));
+            Route::post('expenses/{expense}/reject', [Expense\ExpenseController::class, 'reject'])->middleware($ex('accounting.expense.approve'));
+            Route::post('expenses/{expense}/reopen', [Expense\ExpenseController::class, 'reopen'])->middleware($ex('accounting.expense.update'));
+            Route::post('expenses/{expense}/cancel', [Expense\ExpenseController::class, 'cancel'])->middleware($ex('accounting.expense.update'));
+            Route::post('expenses/{expense}/post', [Expense\ExpenseController::class, 'post'])->middleware($ex('accounting.expense.post'));
+            Route::post('expenses/{expense}/reverse', [Expense\ExpenseController::class, 'reverse'])->middleware($ex('accounting.expense.reverse'));
         });
     });
 });

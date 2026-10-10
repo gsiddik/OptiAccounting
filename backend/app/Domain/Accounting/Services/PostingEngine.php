@@ -57,15 +57,18 @@ class PostingEngine
      * The resolved rule version and role -> account facts are stored on the journal (`posting_snapshot`), so later rule or
      * mapping changes never reinterpret it.
      *
-     * @param  array<string,mixed>  $payload  amount components (decimal strings) named by the event type
+     * @param  array<string,mixed>  $payload  amount components (decimal strings) named by the event type; may also carry `role_accounts`
+     *                                        and `distribution` (see PostingRuleService::build) for documents that name their own accounts
      * @param  array{branch_id?:?string,business_unit_id?:?string,cost_center_id?:?string}  $dimensions
+     * @param  User|null  $actor  the person whose approved document this fact comes from (recorded as poster; null = pure system authority)
+     * @param  bool  $allowSoftClosed  the actor may post into a soft-closed period (decided by the caller from the actor's permission)
      */
-    public function postEvent(string $eventType, string $sourceType, string $sourceId, string $postingDate, array $payload, array $dimensions = [], string $purpose = 'POST', ?string $description = null, ?string $reference = null): AccountingEvent
+    public function postEvent(string $eventType, string $sourceType, string $sourceId, string $postingDate, array $payload, array $dimensions = [], string $purpose = 'POST', ?string $description = null, ?string $reference = null, ?User $actor = null, bool $allowSoftClosed = false): AccountingEvent
     {
         $hash = $this->fingerprint($eventType, $postingDate, $payload, $dimensions);
 
         try {
-            return DB::transaction(function () use ($eventType, $sourceType, $sourceId, $postingDate, $payload, $dimensions, $purpose, $description, $reference, $hash) {
+            return DB::transaction(function () use ($eventType, $sourceType, $sourceId, $postingDate, $payload, $dimensions, $purpose, $description, $reference, $hash, $actor, $allowSoftClosed) {
                 $event = $this->claimEvent($eventType, $sourceType, $sourceId, $purpose, $postingDate, $payload, $hash);
                 if ($event->status === 'POSTED') {
                     if ($event->payload_hash !== $hash) {
@@ -94,7 +97,7 @@ class PostingEngine
                 ], JournalEntry::SYSTEM, $profile, null);
                 $this->journals->writeLines($journal, $built['lines'], $profile, null, enforceScope: false);
                 $this->journals->transition($journal, null, JournalEntry::DRAFT, null);
-                $posted = $this->post($journal, null);
+                $posted = $this->post($journal, $actor, $allowSoftClosed);
 
                 DB::table('accounting_events')->where('id', $event->id)->update([
                     'status' => 'POSTED', 'journal_entry_id' => $posted->id, 'posting_rule_id' => $rule->id, 'failure_code' => null, 'failure_message' => null,
