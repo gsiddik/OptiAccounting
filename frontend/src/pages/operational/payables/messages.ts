@@ -15,6 +15,7 @@ const EXTRA_ERRORS: Record<string, string> = {
   AP_PAYMENT_ALREADY_REVERSED: 'Pembayaran ini sudah dibalik.',
   AP_PAYMENT_NOT_POSTED: 'Hanya pembayaran yang sudah diposting yang dapat dibalik.',
   ACCOUNT_TYPE_INVALID: 'Tipe akun ini tidak dapat dipakai untuk isian tersebut.',
+  AR_CREDIT_NOTE_FOREIGN_INVOICE: 'Nota kredit tidak dapat dibuat untuk faktur mata uang asing. Balik fakturnya atau lunasi dengan penerimaan pelanggan.',
 }
 
 /** The same error with an Indonesian message when its code is one of the extra ones above; any other value is returned untouched. */

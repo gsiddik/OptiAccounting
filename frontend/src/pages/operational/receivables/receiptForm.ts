@@ -45,8 +45,8 @@ export function receiptAllocationRows(inputs: AllocationInputs): { ar_invoice_id
   return allocationEntries(inputs).map(([ar_invoice_id, amount]) => ({ ar_invoice_id, amount }))
 }
 
-/** The body of POST / PATCH /customer-receipts. */
-export function receiptPayload(h: ReceiptHeader, inputs: AllocationInputs) {
+/** The body of POST / PATCH /customer-receipts. `currency` is the currency part of the request (empty for a functional receipt of a single-currency organisation, so its payload does not change). */
+export function receiptPayload(h: ReceiptHeader, inputs: AllocationInputs, currency: Record<string, string | null> = {}) {
   return {
     customer_id: h.customer_id,
     cash_bank_account_id: h.cash_bank_account_id,
@@ -60,6 +60,7 @@ export function receiptPayload(h: ReceiptHeader, inputs: AllocationInputs) {
     business_unit_id: h.business_unit_id || null,
     cost_center_id: h.cost_center_id || null,
     allocations: receiptAllocationRows(inputs),
+    ...currency,
   }
 }
 

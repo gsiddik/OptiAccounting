@@ -2,8 +2,11 @@ import { Button, Field } from '../../../components/ui'
 import { amountToApi, formatAmount, type Account } from '../../../lib/accounting'
 import { fieldError } from '../../../lib/forms'
 import { accountLabel, type DimensionCatalog } from '../../accounting/data'
+import { placesHint } from '../foreignSupport'
 import type { InvoicePreview } from '../payables/invoiceForm'
 import { lineMessage } from '../payables/messages'
+import { TaxCodeField, TaxPreviewNote } from '../taxOptions'
+import { type TaxSupport } from '../taxSupport'
 import { emptyArLine, type ArLineForm } from './arLines'
 
 type Role = { code: string; name: string }
@@ -13,7 +16,7 @@ type Role = { code: string; name: string }
  * engine uses (revenue account, account role, cost centre). The amounts previewed here are exact arithmetic on what is typed; the server
  * recomputes them.
  */
-export function ArLines({ lines, onChange, preview, accounts, roles, catalog, error }: {
+export function ArLines({ lines, onChange, preview, accounts, roles, catalog, error, tax, fx }: {
   lines: ArLineForm[]
   onChange: (lines: ArLineForm[]) => void
   preview: InvoicePreview
@@ -21,6 +24,10 @@ export function ArLines({ lines, onChange, preview, accounts, roles, catalog, er
   roles: Role[]
   catalog: DimensionCatalog
   error: unknown
+  /** Present only on a customer invoice when the user may use tax codes: each line then offers a "Kode pajak" (output tax) select and the server's preview of its tax. */
+  tax?: TaxSupport
+  /** Present only for a foreign-currency invoice: the currency and its decimal places, for the amount hints. */
+  fx?: { code: string; places: number } | null
 }) {
   const patch = (key: string, change: Partial<ArLineForm>) => onChange(lines.map((l) => (l.key === key ? { ...l, ...change } : l)))
   const revenue = accounts.filter((a) => a.status === 'ACTIVE' && a.is_postable && !a.is_control && a.account_type === 'REVENUE')
@@ -57,9 +64,15 @@ export function ArLines({ lines, onChange, preview, accounts, roles, catalog, er
                   <p className="muted full" style={{ margin: 0 }}>Jumlah baris (pratinjau): <span className="money">{shownAmount === null ? '—' : formatAmount(amountToApi(shownAmount))}</span></p>
                 </>
               ) : (
-                <Field label={`Jumlah baris ${n}`} error={problem(i, 'amount')}>
+                <Field label={`Jumlah baris ${n}`} error={problem(i, 'amount')} hint={placesHint(fx ?? null, line.amount) ?? (line.tax_code_id ? 'Jumlah yang Anda masukkan; untuk kode pajak inklusif sudah termasuk pajak.' : undefined)}>
                   {(p) => <input className="input amount" inputMode="decimal" autoComplete="off" placeholder="0" value={line.amount} onChange={(e) => patch(line.key, { amount: e.target.value })} {...p} />}
                 </Field>
+              )}
+              {tax && (
+                <>
+                  <TaxCodeField label={`Kode pajak baris ${n}`} value={line.tax_code_id} codes={tax.codes} onChange={(id) => patch(line.key, { tax_code_id: id })} error={problem(i, 'tax_code_id')} />
+                  <TaxPreviewNote codeId={line.tax_code_id} amount={shownAmount !== null && shownAmount > 0n ? amountToApi(shownAmount) : ''} date={tax.date} foreign={tax.foreign} />
+                </>
               )}
               <Field label={`Akun pendapatan baris ${n}`} error={problem(i, 'account_id')} hint="Opsional. Tanpa pilihan, dipakai peran akun, akun default pelanggan, atau pemetaan pendapatan.">
                 {(p) => (
