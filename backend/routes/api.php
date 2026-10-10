@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\App;
 use App\Http\Controllers\Api\App\Accounting;
+use App\Http\Controllers\Api\App\Budget;
 use App\Http\Controllers\Api\App\CashBank;
 use App\Http\Controllers\Api\App\Expense;
 use App\Http\Controllers\Api\App\Operational;
@@ -404,6 +405,31 @@ Route::prefix('v1')->middleware('request.id')->group(function () {
             Route::get('ar-aging/export', [Receivables\ArReportController::class, 'exportAging'])->middleware($ar('accounting.report.export', 'AR_AGING'));
             Route::get('reconciliation/ar', [Receivables\ArReportController::class, 'reconciliation'])->middleware($ar('accounting.reconciliation.ar.view', 'AR_AGING'));
             Route::get('reconciliation/ar/export', [Receivables\ArExportController::class, 'reconciliation'])->middleware($ar('accounting.report.export', 'AR_AGING'));
+
+            // ------------------------------------------------ OA4: budgets (ACCOUNTING_BUDGET). Planning data only: no route here creates a journal.
+            $bg = fn (string $permission) => "access:{$permission},module=ACCOUNTING_BUDGET,feature=BUDGET";
+            Route::get('budgets', [Budget\BudgetController::class, 'index'])->middleware($bg('accounting.budget.view'));
+            Route::post('budgets', [Budget\BudgetController::class, 'store'])->middleware($bg('accounting.budget.manage'));
+            Route::get('budgets/{budget}', [Budget\BudgetController::class, 'show'])->middleware($bg('accounting.budget.view'));
+            Route::patch('budgets/{budget}', [Budget\BudgetController::class, 'update'])->middleware($bg('accounting.budget.manage'));
+            Route::post('budgets/{budget}/open', [Budget\BudgetController::class, 'open'])->middleware($bg('accounting.budget.approve'));
+            Route::post('budgets/{budget}/close', [Budget\BudgetController::class, 'close'])->middleware($bg('accounting.budget.approve'));
+            Route::post('budgets/{budget}/cancel', [Budget\BudgetController::class, 'cancel'])->middleware($bg('accounting.budget.manage'));
+            Route::post('budgets/{budget}/versions', [Budget\BudgetController::class, 'storeVersion'])->middleware($bg('accounting.budget.manage'));
+            Route::get('budget-versions/{version}', [Budget\BudgetVersionController::class, 'show'])->middleware($bg('accounting.budget.view'));
+            Route::patch('budget-versions/{version}', [Budget\BudgetVersionController::class, 'update'])->middleware($bg('accounting.budget.manage'));
+            Route::put('budget-versions/{version}/lines', [Budget\BudgetVersionController::class, 'replaceLines'])->middleware($bg('accounting.budget.manage'));
+            Route::post('budget-versions/{version}/lines', [Budget\BudgetVersionController::class, 'addLine'])->middleware($bg('accounting.budget.manage'));
+            Route::patch('budget-versions/{version}/lines/{line}', [Budget\BudgetVersionController::class, 'updateLine'])->middleware($bg('accounting.budget.manage'));
+            Route::delete('budget-versions/{version}/lines/{line}', [Budget\BudgetVersionController::class, 'destroyLine'])->middleware($bg('accounting.budget.manage'));
+            Route::post('budget-versions/{version}/submit', [Budget\BudgetVersionController::class, 'submit'])->middleware($bg('accounting.budget.submit'));
+            Route::post('budget-versions/{version}/approve', [Budget\BudgetVersionController::class, 'approve'])->middleware($bg('accounting.budget.approve'));
+            Route::post('budget-versions/{version}/reject', [Budget\BudgetVersionController::class, 'reject'])->middleware($bg('accounting.budget.approve'));
+            Route::post('budget-versions/{version}/activate', [Budget\BudgetVersionController::class, 'activate'])->middleware($bg('accounting.budget.approve'));
+            Route::post('budget-versions/{version}/reopen', [Budget\BudgetVersionController::class, 'reopen'])->middleware($bg('accounting.budget.manage'));
+            Route::post('budget-versions/{version}/cancel', [Budget\BudgetVersionController::class, 'cancel'])->middleware($bg('accounting.budget.manage'));
+            Route::get('budget-vs-actual', [Budget\BudgetReportController::class, 'show'])->middleware($bg('accounting.budget.view'));
+            Route::get('budget-vs-actual/export', [Budget\BudgetReportController::class, 'export'])->middleware($bg('accounting.report.export'));
         });
     });
 });

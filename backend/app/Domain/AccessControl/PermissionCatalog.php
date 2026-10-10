@@ -184,6 +184,12 @@ final class PermissionCatalog
                     'accounting.bank_reconciliation.manage' => 'Prepare and complete bank reconciliations',
                     'accounting.reconciliation.cash_bank.view' => 'View the cash and bank to general ledger reconciliation',
                 ],
+                'Budget' => [
+                    'accounting.budget.view' => 'View budgets, their versions and budget versus actual',
+                    'accounting.budget.manage' => 'Create budgets, prepare versions and lines, cancel',
+                    'accounting.budget.submit' => 'Submit budget versions for approval',
+                    'accounting.budget.approve' => 'Approve or reject budget versions, activate versions, open and close budgets',
+                ],
                 'Audit' => [
                     'audit.view' => 'View the tenant audit log',
                 ],
