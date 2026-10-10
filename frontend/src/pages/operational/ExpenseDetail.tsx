@@ -37,7 +37,7 @@ export default function ExpenseDetail() {
       <PageHeader
         title={e.document_number ?? (e.status === 'DRAFT' ? 'Draf beban' : 'Beban belum bernomor')}
         description={<>{settlementLabels[e.settlement] ?? e.settlement} · <StatusBadge status={e.status} /></>}
-        actions={<><Link to="/app/akuntansi/beban" className="btn btn-ghost">Kembali ke daftar</Link>{actions.buttons}</>}
+        actions={actions.buttons}
       />
       <ReadOnlyNotice show={readOnly} />
       {actions.notes.map((n) => <Banner key={n} tone="info">{n}</Banner>)}

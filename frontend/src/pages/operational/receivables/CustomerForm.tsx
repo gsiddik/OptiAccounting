@@ -32,7 +32,7 @@ const orNull = (text: string) => text.trim() || null
 /**
  * Create / edit modal of a customer: identity, tax profile and financial profile (payment term, currency, receivable account, default
  * revenue account, credit limit). The API validates every reference against the tenant's own masters. The credit limit is information
- * only: nothing in OptiAccounting enforces it.
+ * only: nothing in OptiEntry enforces it.
  */
 export function CustomerForm({ customer, onClose, onDone }: { customer: Customer | null; onClose: () => void; onDone: () => void }) {
   const { busy, error, run } = useAct()

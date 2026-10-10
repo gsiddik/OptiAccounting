@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import { AuditTable } from '../../components/AuditTable'
 import { ConfirmDialog, FormModal } from '../../components/Modal'
 import { useToast } from '../../components/Toast'
@@ -55,7 +55,7 @@ export default function TenantDetail() {
     <>
       <PageHeader
         title={t.name}
-        description={<><Link to="/platform/tenants">← Semua tenant</Link> · <span className="mono">{t.code}</span> · <StatusBadge status={t.status} /></>}
+        description={<><span className="mono">{t.code}</span> · <StatusBadge status={t.status} /></>}
       />
       <Tabs tabs={tabs.filter((x) => x.show)} value={tab} onChange={setTab} />
       <Card flush>

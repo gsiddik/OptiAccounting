@@ -41,7 +41,7 @@ function PaymentView({ payment: pay, reload }: { payment: Payment; reload: () =>
       <PageHeader
         title={pay.document_number ?? (pay.status === 'DRAFT' ? 'Draf pembayaran vendor' : 'Pembayaran belum bernomor')}
         description={<>Pembayaran vendor · <StatusBadge status={pay.status} /></>}
-        actions={<><Link to="/app/akuntansi/pembayaran-vendor" className="btn btn-ghost">Kembali ke daftar</Link>{wf.buttons}</>}
+        actions={wf.buttons}
       />
       <ReadOnlyNotice show={access.readOnly} />
       {wf.notes.map((n) => <Banner key={n} tone="info">{n}</Banner>)}

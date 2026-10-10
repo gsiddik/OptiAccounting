@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
+import { BrandLogo } from '../components/BrandLogo'
 import { Banner, Button } from '../components/ui'
 import { homePath, useAuth, type EnterTarget } from '../lib/auth'
 import { describeError } from '../lib/labels'
@@ -31,10 +32,7 @@ export default function ChooseAccess() {
   return (
     <div className="auth">
       <section className="card auth-card" aria-labelledby="choose-title">
-        <div className="brand">
-          <span className="brand-mark" aria-hidden="true">OA</span>
-          OptiAccounting
-        </div>
+        <BrandLogo size="auth" />
         <div>
           <h1 id="choose-title">{empty ? 'Belum ada akses' : 'Pilih tujuan'}</h1>
           <p className="muted">

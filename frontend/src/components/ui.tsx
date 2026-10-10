@@ -1,4 +1,6 @@
 import { useId, type ButtonHTMLAttributes, type ReactNode } from 'react'
+import { useInRouterContext } from 'react-router-dom'
+import { AnnounceCrumbLabel } from './CrumbLabels'
 import { describeError, statusLabel } from '../lib/labels'
 
 type Variant = 'primary' | 'secondary' | 'danger' | 'ghost'
@@ -67,8 +69,10 @@ export function EmptyState({ title, children, action }: { title: string; childre
 }
 
 export function PageHeader({ title, description, actions }: { title: string; description?: ReactNode; actions?: ReactNode }) {
+  const routed = useInRouterContext()
   return (
     <div className="page-header">
+      {routed && <AnnounceCrumbLabel title={title} />}
       <div>
         <h1>{title}</h1>
         {description && <p>{description}</p>}

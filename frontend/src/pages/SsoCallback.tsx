@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom'
+import { BrandLogo } from '../components/BrandLogo'
 import { Banner, Loading } from '../components/ui'
 import { homePath, useAuth } from '../lib/auth'
 import { describeError } from '../lib/labels'
@@ -31,10 +32,7 @@ export default function SsoCallback() {
   return (
     <div className="auth">
       <section className="card auth-card" aria-live="polite">
-        <div className="brand">
-          <span className="brand-mark" aria-hidden="true">OA</span>
-          OptiAccounting
-        </div>
+        <BrandLogo size="auth" />
         {error != null ? (
           <>
             <Banner tone="bad">{describeError(error)}</Banner>

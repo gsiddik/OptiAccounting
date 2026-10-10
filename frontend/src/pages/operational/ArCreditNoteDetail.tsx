@@ -41,7 +41,7 @@ function NoteView({ note: cn, reload }: { note: CreditNote; reload: () => void }
       <PageHeader
         title={cn.document_number ?? (cn.status === 'DRAFT' ? 'Draf nota kredit' : 'Nota kredit belum bernomor')}
         description={<>Nota kredit · <StatusBadge status={cn.status} /></>}
-        actions={<><Link to={AR_PATH.creditNotes} className="btn btn-ghost">Kembali ke daftar</Link>{wf.buttons}</>}
+        actions={wf.buttons}
       />
       <ReadOnlyNotice show={access.readOnly} />
       {wf.notes.map((n) => <Banner key={n} tone="info">{n}</Banner>)}

@@ -1,10 +1,9 @@
-import { Link, useParams, useSearchParams } from 'react-router-dom'
+import { useParams, useSearchParams } from 'react-router-dom'
 import { EmptyState, ErrorNotice, Loading, PageHeader } from '../../components/ui'
 import { api } from '../../lib/api'
 import { useResource } from '../../lib/hooks'
 import { API, MODULES, useModuleAccess } from '../../lib/operational'
 import { CreditNoteFormView } from './receivables/CreditNoteFormView'
-import { AR_PATH } from './receivables/paths'
 import type { ArInvoice, CreditNote } from './receivables/types'
 
 /** New (`/nota-kredit/baru`, optionally `?faktur=<invoice id>` from the invoice page) or edit (`/nota-kredit/:id/ubah`) credit note. */
@@ -20,11 +19,10 @@ export default function ArCreditNoteEditor() {
   if (note.error) return <ErrorNotice error={note.error} onRetry={note.reload} />
   if (prefill.error) return <ErrorNotice error={prefill.error} onRetry={prefill.reload} />
 
-  const back = <Link className="btn" to={id ? `${AR_PATH.creditNotes}/${id}` : AR_PATH.creditNotes}>Kembali</Link>
   if (!access.writable) {
     return (
       <>
-        <PageHeader title={id ? 'Ubah nota kredit' : 'Nota kredit baru'} actions={back} />
+        <PageHeader title={id ? 'Ubah nota kredit' : 'Nota kredit baru'} />
         <EmptyState title="Modul hanya baca">Piutang usaha dalam mode hanya baca: nota kredit dapat dilihat dan diekspor, tetapi tidak dapat dibuat atau diubah.</EmptyState>
       </>
     )
@@ -32,7 +30,7 @@ export default function ArCreditNoteEditor() {
   if (note.data && note.data.status !== 'DRAFT') {
     return (
       <>
-        <PageHeader title="Nota kredit tidak dapat diubah" actions={back} />
+        <PageHeader title="Nota kredit tidak dapat diubah" />
         <EmptyState title="Nota kredit tidak dapat diubah">Hanya nota kredit berstatus draf yang dapat diubah. Nota kredit yang sudah diposting dikoreksi dengan pembalikan.</EmptyState>
       </>
     )

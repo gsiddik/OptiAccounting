@@ -46,7 +46,7 @@ function InvoiceView({ invoice: inv, reload }: { invoice: Invoice; reload: () =>
       <PageHeader
         title={inv.document_number ?? (inv.status === 'DRAFT' ? 'Draf faktur vendor' : 'Faktur belum bernomor')}
         description={<>{invoiceOriginLabels[inv.origin] ?? inv.origin} · <StatusBadge status={inv.status} />{settled && inv.payment_status && <> · <StatusBadge status={inv.payment_status} /></>}</>}
-        actions={<><Link to="/app/akuntansi/faktur-vendor" className="btn btn-ghost">Kembali ke daftar</Link>{wf.buttons}</>}
+        actions={wf.buttons}
       />
       <ReadOnlyNotice show={access.readOnly} />
       {wf.notes.map((n) => <Banner key={n} tone="info">{n}</Banner>)}
