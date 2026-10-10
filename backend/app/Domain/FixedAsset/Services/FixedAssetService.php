@@ -414,6 +414,10 @@ class FixedAssetService
         if (! $invoice || $invoice->status !== ApInvoice::POSTED) {
             throw new DomainException('The cost can be registered only from a posted AP invoice.', 'ASSET_SOURCE_NOT_POSTED', 409, ['field' => 'ap_invoice_line_id']);
         }
+        if ($invoice->exchange_rate_id !== null) {
+            // the line amount is in the invoice currency while an asset is kept in the functional one: capitalize with a source account instead
+            throw new DomainException('The cost of a foreign-currency invoice line cannot be registered as an asset; capitalize the asset with a source account instead.', 'ASSET_SOURCE_FOREIGN', 422, ['field' => 'ap_invoice_line_id', 'currency' => $invoice->currency]);
+        }
         if ($line->account_id === null) {
             throw new DomainException('The invoice line must name an asset account to be registered as an asset.', 'ASSET_SOURCE_ACCOUNT_MISSING', 422, ['field' => 'ap_invoice_line_id']);
         }
