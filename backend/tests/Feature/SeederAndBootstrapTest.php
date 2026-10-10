@@ -174,4 +174,40 @@ class SeederAndBootstrapTest extends TestCase
         $admin = $login('admin@majujaya.demo.test');
         $this->as($admin)->getJson('/api/v1/app/users')->assertOk()->assertJsonPath('total', 7); // admin, 5 staff (incl. accountant and finance manager), multi-tenant viewer
     }
+
+    public function test_the_demo_books_carry_payables_expenses_and_cash_bank_in_every_state_and_stay_consistent(): void
+    {
+        $this->seed(DemoSeeder::class);
+        $tenant = DB::table('tenants')->where('code', 'maju-jaya')->value('id');
+        $count = fn (string $table, array $where = []) => DB::table($table)->where('tenant_id', $tenant)->where($where)->count();
+
+        $this->assertSame(4, $count('vendors'));
+        $this->assertSame(2, $count('cash_bank_accounts'));
+        $this->assertSame([3, 1, 1, 1], [$count('ap_invoices', ['status' => 'POSTED', 'origin' => 'INVOICE']), $count('ap_invoices', ['status' => 'SUBMITTED']), $count('ap_invoices', ['status' => 'APPROVED']), $count('ap_invoices', ['status' => 'DRAFT'])]);
+        $this->assertSame([2, 1], [$count('vendor_payments', ['status' => 'POSTED']), $count('vendor_payments', ['status' => 'SUBMITTED'])]);
+        $this->assertSame([2, 1, 1], [$count('expenses', ['status' => 'POSTED']), $count('expenses', ['status' => 'SUBMITTED']), $count('expenses', ['status' => 'DRAFT'])]);
+        $this->assertSame([3, 1], [$count('cash_transactions', ['status' => 'POSTED']), $count('cash_transactions', ['status' => 'DRAFT'])]);
+        $this->assertSame([3, 1], [$count('bank_statement_items', ['status' => 'MATCHED']), $count('bank_statement_items', ['status' => 'UNMATCHED'])]);
+
+        // The payables control account equals what the subledger says is owed, and every posted journal balances.
+        $ap = DB::table('accounts')->where('tenant_id', $tenant)->where('code', '2110')->value('id');
+        $control = (string) DB::table('journal_lines as l')->join('journal_entries as j', 'j.id', '=', 'l.journal_entry_id')->where('j.tenant_id', $tenant)->where('j.status', 'POSTED')
+            ->where('l.account_id', $ap)->selectRaw('coalesce(sum(l.credit - l.debit), 0) as b')->value('b');
+        $owed = (string) DB::selectOne("select coalesce(sum(i.total_amount - coalesce((select sum(a.amount) from ap_payment_allocations a join vendor_payments p on p.id = a.vendor_payment_id
+            where a.ap_invoice_id = i.id and a.is_effective and p.status = 'POSTED'), 0)), 0) as owed from ap_invoices i where i.tenant_id = ? and i.status = 'POSTED'", [$tenant])->owed;
+        $opening = '80000000'; // the demo opening balance already carries a payable that has no invoice behind it
+        $this->assertEquals((float) $owed + (float) $opening, (float) $control, 'AP control = subledger + the opening payable');
+        $this->assertSame(0, DB::table('journal_entries as j')->join('journal_lines as l', 'l.journal_entry_id', '=', 'j.id')->where('j.tenant_id', $tenant)->where('j.status', 'POSTED')
+            ->groupBy('j.id')->havingRaw('sum(l.debit) <> sum(l.credit)')->select('j.id')->get()->count());
+
+        // The demo accountant prepares but cannot approve; the manager approves and posts.
+        $login = fn (string $email) => $this->postJson('/api/v1/auth/login', ['email' => $email, 'password' => DemoSeeder::DEFAULT_PASSWORD])->assertOk()->json('token');
+        $accountant = $login('akuntan@majujaya.demo.test');
+        $manager = $login('manajer@majujaya.demo.test');
+        $this->as($accountant)->getJson('/api/v1/app/accounting/vendors')->assertOk()->assertJsonPath('total', 4);
+        $submitted = DB::table('ap_invoices')->where('tenant_id', $tenant)->where('status', 'SUBMITTED')->value('id');
+        $this->as($accountant)->postJson("/api/v1/app/accounting/ap-invoices/{$submitted}/approve")->assertForbidden();
+        $this->as($manager)->postJson("/api/v1/app/accounting/ap-invoices/{$submitted}/approve")->assertOk();
+        $this->as($manager)->getJson('/api/v1/app/accounting/operational-summary')->assertOk();
+    }
 }
