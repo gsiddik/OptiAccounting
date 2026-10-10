@@ -116,7 +116,7 @@ function ReportView({ report }: { report: Report }) {
           <Stat label="Selisih" value={<Variance value={t.variance} favorable={t.favorable} />} hint={pct(t.variance_pct)} />
           <Stat label="Aktual tanpa anggaran" value={<Money value={t.unbudgeted_actual} />} hint="Realisasi pada akun yang tidak dianggarkan" />
         </div>
-        {report.basis && <p className="muted" style={{ marginBottom: 0 }}>{report.basis}</p>}
+        {report.basis && <p className="muted" style={{ marginBottom: 0 }}>Dasar perhitungan: hanya baris jurnal yang sudah diposting, jurnal saldo awal tidak dihitung, jumlah dalam mata uang fungsional dan searah saldo normal tiap akun.</p>}
       </div>
       {report.rows.length === 0 ? (
         <EmptyState title="Tidak ada data">Tidak ada baris anggaran maupun realisasi untuk filter ini.</EmptyState>

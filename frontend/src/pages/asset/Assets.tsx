@@ -70,11 +70,13 @@ export default function Assets() {
               scroll
               columns={[
                 { header: 'Nomor', primary: true, cell: (a) => <Link to={`${PATHS.assets}/${a.id}`} className="mono">{a.asset_number ?? 'Draf'}</Link> },
-                { header: 'Nama', cell: (a) => <>{a.name}{a.branch && <div className="muted">{a.branch.name}</div>}</> },
-                { header: 'Kategori', cell: (a) => (a.category ? `${a.category.code} · ${a.category.name}` : '—') },
+                {
+                  header: 'Nama',
+                  cell: (a) => <>{a.name}<div className="muted">{[a.category ? `${a.category.code} · ${a.category.name}` : null, a.branch?.name].filter(Boolean).join(' · ')}</div></>,
+                },
                 { header: 'Kapitalisasi', cell: (a) => formatDate(a.capitalization_date) },
                 { header: 'Harga perolehan', align: 'right', cell: (a) => <Money value={a.acquisition_cost} /> },
-                { header: 'Akumulasi penyusutan', align: 'right', cell: (a) => <Money value={a.accumulated_depreciation} /> },
+                { header: 'Akum. penyusutan', align: 'right', cell: (a) => <Money value={a.accumulated_depreciation} /> },
                 ...(hasBookValue ? [{ header: 'Nilai buku', align: 'right' as const, cell: (a: Asset) => <Money value={a.net_book_value} strong /> }] : []),
                 { header: 'Status', cell: (a) => <StatusBadge status={a.status} /> },
               ]}

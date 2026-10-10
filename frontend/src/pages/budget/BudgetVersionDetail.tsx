@@ -14,7 +14,7 @@ import { LineAddDialog, LineEditDialog, LineRemoveDialog } from './BudgetLineDia
 import { useFiscalPeriods, windowText } from './data'
 import type { BudgetLine, BudgetVersion } from './types'
 
-const PAGE = 100
+const PAGE = 50
 
 export default function BudgetVersionDetail() {
   const { id, versionId } = useParams()
