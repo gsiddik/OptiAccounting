@@ -26,8 +26,8 @@ Demo password for every account below: `Demo#Passw0rd2026`
 | `keuangan@majujaya.demo.test` | `Demo#Passw0rd2026` | tenant | PT Maju Jaya, "Staf Keuangan" (organization view, subscription view, audit view) | branch Jakarta (JKT) |
 | `cabang.sby@majujaya.demo.test` | `Demo#Passw0rd2026` | tenant | PT Maju Jaya, "Admin Cabang" (organization manage, user view) | branch Surabaya (SBY) |
 | `viewer@majujaya.demo.test` | `Demo#Passw0rd2026` | tenant | PT Maju Jaya, read-only viewer | whole tenant |
-| `akuntan@majujaya.demo.test` | `Demo#Passw0rd2026` | tenant | PT Maju Jaya, "Akuntan": prepares and submits journals, vendor invoices, vendor payments, expenses and cash transactions, reconciles bank statements, reads the books (cannot approve or post) | whole tenant |
-| `manajer@majujaya.demo.test` | `Demo#Passw0rd2026` | tenant | PT Maju Jaya, "Manajer Keuangan": approves and posts journals and every payables, expense and cash/bank document, reverses, manages vendors, categories and cash/bank accounts, closes periods, opening balance, configuration, exports | whole tenant |
+| `akuntan@majujaya.demo.test` | `Demo#Passw0rd2026` | tenant | PT Maju Jaya, "Akuntan": prepares and submits journals, vendor and customer invoices, vendor payments, customer receipts, credit notes, expenses and cash transactions, reconciles bank statements, reads the books (cannot approve or post) | whole tenant |
+| `manajer@majujaya.demo.test` | `Demo#Passw0rd2026` | tenant | PT Maju Jaya, "Manajer Keuangan": approves and posts journals and every payables, receivables, expense and cash/bank document, reverses, manages vendors, customers, categories and cash/bank accounts, closes periods, opening balance, configuration, exports | whole tenant |
 | `admin@sinarabadi.demo.test` | `Demo#Passw0rd2026` | tenant | CV Sinar Abadi (Starter bundle, 1 branch limit), full administration | whole tenant |
 | `admin@tunggakan.demo.test` | `Demo#Passw0rd2026` | tenant | PT Tunggakan Demo, subscription PAST_DUE: every module READ_ONLY (module reads work, module changes refused); tenant administration (users, roles, organization) stays available | whole tenant |
 | `multi@demo.test` | `Demo#Passw0rd2026` | identity | Viewer in PT Maju Jaya and administrator in CV Sinar Abadi: choose a tenant after signing in, then switch | per tenant |
@@ -58,6 +58,16 @@ dates relative to today (inside the open periods):
 - The AP-to-GL reconciliation reads MATCHED (the opening-balance payable is shown as its own component); the home page shows the operational summary.
 
 The accountant cannot approve or post (segregation of duties); the manager approves and posts. Re-running the seeder changes nothing.
+
+## Demo receivables and revenue (OA3)
+
+The same tenant also has the OA3 posting rules, the AR payment terms (shared with AP) and, relative to today:
+
+- 4 customers (`LOGISTIK` with a credit limit shown for information, `RETAIL`, `TAMBANG`, `TOKO`).
+- 7 customer invoices: 4 posted (one overdue and part-paid with a credit note, one fully paid, one with a receipt awaiting approval, one unpaid COD),
+  1 submitted, 1 approved (waiting to post), 1 draft. Customer receipts: 2 posted, 1 submitted. 1 posted credit note (partial return).
+- The AR aging shows CURRENT and 1-30 buckets; the AR-to-GL reconciliation reads MATCHED (the opening-balance receivable is its own component);
+  the home page shows the receivables summary. The cash/bank-to-GL reconciliation counts the customer receipts as a document kind of its own.
 
 ## Demo tenants
 
