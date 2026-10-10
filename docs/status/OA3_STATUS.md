@@ -46,7 +46,7 @@ every relation in one tenant · one reversal per document · no posting into CLO
 | Demo books: AR control = subledger + opening balance (MATCHED), AP unchanged, every journal balanced | PASS |
 | Docker image build / `compose up` | NOT RUN (sandbox proxy TLS, unchanged since OA0) |
 | Load / volume benchmark of AR aging, reconciliation and exports | NOT RUN (query-count guards only) |
-| CI workflow on the PR | @@CI@@ |
+| CI workflow on the PR | PASS on 6fb6bb6 (backend 16 min, frontend 1 min; first run) |
 
 ## Known issues (non-blocking)
 - No attachments: documents carry a `supporting_document` reference only. Single functional currency (`CURRENCY_NOT_SUPPORTED`); no customer advances, debit notes or dunning; one approver per document.
