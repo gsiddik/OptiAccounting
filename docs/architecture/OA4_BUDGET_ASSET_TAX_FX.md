@@ -93,10 +93,12 @@ Modules: `ACCOUNTING_BUDGET` (BUDGET), `ACCOUNTING_FIXED_ASSET` (ASSET_REGISTER,
   `CUSTOMER_RECEIPT_FX` (rules from `FxSetupService`, applied explicitly like the asset rules) debit / credit the control account by `carrying`, cash / bank by `settlement` and
   `FX_LOSS` / `FX_GAIN` (functional-only lines, `is_fx_difference`) by the difference. AP: payment above carrying = loss; AR: receipt above carrying = gain. The DB checks that a
   posted foreign payment's effective allocations add up to its functional amount and its difference. Reversal mirrors the journal with the original rates and releases the allocations.
+- **Cash/bank.** Bank accounts are functional. A foreign payment / receipt moves its `functional_amount` through the account, so the cash-to-GL reconciliation sums
+  `coalesce(functional_amount, amount)`; the account ledger already reads the journal lines. Vendors and customers keep a functional default currency; the currency is chosen per document.
 - **Entitlement.** A foreign document needs `ACCOUNTING_MULTI_CURRENCY` / `EXCHANGE_RATE` writable (READ_ONLY, SUSPENDED, DISABLED refuse it, including reversal); functional documents never
   touch it, so single-currency tenants and old data behave exactly as before.
 - **Contradiction recorded.** The brief lists FX revaluation; OA4 implements realised differences only. **FX Revaluation is NOT IMPLEMENTED** (feature `FX_REVALUATION` exists in the catalog
   for a later phase): unrealised gain / loss on open balances needs period-end revaluation journals with auto-reversal, which would be a financial feature without the owner's accounting-policy decision.
 - **Known limitations.** Credit notes, expenses, cash / bank transactions, bank accounts and manual journals are functional only (a credit note against a foreign invoice is refused:
-  `AR_CREDIT_NOTE_FOREIGN_INVOICE`); the settlement rate comes from the rate master (enter a MANUAL rate for the actual bank rate); a payment cannot span currencies; foreign tax codes
+  `AR_CREDIT_NOTE_FOREIGN_INVOICE`; an asset cannot be registered from a foreign invoice line: `ASSET_SOURCE_FOREIGN`); the settlement rate comes from the rate master (enter a MANUAL rate for the actual bank rate); a payment cannot span currencies; foreign tax codes
   use the invoice rate; no automatic rate feed.

@@ -44,6 +44,7 @@ Each line points at tests that ran green in the final full run (`OA4_STATUS.md`)
 | Cross-tenant rate rejected | CR `currencies_and_rates_of_another_tenant_are_invisible_and_unusable` |
 | Functional currency not casually changed | CR `the_functional_currency_is_frozen_after_the_first_posting`, `…cannot_change_underneath_the_currencies_and_rates` |
 | Exchange-rate update vs posting; settlement race with FX | CO `a_posting_racing_the_withdrawal_of_its_rate…`, `two_payments_racing_to_settle_the_same_usd_invoice…` |
+| Cash/bank-to-GL reconciliation reads what the bank moved (functional) for foreign settlements | FS `the_cash_to_gl_reconciliation_uses_what_the_bank_moved_in_functional_currency` |
 | Revaluation | NOT IMPLEMENTED (documented decision; no revaluation table, route, permission or menu exists) |
 
 ## §65–§66 Tenant, entitlement, regression
