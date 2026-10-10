@@ -80,7 +80,7 @@ export function InvoiceLines({ lines, onChange, preview, categories, accounts, r
                   {(p) => (
                     <select className="select" value={line.account_role} onChange={(e) => patch(line.key, { account_role: e.target.value })} {...p}>
                       <option value="">Tanpa peran</option>
-                      {line.account_role && !roles.some((r) => r.code === line.account_role) && <option value={line.account_role}>{line.account_role}</option>}
+                      {line.account_role && roles.every((r) => r.code !== line.account_role) && <option value={line.account_role}>{line.account_role}</option>}
                       {roles.map((r) => <option key={r.code} value={r.code}>{r.name}</option>)}
                     </select>
                   )}

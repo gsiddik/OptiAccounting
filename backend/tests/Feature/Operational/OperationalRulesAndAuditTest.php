@@ -80,6 +80,13 @@ class OperationalRulesAndAuditTest extends TestCase
         $this->assertSame(0, DB::table('account_mappings')->where('tenant_id', $this->tenant->id)->whereIn('account_role', ['CASH_BANK_ACCOUNT', 'DOCUMENT_ACCOUNT'])->count());
     }
 
+    public function test_history_timestamps_keep_microseconds_so_events_of_one_second_stay_in_order(): void
+    {
+        foreach (['audit_logs', 'journal_transitions', 'document_transitions'] as $table) {
+            $this->assertSame(6, (int) DB::table('information_schema.columns')->where('table_name', $table)->where('column_name', 'occurred_at')->value('datetime_precision'), $table);
+        }
+    }
+
     public function test_the_whole_module_leaves_an_audit_trail_without_bank_numbers(): void
     {
         $this->tenant = $this->payablesTenant('alpha', ['sod_creator_not_approver' => false, 'sod_creator_not_poster' => false]);

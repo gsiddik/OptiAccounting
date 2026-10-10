@@ -23,7 +23,7 @@ return new class extends Migration
             $table->string('to_status', 20);
             $table->uuid('actor_user_id')->nullable();
             $table->string('reason', 500)->nullable();
-            $table->timestampTz('occurred_at');
+            $table->timestampTz('occurred_at', 6);
 
             $table->foreign('tenant_id')->references('id')->on('tenants')->restrictOnDelete();
             $table->foreign('actor_user_id')->references('id')->on('users')->restrictOnDelete();

@@ -39,7 +39,7 @@ export function CategoryForm({ category, onClose, onDone }: { category: ExpenseC
   const set = (k: 'code' | 'name' | 'description') => (e: { target: { value: string } }) => setF((s) => ({ ...s, [k]: e.target.value }))
 
   const selectable = accounts.accounts.filter((a) => a.id === f.account_id || (a.status === 'ACTIVE' && a.is_postable && !a.is_control && (a.account_type === 'EXPENSE' || a.account_type === 'ASSET')))
-  const roleOptions = category?.account_role && !roles.some((r) => r.code === category.account_role) ? [...roles, { code: category.account_role, name: category.account_role }] : roles
+  const roleOptions = category?.account_role && roles.every((r) => r.code !== category.account_role) ? [...roles, { code: category.account_role, name: category.account_role }] : roles
   const err = localized(error)
 
   async function submit() {
