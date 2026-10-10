@@ -1,4 +1,4 @@
-import { Link, useParams } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import { EmptyState, ErrorNotice, Loading, PageHeader } from '../../components/ui'
 import { api } from '../../lib/api'
 import { useResource } from '../../lib/hooks'
@@ -14,11 +14,10 @@ export default function ApInvoiceEditor() {
   if (id && invoice.loading && !invoice.data) return <Loading />
   if (invoice.error) return <ErrorNotice error={invoice.error} onRetry={invoice.reload} />
 
-  const back = <Link className="btn" to={id ? `/app/akuntansi/faktur-vendor/${id}` : '/app/akuntansi/faktur-vendor'}>Kembali</Link>
   if (!access.writable) {
     return (
       <>
-        <PageHeader title={id ? 'Ubah faktur vendor' : 'Faktur vendor baru'} actions={back} />
+        <PageHeader title={id ? 'Ubah faktur vendor' : 'Faktur vendor baru'} />
         <EmptyState title="Modul hanya baca">Utang usaha dalam mode hanya baca: faktur dapat dilihat dan diekspor, tetapi tidak dapat dibuat atau diubah.</EmptyState>
       </>
     )
@@ -26,7 +25,7 @@ export default function ApInvoiceEditor() {
   if (invoice.data && (invoice.data.status !== 'DRAFT' || invoice.data.origin !== 'INVOICE')) {
     return (
       <>
-        <PageHeader title="Faktur tidak dapat diubah" actions={back} />
+        <PageHeader title="Faktur tidak dapat diubah" />
         <EmptyState title="Faktur tidak dapat diubah">Hanya faktur vendor berstatus draf yang dapat diubah. Buka fakturnya untuk melihat riwayat; koreksi faktur yang sudah diposting dilakukan dengan pembalikan.</EmptyState>
       </>
     )

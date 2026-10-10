@@ -38,7 +38,7 @@ class AuthController extends Controller
         }
 
         // In optinexus mode people sign in at OptiNexus; a local password is only the operators' break-glass.
-        if (OptinexusSettings::active() && (! config('optiaccounting.optinexus.break_glass_login') || ! $this->auth->hasPlatformAccess($user))) {
+        if (OptinexusSettings::active() && (! config('optientry.optinexus.break_glass_login') || ! $this->auth->hasPlatformAccess($user))) {
             $this->audit->record('auth.login_failed', 'user', $user->id, null, ['email' => $user->email, 'reason' => 'LOCAL_LOGIN_DISABLED']);
 
             return response()->json(['message' => 'Sign in with OptiNexus.', 'code' => 'LOCAL_LOGIN_DISABLED'], 403);

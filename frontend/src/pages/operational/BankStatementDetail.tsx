@@ -83,7 +83,6 @@ export default function BankStatementDetail() {
         description={<>{account ? `${account.code} · ${account.name} · ` : ''}per {formatDate(s.statement_date)} · <StatusBadge status={s.status} /></>}
         actions={
           <>
-            <Link to="/app/akuntansi/rekening-koran" className="btn btn-ghost">Kembali ke daftar</Link>
             {can('accounting.cash_bank.view') && <Link to={`/app/akuntansi/kas-bank/${s.cash_bank_account_id}`} className="btn">Mutasi akun</Link>}
             <ExportButton path={`${base}/export`} filename={`rekening-koran_${s.reference}.csv`} />
             {manage && <Button onClick={() => setDialog({ kind: 'edit' })}>Ubah</Button>}

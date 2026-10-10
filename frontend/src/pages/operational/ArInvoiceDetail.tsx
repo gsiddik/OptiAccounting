@@ -50,7 +50,6 @@ function InvoiceView({ invoice: inv, reload }: { invoice: ArInvoice; reload: () 
         description={<><StatusBadge status={inv.status} />{settled && inv.payment_status && <> · <StatusBadge status={inv.payment_status} /></>}</>}
         actions={
           <>
-            <Link to={AR_PATH.invoices} className="btn btn-ghost">Kembali ke daftar</Link>
             {creditable && <Link to={`${AR_PATH.creditNotes}/baru?faktur=${inv.id}`} className="btn">Buat nota kredit</Link>}
             {wf.buttons}
           </>

@@ -8,7 +8,7 @@ changed.** Everything the adapter needs from it already exists.
 
 All product-specific code is under `app/Domain/Integration/Optinexus/` and the
 `integration/optinexus` routes. Core code only sees two seams, selected once by
-`OPTIACCOUNTING_IDENTITY_MODE` in `AppServiceProvider`:
+`OPTIENTRY_IDENTITY_MODE` in `AppServiceProvider`:
 
 | Seam | `standalone` | `optinexus` |
 |---|---|---|
@@ -85,7 +85,7 @@ feature entitlements (OptiNexus capability codes **equal** the local module and
 feature codes), capacity (`USER_LIMIT`, `BRANCH_LIMIT`, `BUSINESS_UNIT_LIMIT`
 limit keys, `unlimited` → null). Runs at sign-in when older than
 `OPTINEXUS_ENTITLEMENT_TTL` (300 s) and every 5 minutes by
-`optiaccounting:nexus:sync-entitlements`. If OptiNexus is down the last
+`optientry:nexus:sync-entitlements`. If OptiNexus is down the last
 projection stays (`tenants.optinexus_synced_at` shows its age); the
 subscription end date still bounds it. Manual subscription and entitlement
 edits answer `409 MANAGED_BY_OPTINEXUS`. When OptiNexus returns no live
@@ -111,7 +111,7 @@ removal and tenant suspension send `scope=tenant`.
 ## 7. Outbox and relay
 
 `outbox_events` (transactional, written in the caller's transaction, only in
-`optinexus` mode until OA6 adds channels). `optiaccounting:nexus:relay-events`
+`optinexus` mode until OA6 adds channels). `optientry:nexus:relay-events`
 (scheduled every minute) sends rows with `event_id` = row id to `POST /events`
 (`kind = EVENT`) or `POST /audit-events` (`kind = AUDIT`); backoff 2 min
 doubling to 1 h, 20 attempts then `FAILED`; 422 `EVENT_INVALID` (type not in
@@ -122,11 +122,11 @@ the catalog yet) is retried, other 4xx fail at once. Initial event types:
 
 ## 8. Operations
 
-- `optiaccounting:nexus:manifest` prints the registration data an OptiNexus
+- `optientry:nexus:manifest` prints the registration data an OptiNexus
   administrator needs (application, capabilities, permissions, event catalog,
   service-account scopes, OIDC client settings). See
   `docs/integration/OPTINEXUS_ONBOARDING.md`.
-- `optiaccounting:nexus:check` verifies configuration, discovery, JWKS and the
+- `optientry:nexus:check` verifies configuration, discovery, JWKS and the
   service-account token and scopes against the live OptiNexus.
 - Failure behaviour: existing sessions work until the permission cache expires;
   new sign-ins fail closed; accounting data is never touched by an outage.

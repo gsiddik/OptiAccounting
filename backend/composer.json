@@ -1,8 +1,8 @@
 {
     "$schema": "https://getcomposer.org/schema.json",
-    "name": "gsiddik/optiaccounting",
+    "name": "gsiddik/optientry",
     "type": "project",
-    "description": "OptiAccounting API \u2014 double-entry accounting platform (SaaS and standalone).",
+    "description": "OptiEntry API \u2014 double-entry accounting platform (SaaS and standalone).",
     "keywords": [
         "accounting",
         "double-entry",

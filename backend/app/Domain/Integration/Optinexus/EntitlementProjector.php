@@ -52,7 +52,7 @@ class EntitlementProjector
     {
         $age = $tenant->optinexus_synced_at ? now()->diffInSeconds($tenant->optinexus_synced_at, true) : null;
 
-        if ($age === null || $age >= (int) config('optiaccounting.optinexus.entitlement_ttl_seconds')) {
+        if ($age === null || $age >= (int) config('optientry.optinexus.entitlement_ttl_seconds')) {
             $this->sync($tenant);
         }
     }

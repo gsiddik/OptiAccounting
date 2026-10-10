@@ -16,7 +16,7 @@ final class IdentityMode
 
     public static function current(): string
     {
-        return self::assertValid((string) config('optiaccounting.identity_mode'));
+        return self::assertValid((string) config('optientry.identity_mode'));
     }
 
     /** What the SPA needs to know: the mode, and whether members, roles and subscriptions are edited elsewhere. */
@@ -29,7 +29,7 @@ final class IdentityMode
     {
         if (! in_array($mode, [self::STANDALONE, self::OPTINEXUS], true)) {
             throw new InvalidArgumentException(
-                "Invalid OPTIACCOUNTING_IDENTITY_MODE [{$mode}]; expected standalone or optinexus."
+                "Invalid OPTIENTRY_IDENTITY_MODE [{$mode}]; expected standalone or optinexus."
             );
         }
 

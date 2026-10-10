@@ -11,7 +11,7 @@ class HealthTest extends TestCase
         $this->getJson('/api/v1/health')
             ->assertOk()
             ->assertExactJson([
-                'service' => 'optiaccounting-api',
+                'service' => 'optientry-api',
                 'api_version' => 'v1',
                 'identity_mode' => 'standalone',
                 'checks' => ['database' => 'ok'],

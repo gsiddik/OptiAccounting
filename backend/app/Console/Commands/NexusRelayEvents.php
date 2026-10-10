@@ -8,7 +8,10 @@ use Illuminate\Console\Command;
 
 class NexusRelayEvents extends Command
 {
-    protected $signature = 'optiaccounting:nexus:relay-events {--retry-failed : Put FAILED rows back in the queue first} {--tenant= : Only this local tenant id}';
+    /** Former name (before the OptiEntry rename); kept so existing cron entries and runbooks keep working. */
+    protected $aliases = ['optiaccounting:nexus:relay-events'];
+
+    protected $signature = 'optientry:nexus:relay-events {--retry-failed : Put FAILED rows back in the queue first} {--tenant= : Only this local tenant id}';
 
     protected $description = 'Deliver pending outbox events and audit records to OptiNexus';
 

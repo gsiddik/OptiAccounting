@@ -17,9 +17,9 @@ class HealthController extends Controller
         $database = $this->databaseIsReachable();
 
         return response()->json([
-            'service' => 'optiaccounting-api',
+            'service' => 'optientry-api',
             'api_version' => 'v1',
-            'identity_mode' => config('optiaccounting.identity_mode'),
+            'identity_mode' => config('optientry.identity_mode'),
             'checks' => ['database' => $database ? 'ok' : 'unavailable'],
         ], $database ? 200 : 503);
     }

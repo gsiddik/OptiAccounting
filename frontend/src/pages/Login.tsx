@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
+import { BrandLogo } from '../components/BrandLogo'
 import { Banner, Button, Field, Loading } from '../components/ui'
 import { api, ApiError } from '../lib/api'
 import { homePath, useAuth } from '../lib/auth'
@@ -28,15 +29,12 @@ export default function Login() {
   const sso = status.data
   const ssoError = describeSsoError(params.get('sso_error'))
   const viaNexus = sso?.sso_enabled === true
-  const heading = viaNexus ? 'Gunakan akun OptiNexus Anda untuk membuka OptiAccounting.' : 'Gunakan akun Anda untuk membuka portal platform atau organisasi.'
+  const heading = viaNexus ? 'Gunakan akun OptiNexus Anda untuk membuka OptiEntry.' : 'Gunakan akun Anda untuk membuka portal platform atau organisasi.'
 
   return (
     <div className="auth">
       <section className="card auth-card" aria-labelledby="login-title">
-        <div className="brand">
-          <span className="brand-mark" aria-hidden="true">OA</span>
-          OptiAccounting
-        </div>
+        <BrandLogo size="auth" />
         <div>
           <h1 id="login-title">Masuk</h1>
           <p className="muted">{heading}</p>

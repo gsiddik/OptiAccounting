@@ -173,10 +173,10 @@ class ArExportAndSummaryTest extends TestCase
     public function test_an_export_is_capped_and_respects_module_and_feature_state(): void
     {
         $this->world();
-        config(['optiaccounting.export_max_rows' => 1]);
+        config(['optientry.export_max_rows' => 1]);
         $this->get(self::AR.'/customers/export')->assertStatus(422)->assertJsonPath('code', 'EXPORT_TOO_LARGE')->assertJsonPath('details.rows', 2)->assertJsonPath('details.max_rows', 1);
         $this->csv(self::AR.'/customers/export?q=C-1'); // narrowed filters fit
-        config(['optiaccounting.export_max_rows' => 10000]);
+        config(['optientry.export_max_rows' => 10000]);
 
         // READ_ONLY keeps reading (an export is a read); a lost module or a disabled feature closes it.
         $module = fn (string $code, string $state) => DB::table('tenant_module_entitlements')->where('tenant_id', $this->tenant->id)->where('module_id', DB::table('modules')->where('code', $code)->value('id'))->update(['state' => $state]);

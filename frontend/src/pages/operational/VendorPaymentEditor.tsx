@@ -1,4 +1,4 @@
-import { Link, useParams } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import { EmptyState, ErrorNotice, Loading, PageHeader } from '../../components/ui'
 import { api } from '../../lib/api'
 import { useResource } from '../../lib/hooks'
@@ -14,11 +14,10 @@ export default function VendorPaymentEditor() {
   if (id && payment.loading && !payment.data) return <Loading />
   if (payment.error) return <ErrorNotice error={payment.error} onRetry={payment.reload} />
 
-  const back = <Link className="btn" to={id ? `/app/akuntansi/pembayaran-vendor/${id}` : '/app/akuntansi/pembayaran-vendor'}>Kembali</Link>
   if (!access.writable) {
     return (
       <>
-        <PageHeader title={id ? 'Ubah pembayaran vendor' : 'Pembayaran vendor baru'} actions={back} />
+        <PageHeader title={id ? 'Ubah pembayaran vendor' : 'Pembayaran vendor baru'} />
         <EmptyState title="Modul hanya baca">Utang usaha dalam mode hanya baca: pembayaran dapat dilihat dan diekspor, tetapi tidak dapat dibuat atau diubah.</EmptyState>
       </>
     )
@@ -26,7 +25,7 @@ export default function VendorPaymentEditor() {
   if (payment.data && payment.data.status !== 'DRAFT') {
     return (
       <>
-        <PageHeader title="Pembayaran tidak dapat diubah" actions={back} />
+        <PageHeader title="Pembayaran tidak dapat diubah" />
         <EmptyState title="Pembayaran tidak dapat diubah">Hanya pembayaran berstatus draf yang dapat diubah. Pembayaran yang sudah diposting dikoreksi dengan pembalikan.</EmptyState>
       </>
     )

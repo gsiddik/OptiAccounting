@@ -5,6 +5,7 @@ import { setToken, setUnauthorizedHandler } from '../lib/api'
 
 afterEach(() => {
   cleanup()
+  window.localStorage.clear()
   setToken(null)
   setUnauthorizedHandler(null)
 })

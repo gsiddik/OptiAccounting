@@ -7,9 +7,12 @@ use Illuminate\Console\Command;
 
 class NexusManifest extends Command
 {
-    protected $signature = 'optiaccounting:nexus:manifest {--pretty : Indent the JSON}';
+    /** Former name (before the OptiEntry rename); kept so existing cron entries and runbooks keep working. */
+    protected $aliases = ['optiaccounting:nexus:manifest'];
 
-    protected $description = 'Print what an OptiNexus administrator must register for OptiAccounting (application, capabilities, permissions, events, scopes, OIDC client)';
+    protected $signature = 'optientry:nexus:manifest {--pretty : Indent the JSON}';
+
+    protected $description = 'Print what an OptiNexus administrator must register for OptiEntry (application, capabilities, permissions, events, scopes, OIDC client)';
 
     public function handle(OptinexusManifest $manifest): int
     {

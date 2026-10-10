@@ -12,7 +12,7 @@ final class ListExport
 {
     public static function max(): int
     {
-        return max(1, (int) config('optiaccounting.export_max_rows', 10000));
+        return max(1, (int) config('optientry.export_max_rows', 10000));
     }
 
     /** @return Collection<int,Model> */

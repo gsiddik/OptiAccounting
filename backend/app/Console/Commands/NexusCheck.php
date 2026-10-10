@@ -11,14 +11,17 @@ use Illuminate\Support\Facades\Cache;
 
 class NexusCheck extends Command
 {
-    protected $signature = 'optiaccounting:nexus:check';
+    /** Former name (before the OptiEntry rename); kept so existing cron entries and runbooks keep working. */
+    protected $aliases = ['optiaccounting:nexus:check'];
+
+    protected $signature = 'optientry:nexus:check';
 
     protected $description = 'Verify the OptiNexus configuration against the live OptiNexus (settings, discovery, signing keys, service account)';
 
     public function handle(OidcClient $oidc, NexusApi $api): int
     {
         if (! OptinexusSettings::active()) {
-            $this->components->warn('OPTIACCOUNTING_IDENTITY_MODE is not "optinexus"; nothing to check.');
+            $this->components->warn('OPTIENTRY_IDENTITY_MODE is not "optinexus"; nothing to check.');
 
             return self::SUCCESS;
         }

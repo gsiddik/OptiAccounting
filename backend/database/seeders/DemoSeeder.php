@@ -30,7 +30,7 @@ use RuntimeException;
  */
 class DemoSeeder extends Seeder
 {
-    /** Documented demo password; override with OPTIACCOUNTING_DEMO_PASSWORD. Never use it outside demo environments. */
+    /** Documented demo password; override with OPTIENTRY_DEMO_PASSWORD. Never use it outside demo environments. */
     public const DEFAULT_PASSWORD = 'Demo#Passw0rd2026';
 
     private const BUNDLES = [
@@ -129,7 +129,7 @@ class DemoSeeder extends Seeder
             throw new RuntimeException('DemoSeeder must not run in production.');
         }
 
-        $this->password = (string) (config('optiaccounting.demo_password') ?: self::DEFAULT_PASSWORD);
+        $this->password = (string) (config('optientry.demo_password') ?: self::DEFAULT_PASSWORD);
 
         $this->call([ModuleCatalogSeeder::class, AccessControlSeeder::class, AccountingCatalogSeeder::class]);
 

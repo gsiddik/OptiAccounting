@@ -20,7 +20,7 @@ use stdClass;
  *  - OptiNexus unreachable, 5xx, 408, 429, 401 and 422 EVENT_INVALID (type not in the catalog yet): stays PENDING and is
  *    retried with exponential backoff (2 min after the first attempt, doubling up to 1 h), until `max_attempts`.
  *  - any other 4xx (payload does not match the catalog, application not assigned to the tenant, event id conflict):
- *    FAILED at once; fix the cause, then `optiaccounting:nexus:relay-events --retry-failed`.
+ *    FAILED at once; fix the cause, then `optientry:nexus:relay-events --retry-failed`.
  */
 class OptinexusEventRelay
 {
@@ -30,7 +30,7 @@ class OptinexusEventRelay
     public function relay(?string $tenantId = null): array
     {
         $result = ['delivered' => 0, 'retrying' => 0, 'failed' => 0];
-        $maxAttempts = (int) config('optiaccounting.optinexus.relay.max_attempts');
+        $maxAttempts = (int) config('optientry.optinexus.relay.max_attempts');
 
         $rows = DB::table('outbox_events as o')
             ->leftJoin('tenants as t', 't.id', '=', 'o.tenant_id')
@@ -39,7 +39,7 @@ class OptinexusEventRelay
             ->when($tenantId, fn ($q) => $q->where('o.tenant_id', $tenantId))
             ->whereRaw("(o.last_attempted_at is null or o.last_attempted_at <= ?::timestamptz - (least(60 * power(2, o.attempts), 3600) * interval '1 second'))", [now()->toIso8601String()])
             ->orderBy('o.created_at')->orderBy('o.id')
-            ->limit((int) config('optiaccounting.optinexus.relay.batch_size'))
+            ->limit((int) config('optientry.optinexus.relay.batch_size'))
             ->get(['o.*', 't.optinexus_tenant_id as nexus_tenant_id']);
 
         foreach ($rows as $row) {

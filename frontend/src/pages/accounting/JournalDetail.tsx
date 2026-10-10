@@ -79,7 +79,7 @@ export default function JournalDetail() {
       <PageHeader
         title={j.journal_number ?? (j.status === 'DRAFT' ? 'Draf jurnal' : 'Jurnal belum bernomor')}
         description={<>{journalTypeLabels[j.journal_type] ?? j.journal_type} · <StatusBadge status={j.status} /></>}
-        actions={<><Link to="/app/akuntansi/jurnal" className="btn btn-ghost">Kembali ke daftar</Link>{buttons}</>}
+        actions={buttons}
       />
       {notes.map((n) => <Banner key={n} tone="info">{n}</Banner>)}
       {action.error != null && dialog === null && <ErrorNotice error={action.error} />}

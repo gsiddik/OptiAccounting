@@ -1,12 +1,12 @@
-# Connecting OptiAccounting to OptiNexus
+# Connecting OptiEntry to OptiNexus
 
-For an OptiNexus administrator and the operator of an OptiAccounting installation.
+For an OptiNexus administrator and the operator of an OptiEntry installation.
 Design: `docs/architecture/OPTINEXUS_ADAPTER.md`. OptiNexus contract:
 `INTEGRATION_GUIDE.md` in the OptiNexus repository. **OptiNexus is not modified**;
 everything below uses its existing API.
 
 Every step in section 1 was run against a real OptiNexus (see
-`docs/status/OA0-N_STATUS.md`). `php artisan optiaccounting:nexus:manifest`
+`docs/status/OA0-N_STATUS.md`). `php artisan optientry:nexus:manifest`
 prints the data to register, generated from this repository's catalogs, so it
 never drifts from the code.
 
@@ -30,10 +30,10 @@ Use a Sanctum token of an administrator (`POST /api/v1/auth/login`).
 
 Bulk registration hits OptiNexus's rate limit (`429 RATE_LIMITED`); wait and retry.
 
-## 2. In OptiAccounting (the installation)
+## 2. In OptiEntry (the installation)
 
 ```
-OPTIACCOUNTING_IDENTITY_MODE=optinexus
+OPTIENTRY_IDENTITY_MODE=optinexus
 OPTINEXUS_BASE_URL=https://nexus.example.com        # the issuer
 OPTINEXUS_APPLICATION_CODE=optiaccounting
 OPTINEXUS_SSO_CLIENT_ID=...        OPTINEXUS_SSO_CLIENT_SECRET=...
@@ -51,9 +51,9 @@ run (`php artisan schedule:run` every minute): it relays events every minute and
 re-syncs entitlements every 5 minutes. Then:
 
 ```
-php artisan optiaccounting:nexus:check     # configuration, discovery, JWKS, service-account token and scopes
-php artisan optiaccounting:nexus:sync-entitlements [--tenant=ID]
-php artisan optiaccounting:nexus:relay-events [--retry-failed] [--tenant=ID]
+php artisan optientry:nexus:check     # configuration, discovery, JWKS, service-account token and scopes
+php artisan optientry:nexus:sync-entitlements [--tenant=ID]
+php artisan optientry:nexus:relay-events [--retry-failed] [--tenant=ID]
 ```
 
 `check` names what is wrong (missing variable, missing scope, application not
@@ -72,8 +72,8 @@ enabled) and the person, then projects the subscription.
   tenant, or suspending the tenant, is scope `tenant`.
 - **A lapsed or suspended subscription** (it leaves the commercial context) ends
   module access (`SUBSCRIPTION_INACTIVE`); the last known capacity limits are kept.
-- **Sign-out** from OptiAccounting also ends the OptiNexus session and returns to
-  the OptiAccounting login page (the `post_logout_redirect_uris` entry above).
+- **Sign-out** from OptiEntry also ends the OptiNexus session and returns to
+  the OptiEntry login page (the `post_logout_redirect_uris` entry above).
 - **If OptiNexus is down**, new sign-ins fail closed (`sso_unavailable`), sessions
   keep working until the permission cache expires (≤ 5 minutes), then answer
   `503 IDENTITY_PROVIDER_UNAVAILABLE`. Accounting data is never touched.
@@ -84,9 +84,9 @@ enabled) and the person, then projects the subscription.
 ## 4. After an upgrade that adds permissions, features or events
 
 A release that adds `accounting.*` permissions, features or events needs section 1 repeated for the **new entries only**: re-run
-`optiaccounting:nexus:manifest`, register the missing `capabilities[]` (step 2, modules before features), `permissions[]` (step 3) and `events[]`
+`optientry:nexus:manifest`, register the missing `capabilities[]` (step 2, modules before features), `permissions[]` (step 3) and `events[]`
 (step 5), add new features to the plan of every product that already carries the module (step 6), then attach the new permissions to the
-application roles (step 8) and run `optiaccounting:nexus:sync-entitlements`. Entries that are already registered need no change. Until it is done,
+application roles (step 8) and run `optientry:nexus:sync-entitlements`. Entries that are already registered need no change. Until it is done,
 people sign in as before but hold none of the new permissions, and a tenant keeps its existing modules.
 
 | Release | New permissions | New capabilities (features) | New events |
@@ -97,5 +97,5 @@ people sign in as before but hold none of the new permissions, and a tenant keep
 
 Locally, OA2 and OA3 need nothing from the operator: migration `2026_10_10_100003` gives every tenant that already holds `ACCOUNTING_AP` or
 `ACCOUNTING_CASH_BANK` (and `2026_10_11_100002` every tenant that holds `ACCOUNTING_AR`) through a bundle the new features too (same windows, source `BUNDLE`; operator overrides are never touched), and in `optinexus` mode
-a tenant receives them from the next entitlement sync once its plan carries the features (step 6). Run `php artisan optiaccounting:nexus:check` afterwards: it names any
+a tenant receives them from the next entitlement sync once its plan carries the features (step 6). Run `php artisan optientry:nexus:check` afterwards: it names any
 capability, permission or event that is still unregistered.

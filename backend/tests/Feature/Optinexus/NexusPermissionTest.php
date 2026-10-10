@@ -18,7 +18,7 @@ class NexusPermissionTest extends OptinexusTestCase
     {
         $this->assertInstanceOf(NexusPermissionSource::class, app(PermissionSource::class));
 
-        config(['optiaccounting.identity_mode' => 'standalone']);
+        config(['optientry.identity_mode' => 'standalone']);
         $this->assertInstanceOf(LocalPermissionSource::class, app(PermissionSource::class));
     }
 

@@ -19,7 +19,7 @@ final class EventCatalog
         return [
             [
                 'event_key' => $p.'tenant.linked', 'name' => 'Tenant linked', 'schema_version' => '1',
-                'description' => 'An OptiNexus tenant was linked to a local OptiAccounting organization on its first sign-in.',
+                'description' => 'An OptiNexus tenant was linked to a local OptiEntry organization on its first sign-in.',
                 'payload_schema' => ['required' => ['optinexus_tenant_id', 'code'], 'properties' => ['optinexus_tenant_id' => ['type' => 'string'], 'code' => ['type' => 'string']]],
             ],
             [

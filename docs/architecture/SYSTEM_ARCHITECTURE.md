@@ -2,7 +2,7 @@
 
 Status: MASTER baseline. Owner brief: `docs/specs/MASTER.md`.
 
-## 1. What OptiAccounting is
+## 1. What OptiEntry is
 
 A double-entry accounting platform delivered from one codebase as:
 
@@ -17,7 +17,7 @@ same generic adapter model (`INTEGRATION_ARCHITECTURE.md`).
 
 ## 2. Ownership boundary
 
-| OptiAccounting owns (financial truth) | External systems own (operational truth) |
+| OptiEntry owns (financial truth) | External systems own (operational truth) |
 |---|---|
 | Accounting profile, fiscal years, periods | Vehicles, work orders, maintenance (OptiFleet) |
 | Chart of accounts, dimensions, cost centers | Inventory quantity and operational valuation source |
@@ -26,7 +26,7 @@ same generic adapter model (`INTEGRATION_ARCHITECTURE.md`).
 | Budget, fixed assets, tax configuration, currency | Identity, tenants, subscriptions (OptiNexus, in `optinexus` mode) |
 | Financial reports, closing, reconciliation, accounting audit | |
 
-An integration never makes OptiAccounting the operational source of truth for
+An integration never makes OptiEntry the operational source of truth for
 an external domain, and never lets an external system decide debit/credit.
 
 ## 3. Stack
@@ -113,7 +113,7 @@ SPA ─▶ /api/v1/app/*  ─▶ auth (Sanctum) ─▶ tenant context (from toke
 | Sold independently? | Yes. `standalone` identity mode with its own platform portal and subscriptions. `SAAS_ARCHITECTURE.md` |
 | OptiFleet integrates without DB sharing? | Yes. Versioned events/API via adapter. `INTEGRATION_ARCHITECTURE.md` §2–4 |
 | Another ERP/POS/TMS without redesign? | Yes. Generic connection, envelope, external dimensions; adapters only translate. |
-| Financial truth only in OptiAccounting? | Yes. §2; external events carry facts, never accounts. |
+| Financial truth only in OptiEntry? | Yes. §2; external events carry facts, never accounts. |
 | Operational truth outside? | Yes. §2; external references are `external_dimensions`, no copies of external domains. |
 | Double-entry protected? | Service + DB trigger + tests. `ACCOUNTING_PRINCIPLES.md` §2 |
 | Posted journals immutable? | Service + DB trigger; reversal only. `ACCOUNTING_PRINCIPLES.md` §4 |

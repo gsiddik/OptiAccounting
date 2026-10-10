@@ -80,7 +80,7 @@ describe('login page doors', () => {
     mockApi({ 'GET /auth/sso/status': status() })
     renderApp('/login?sso_error=no_permissions')
 
-    expect(await screen.findByText(/belum diberi izin apa pun untuk OptiAccounting/)).toBeInTheDocument()
+    expect(await screen.findByText(/belum diberi izin apa pun untuk OptiEntry/)).toBeInTheDocument()
   })
 
   it('never shows an unknown error code verbatim', async () => {

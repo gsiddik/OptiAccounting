@@ -52,7 +52,7 @@ function ReceiptView({ receipt: rec, reload }: { receipt: Receipt; reload: () =>
       <PageHeader
         title={rec.document_number ?? (rec.status === 'DRAFT' ? 'Draf penerimaan pelanggan' : 'Penerimaan belum bernomor')}
         description={<>Penerimaan pelanggan · <StatusBadge status={rec.status} /></>}
-        actions={<><Link to={AR_PATH.receipts} className="btn btn-ghost">Kembali ke daftar</Link>{wf.buttons}</>}
+        actions={wf.buttons}
       />
       <ReadOnlyNotice show={access.readOnly} />
       {wf.notes.map((n) => <Banner key={n} tone="info">{n}</Banner>)}

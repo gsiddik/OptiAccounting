@@ -5,7 +5,7 @@ namespace App\Domain\AccessControl;
 /**
  * Permission registry (code = resource.action). OA0 registers only what OA0
  * needs; later phases add their permissions additively and call
- * `php artisan optiaccounting:sync-permissions`.
+ * `php artisan optientry:sync-permissions`.
  */
 final class PermissionCatalog
 {

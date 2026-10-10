@@ -37,7 +37,7 @@ export default function CashTransactionDetail({ kind }: { kind: CashKind }) {
       <PageHeader
         title={t.document_number ?? (t.status === 'DRAFT' ? `Draf ${k.title.toLowerCase()}` : `${k.title} belum bernomor`)}
         description={<>{k.title} · <StatusBadge status={t.status} /></>}
-        actions={<><Link to={k.route} className="btn btn-ghost">Kembali ke daftar</Link>{actions.buttons}</>}
+        actions={actions.buttons}
       />
       <ReadOnlyNotice show={readOnly} />
       {actions.notes.map((n) => <Banner key={n} tone="info">{n}</Banner>)}

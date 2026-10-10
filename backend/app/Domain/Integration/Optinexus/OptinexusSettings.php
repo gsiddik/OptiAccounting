@@ -14,17 +14,17 @@ final class OptinexusSettings
 
     public static function baseUrl(): string
     {
-        return (string) config('optiaccounting.optinexus.base_url');
+        return (string) config('optientry.optinexus.base_url');
     }
 
     public static function applicationCode(): string
     {
-        return (string) config('optiaccounting.optinexus.application_code');
+        return (string) config('optientry.optinexus.application_code');
     }
 
     public static function clientId(): string
     {
-        return (string) config('optiaccounting.optinexus.sso.client_id');
+        return (string) config('optientry.optinexus.sso.client_id');
     }
 
     /** Settings still missing for the OIDC sign-in. */
@@ -32,8 +32,8 @@ final class OptinexusSettings
     {
         return self::missing([
             'OPTINEXUS_BASE_URL' => self::baseUrl(),
-            'OPTINEXUS_SSO_CLIENT_ID' => config('optiaccounting.optinexus.sso.client_id'),
-            'OPTINEXUS_SSO_CLIENT_SECRET' => config('optiaccounting.optinexus.sso.client_secret'),
+            'OPTINEXUS_SSO_CLIENT_ID' => config('optientry.optinexus.sso.client_id'),
+            'OPTINEXUS_SSO_CLIENT_SECRET' => config('optientry.optinexus.sso.client_secret'),
         ]);
     }
 
@@ -42,8 +42,8 @@ final class OptinexusSettings
     {
         return self::missing([
             'OPTINEXUS_BASE_URL' => self::baseUrl(),
-            'OPTINEXUS_SERVICE_CLIENT_ID' => config('optiaccounting.optinexus.service.client_id'),
-            'OPTINEXUS_SERVICE_CLIENT_SECRET' => config('optiaccounting.optinexus.service.client_secret'),
+            'OPTINEXUS_SERVICE_CLIENT_ID' => config('optientry.optinexus.service.client_id'),
+            'OPTINEXUS_SERVICE_CLIENT_SECRET' => config('optientry.optinexus.service.client_secret'),
         ]);
     }
 
@@ -54,7 +54,7 @@ final class OptinexusSettings
 
     public static function redirectUri(): string
     {
-        return (string) (config('optiaccounting.optinexus.sso.redirect_uri') ?: url('/api/v1/auth/sso/callback'));
+        return (string) (config('optientry.optinexus.sso.redirect_uri') ?: url('/api/v1/auth/sso/callback'));
     }
 
     /** @param array<string,mixed> $required */

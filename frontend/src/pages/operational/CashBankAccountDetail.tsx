@@ -27,7 +27,6 @@ export default function CashBankAccountDetail() {
       <PageHeader
         title={`${a.code} · ${a.name}`}
         description={<>{cashKindLabels[a.kind] ?? a.kind} · <StatusBadge status={a.status} /></>}
-        actions={<Link to="/app/akuntansi/kas-bank" className="btn btn-ghost">Kembali ke daftar</Link>}
       />
 
       <Card title="Akun">

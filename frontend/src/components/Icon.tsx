@@ -21,6 +21,9 @@ const PATHS: Record<string, string> = {
   list: 'M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01',
   cog: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm7.4-3a7.4 7.4 0 0 0-.1-1.3l2-1.6-2-3.4-2.4 1a7.5 7.5 0 0 0-2.2-1.3L14.3 3h-4l-.4 2.4a7.5 7.5 0 0 0-2.2 1.3l-2.4-1-2 3.4 2 1.6a7.400 7.400 0 0 0 0 2.600l-2 1.600 2 3.400 2.400-1a7.500 7.500 0 0 0 2.200 1.300l.4 2.400h4l.4-2.400a7.500 7.500 0 0 0 2.200-1.300l2.400 1 2-3.400-2-1.600c.1-.4.1-.9.1-1.300Z',
   plug: 'M9 2v6M15 2v6M6 8h12v4a6 6 0 0 1-12 0V8ZM12 18v4',
+  'chevron-down': 'm6 9 6 6 6-6',
+  'chevron-right': 'm9 6 6 6-6 6',
+  'arrow-left': 'M19 12H5M11 6l-6 6 6 6',
 }
 
 export function Icon({ name, size = 18 }: { name: keyof typeof PATHS | string; size?: number }) {

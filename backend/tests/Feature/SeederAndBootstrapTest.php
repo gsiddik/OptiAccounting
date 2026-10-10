@@ -54,11 +54,11 @@ class SeederAndBootstrapTest extends TestCase
 
     public function test_bootstrap_creates_the_first_platform_administrator_who_can_sign_in(): void
     {
-        putenv('OPTIACCOUNTING_BOOTSTRAP_PASSWORD='.self::PASSWORD);
+        putenv('OPTIENTRY_BOOTSTRAP_PASSWORD='.self::PASSWORD);
 
-        $this->artisan('optiaccounting:bootstrap-platform-admin', ['email' => 'root@example.test', '--name' => 'Root'])
+        $this->artisan('optientry:bootstrap-platform-admin', ['email' => 'root@example.test', '--name' => 'Root'])
             ->expectsOutputToContain('Platform administrator ready')->assertExitCode(0);
-        putenv('OPTIACCOUNTING_BOOTSTRAP_PASSWORD');
+        putenv('OPTIENTRY_BOOTSTRAP_PASSWORD');
 
         $user = User::query()->where('email', 'root@example.test')->firstOrFail();
         $this->assertNotSame(self::PASSWORD, $user->password);
@@ -71,13 +71,13 @@ class SeederAndBootstrapTest extends TestCase
 
     public function test_bootstrap_is_idempotent_and_does_not_reset_an_existing_password(): void
     {
-        putenv('OPTIACCOUNTING_BOOTSTRAP_PASSWORD='.self::PASSWORD);
-        $this->artisan('optiaccounting:bootstrap-platform-admin', ['email' => 'root@example.test'])->assertExitCode(0);
+        putenv('OPTIENTRY_BOOTSTRAP_PASSWORD='.self::PASSWORD);
+        $this->artisan('optientry:bootstrap-platform-admin', ['email' => 'root@example.test'])->assertExitCode(0);
         $hash = User::query()->where('email', 'root@example.test')->value('password');
 
-        putenv('OPTIACCOUNTING_BOOTSTRAP_PASSWORD=An0ther!Passw0rd#2');
-        $this->artisan('optiaccounting:bootstrap-platform-admin', ['email' => 'ROOT@example.test'])->expectsOutputToContain('already a platform administrator')->assertExitCode(0);
-        putenv('OPTIACCOUNTING_BOOTSTRAP_PASSWORD');
+        putenv('OPTIENTRY_BOOTSTRAP_PASSWORD=An0ther!Passw0rd#2');
+        $this->artisan('optientry:bootstrap-platform-admin', ['email' => 'ROOT@example.test'])->expectsOutputToContain('already a platform administrator')->assertExitCode(0);
+        putenv('OPTIENTRY_BOOTSTRAP_PASSWORD');
 
         $this->assertSame($hash, User::query()->where('email', 'root@example.test')->value('password'));
         $this->assertSame(1, User::query()->count());
@@ -86,10 +86,10 @@ class SeederAndBootstrapTest extends TestCase
 
     public function test_bootstrap_refuses_a_weak_password(): void
     {
-        putenv('OPTIACCOUNTING_BOOTSTRAP_PASSWORD=weak');
+        putenv('OPTIENTRY_BOOTSTRAP_PASSWORD=weak');
 
-        $this->artisan('optiaccounting:bootstrap-platform-admin', ['email' => 'root@example.test'])->assertExitCode(1);
-        putenv('OPTIACCOUNTING_BOOTSTRAP_PASSWORD');
+        $this->artisan('optientry:bootstrap-platform-admin', ['email' => 'root@example.test'])->assertExitCode(1);
+        putenv('OPTIENTRY_BOOTSTRAP_PASSWORD');
 
         $this->assertSame(0, User::query()->count());
     }
@@ -99,7 +99,7 @@ class SeederAndBootstrapTest extends TestCase
         $existing = User::query()->forceCreate(['name' => 'Existing', 'email' => 'exists@example.test', 'password' => bcrypt(self::PASSWORD), 'status' => 'ACTIVE']);
         $hash = $existing->password;
 
-        $this->artisan('optiaccounting:bootstrap-platform-admin', ['email' => 'exists@example.test'])->expectsOutputToContain('The user exists')->assertExitCode(0);
+        $this->artisan('optientry:bootstrap-platform-admin', ['email' => 'exists@example.test'])->expectsOutputToContain('The user exists')->assertExitCode(0);
 
         $this->assertSame($hash, $existing->fresh()->password);
         $this->assertSame(1, DB::table('platform_role_assignments')->where('user_id', $existing->id)->count());

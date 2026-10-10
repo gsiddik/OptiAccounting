@@ -15,15 +15,18 @@ use Illuminate\Validation\Rules\Password;
 
 /**
  * Creates the first platform administrator without any password in the repository.
- * The password comes from the environment (OPTIACCOUNTING_BOOTSTRAP_PASSWORD) or a hidden prompt.
+ * The password comes from the environment (OPTIENTRY_BOOTSTRAP_PASSWORD) or a hidden prompt.
  */
 class BootstrapPlatformAdmin extends Command
 {
-    protected $signature = 'optiaccounting:bootstrap-platform-admin
+    /** Former name (before the OptiEntry rename); kept so existing cron entries and runbooks keep working. */
+    protected $aliases = ['optiaccounting:bootstrap-platform-admin'];
+
+    protected $signature = 'optientry:bootstrap-platform-admin
         {email : E-mail address of the administrator}
         {--name=Platform Administrator : Display name}';
 
-    protected $description = 'Create the first platform administrator (password from OPTIACCOUNTING_BOOTSTRAP_PASSWORD or a hidden prompt)';
+    protected $description = 'Create the first platform administrator (password from OPTIENTRY_BOOTSTRAP_PASSWORD or a hidden prompt)';
 
     public function handle(SystemRoleSynchronizer $roles, AccessCache $cache): int
     {
@@ -41,7 +44,7 @@ class BootstrapPlatformAdmin extends Command
             }
             $this->warn('The user exists; granting the platform administrator role. Their password is unchanged.');
         } else {
-            $password = (string) (getenv('OPTIACCOUNTING_BOOTSTRAP_PASSWORD') ?: $this->secret('Password (min 12 chars, mixed case, number)'));
+            $password = (string) (getenv('OPTIENTRY_BOOTSTRAP_PASSWORD') ?: getenv('OPTIACCOUNTING_BOOTSTRAP_PASSWORD') ?: $this->secret('Password (min 12 chars, mixed case, number)'));
             $validator = Validator::make(['email' => $email, 'password' => $password], [
                 'email' => ['required', 'email'],
                 'password' => ['required', Password::min(12)->mixedCase()->numbers()],

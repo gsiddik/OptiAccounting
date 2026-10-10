@@ -219,14 +219,14 @@ class EntitlementProjectionTest extends OptinexusTestCase
         $this->nexusTenant(['entitlements' => [$this->capability('ACCOUNTING_CORE'), $this->capability('JOURNAL'), $this->capability('GENERAL_LEDGER')]]);
         $buffer = new BufferedOutput;
 
-        $this->assertSame(0, Artisan::call('optiaccounting:nexus:sync-entitlements', [], $buffer));
+        $this->assertSame(0, Artisan::call('optientry:nexus:sync-entitlements', [], $buffer));
         $lines = array_values(array_filter(explode("\n", trim($buffer->fetch()))));
 
         $this->assertCount(1, $lines, 'a long projection must not flood the console');
         $this->assertMatchesRegularExpression('/^acme-id: .*\d+ modules? .*; \d+ features? /', $lines[0]);
 
         $buffer = new BufferedOutput;
-        Artisan::call('optiaccounting:nexus:sync-entitlements', [], $buffer);
+        Artisan::call('optientry:nexus:sync-entitlements', [], $buffer);
         $this->assertStringContainsString('acme-id: no change', $buffer->fetch());
     }
 
@@ -326,7 +326,7 @@ class EntitlementProjectionTest extends OptinexusTestCase
         $this->assertSame($modules, DB::table('tenant_module_entitlements')->where('tenant_id', $tenant->id)->count());
         $this->assertSame(0, DB::table('tenant_module_entitlements')->where('source', 'OPTINEXUS')->count());
 
-        $this->artisan('optiaccounting:nexus:sync-entitlements')->assertSuccessful()->expectsOutputToContain('skipped, local subscription present');
+        $this->artisan('optientry:nexus:sync-entitlements')->assertSuccessful()->expectsOutputToContain('skipped, local subscription present');
     }
 
     public function test_a_stray_local_module_window_blocks_only_that_module(): void
@@ -349,13 +349,13 @@ class EntitlementProjectionTest extends OptinexusTestCase
         $linked = $this->linkedTenant();
         $this->tenant('unlinked-co', subscribed: false);
 
-        $this->artisan('optiaccounting:nexus:sync-entitlements')->assertSuccessful()->expectsOutputToContain('acme-id: ');
+        $this->artisan('optientry:nexus:sync-entitlements')->assertSuccessful()->expectsOutputToContain('acme-id: ');
         $this->assertGreaterThan(0, DB::table('tenant_module_entitlements')->where('tenant_id', $linked->id)->count());
 
         $this->nexus['down'] = true;
-        $this->artisan('optiaccounting:nexus:sync-entitlements')->assertFailed();
+        $this->artisan('optientry:nexus:sync-entitlements')->assertFailed();
 
-        config(['optiaccounting.identity_mode' => 'standalone']);
-        $this->artisan('optiaccounting:nexus:sync-entitlements')->assertSuccessful()->expectsOutputToContain('nothing to sync');
+        config(['optientry.identity_mode' => 'standalone']);
+        $this->artisan('optientry:nexus:sync-entitlements')->assertSuccessful()->expectsOutputToContain('nothing to sync');
     }
 }

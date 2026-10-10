@@ -1,4 +1,4 @@
-// Response shapes of the OptiAccounting API (OA0). Kept deliberately close to the backend.
+// Response shapes of the OptiEntry API (OA0). Kept deliberately close to the backend.
 
 export type Scope = 'identity' | 'tenant' | 'platform'
 export type Mode = 'FULL' | 'READ_ONLY' | 'NONE'
