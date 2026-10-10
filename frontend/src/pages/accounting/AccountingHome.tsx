@@ -7,6 +7,7 @@ import { journalTypeLabels } from '../../lib/accountingLabels'
 import { api } from '../../lib/api'
 import { formatDate, formatNumber } from '../../lib/format'
 import { useAction, useResource } from '../../lib/hooks'
+import { OperationalSummaryCard } from '../operational/OperationalSummaryCard'
 import { Money } from './shared'
 
 const ACTION_PATH: Record<string, string> = {
@@ -78,6 +79,8 @@ export default function AccountingHome() {
         <Stat label="Draf" value={formatNumber(d.journals.draft)} hint="Jurnal belum diajukan" />
         <Stat label="Menunggu" value={formatNumber(d.journals.pending_approval + d.journals.awaiting_posting)} hint={`${d.journals.pending_approval} persetujuan · ${d.journals.awaiting_posting} posting`} />
       </div>
+
+      <OperationalSummaryCard />
 
       <Card title="Jurnal terposting terbaru" flush actions={<Link to="/app/akuntansi/jurnal">Semua jurnal</Link>}>
         {d.recent_posted.length === 0 ? (

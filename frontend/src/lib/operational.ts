@@ -144,9 +144,12 @@ export function useExpenseCategories() {
   return { ...r, categories: r.data ?? [] }
 }
 
-/** Query params for a list from a filter object: empty values are dropped, booleans only when true. */
-export function listParams(filter: Record<string, string | boolean | number>, page: number): Record<string, string | number | boolean> {
-  const params: Record<string, string | number | boolean> = { page }
-  for (const [k, v] of Object.entries(filter)) if (v !== '' && v !== false) params[k] = v
+/**
+ * Query params for a list from a filter object: empty values are dropped and a flag is sent only when set, as `1`. The API validates its
+ * flags with Laravel's `boolean` rule, which accepts 1 / 0 but rejects the text "true" that a JavaScript boolean serializes to.
+ */
+export function listParams(filter: Record<string, string | boolean | number>, page: number): Record<string, string | number> {
+  const params: Record<string, string | number> = { page }
+  for (const [k, v] of Object.entries(filter)) if (v !== '' && v !== false) params[k] = v === true ? 1 : v
   return params
 }
