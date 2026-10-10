@@ -10,6 +10,7 @@ use App\Domain\Accounting\Support\Money;
 use App\Domain\Audit\Services\AuditService;
 use App\Domain\Identity\Models\User;
 use App\Domain\Shared\DomainException;
+use App\Support\Database\Micros;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -144,7 +145,7 @@ class JournalService
     {
         DB::table('journal_transitions')->insert([
             'id' => (string) Str::uuid7(), 'tenant_id' => $journal->tenant_id, 'journal_entry_id' => $journal->id,
-            'from_status' => $from, 'to_status' => $to, 'actor_user_id' => $actorId, 'reason' => $reason, 'occurred_at' => now(),
+            'from_status' => $from, 'to_status' => $to, 'actor_user_id' => $actorId, 'reason' => $reason, 'occurred_at' => Micros::now(),
         ]);
     }
 

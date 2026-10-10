@@ -20,6 +20,7 @@ class AccountingCatalogSeeder extends Seeder
         'CASH' => 'Kas', 'BANK' => 'Bank', 'ACCOUNTS_RECEIVABLE' => 'Piutang usaha', 'ACCOUNTS_PAYABLE' => 'Utang usaha',
         'INVENTORY_ASSET' => 'Persediaan', 'EXPENSE' => 'Beban (umum)', 'REVENUE' => 'Pendapatan (umum)',
         'TAX_RECEIVABLE' => 'Pajak dibayar di muka / PPN masukan', 'TAX_PAYABLE' => 'Utang pajak / PPN keluaran', 'RETAINED_EARNINGS' => 'Laba ditahan',
+        'REVENUE_ADJUSTMENT' => 'Pengurang pendapatan (retur dan potongan penjualan)',
     ];
 
     /** OA2: roles whose account is named by the source document, not by a tenant mapping (code => name). */
@@ -35,6 +36,7 @@ class AccountingCatalogSeeder extends Seeder
         'VENDOR_PAYMENT' => ['Pembayaran vendor', 'Komponen: amount. Diaktifkan oleh OA2.', ['amount']],
         'AR_INVOICE_RECOGNIZED' => ['Faktur pelanggan diakui', 'Komponen: net, tax, total. Diaktifkan oleh OA3.', ['net', 'tax', 'total']],
         'CUSTOMER_RECEIPT' => ['Penerimaan pelanggan', 'Komponen: amount. Diaktifkan oleh OA3.', ['amount']],
+        'AR_CREDIT_NOTE_RECOGNIZED' => ['Nota kredit pelanggan diakui', 'Komponen: net, tax, total. Diaktifkan oleh OA3.', ['net', 'tax', 'total']],
         'EXPENSE_PAID' => ['Beban dibayar langsung', 'Komponen: net, tax, total. Beban yang langsung dibayar dari kas/bank (OA2).', ['net', 'tax', 'total']],
         'CASH_PAYMENT' => ['Pembayaran kas/bank', 'Komponen: amount. Pembayaran di luar utang usaha (OA2).', ['amount']],
         'CASH_RECEIPT' => ['Penerimaan kas/bank', 'Komponen: amount. Penerimaan di luar piutang usaha (OA2).', ['amount']],
@@ -68,6 +70,7 @@ class AccountingCatalogSeeder extends Seeder
         ['3200', 'Laba Ditahan', '3000', 'EQUITY', true, false, 'RETAINED_EARNINGS'],
         ['4000', 'Pendapatan', null, 'REVENUE', false, false, null],
         ['4100', 'Pendapatan Usaha', '4000', 'REVENUE', true, false, 'REVENUE'],
+        ['4150', 'Retur dan Potongan Penjualan', '4000', 'REVENUE', true, false, 'REVENUE_ADJUSTMENT', 'DEBIT'],
         ['4200', 'Pendapatan Lain-lain', '4000', 'REVENUE', true, false, null],
         ['5000', 'Harga Pokok Penjualan', null, 'EXPENSE', false, false, null],
         ['5100', 'Harga Pokok Penjualan', '5000', 'EXPENSE', true, false, null],
@@ -82,7 +85,10 @@ class AccountingCatalogSeeder extends Seeder
     ];
 
     /** role code => the only event types whose posting rules may use the role */
-    private const RESTRICTED_ROLES = ['ACCOUNTS_PAYABLE' => ['AP_INVOICE_RECOGNIZED', 'VENDOR_PAYMENT', 'EXPENSE_RECOGNIZED']];
+    private const RESTRICTED_ROLES = [
+        'ACCOUNTS_PAYABLE' => ['AP_INVOICE_RECOGNIZED', 'VENDOR_PAYMENT', 'EXPENSE_RECOGNIZED'],
+        'ACCOUNTS_RECEIVABLE' => ['AR_INVOICE_RECOGNIZED', 'CUSTOMER_RECEIPT', 'AR_CREDIT_NOTE_RECOGNIZED'],
+    ];
 
     public function run(): void
     {

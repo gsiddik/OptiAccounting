@@ -2,7 +2,7 @@ import { useCapabilities } from '../../../lib/capabilities'
 import { todayIn } from '../../../lib/format'
 import { api } from '../../../lib/api'
 import { useResource } from '../../../lib/hooks'
-import { API, listParams } from '../../../lib/operational'
+import { API, DOC_STATUSES, listParams } from '../../../lib/operational'
 
 type Scalar = string | number | boolean
 
@@ -31,6 +31,15 @@ export function boundedInteger(input: string, min: number, max: number): string 
   if (!/^\d{1,5}$/.test(text)) return ''
   const n = Number(text)
   return n >= min && n <= max ? String(n) : ''
+}
+
+/** The aging bucket list the API accepts: 1 to 8 ascending day limits separated by commas, e.g. `30,60,90` (shared by the payables and receivables aging). */
+export const BUCKET_PATTERN = /^\d{1,4}(,\d{1,4}){0,7}$/
+
+/** The document status a link can carry (`?status=SUBMITTED` from the accounting home), or '' when the query has none or an unknown one. */
+export function statusFromSearch(search: string): string {
+  const status = new URLSearchParams(search).get('status') ?? ''
+  return (DOC_STATUSES as string[]).includes(status) ? status : ''
 }
 
 /** The tenant's business date (YYYY-MM-DD), the date a new document and a report default to. */

@@ -9,6 +9,7 @@ use App\Domain\Accounting\Models\JournalEntry;
 use App\Domain\Audit\Services\AuditService;
 use App\Domain\Identity\Models\User;
 use App\Domain\Shared\DomainException;
+use App\Support\Database\Micros;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -152,7 +153,7 @@ class DocumentWorkflow
     {
         DB::table('document_transitions')->insert([
             'id' => (string) Str::uuid7(), 'tenant_id' => $doc->tenant_id, 'document_type' => $doc::DOCUMENT_TYPE, 'document_id' => $doc->id,
-            'from_status' => $from, 'to_status' => $to, 'actor_user_id' => $actorId, 'reason' => $reason, 'occurred_at' => now(),
+            'from_status' => $from, 'to_status' => $to, 'actor_user_id' => $actorId, 'reason' => $reason, 'occurred_at' => Micros::now(),
         ]);
     }
 

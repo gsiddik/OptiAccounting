@@ -6,6 +6,7 @@ use App\Domain\AccessControl\Models\Role;
 use App\Domain\AccessControl\Services\AccessCache;
 use App\Domain\AccessControl\Services\SystemRoleSynchronizer;
 use App\Domain\Identity\Models\User;
+use App\Support\Database\Micros;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
@@ -61,7 +62,7 @@ class BootstrapPlatformAdmin extends Command
         $cache->touchPlatform();
         DB::table('audit_logs')->insert([
             'id' => (string) Str::uuid7(), 'actor_scope' => 'system', 'action' => 'platform_admin.bootstrapped',
-            'resource_type' => 'user', 'resource_id' => $user->id, 'occurred_at' => now(),
+            'resource_type' => 'user', 'resource_id' => $user->id, 'occurred_at' => Micros::now(),
         ]);
 
         $this->info("Platform administrator ready: {$user->email}");

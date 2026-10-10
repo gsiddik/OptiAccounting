@@ -85,13 +85,13 @@ export function linesFromInvoice(lines: InvoiceLine[] | undefined): LineForm[] {
 // ------------------------------------------------------------------------------------------------ payload
 
 /** A typed amount as the API wants it: a normalized decimal string ("1500000.0000"), or the raw text when it is not a number (so it is refused, never guessed). */
-function decimal(input: string): string {
+export function decimal(input: string): string {
   const units = parseAmount(input)
   return units === null ? input.trim() : amountToApi(units)
 }
 
 /** Optional header amount: empty is null, anything else a decimal string. */
-function optionalDecimal(input: string): string | null {
+export function optionalDecimal(input: string): string | null {
   return input.trim() === '' ? null : decimal(input)
 }
 
@@ -150,7 +150,11 @@ function product(quantity: bigint, unitPrice: bigint): bigint {
   return cents * 100n
 }
 
-export function previewInvoice(h: InvoiceHeader, lines: LineForm[]): InvoicePreview {
+/** The part of an invoice form the preview reads: the header amounts and the quantity / price / amount of each line (also used by the receivables forms). */
+export type PreviewHeader = Pick<InvoiceHeader, 'discount_amount' | 'tax_amount' | 'other_charges_amount'>
+export type PreviewLine = Pick<LineForm, 'useQuantity' | 'quantity' | 'unit_price' | 'amount'>
+
+export function previewInvoice(h: PreviewHeader, lines: PreviewLine[]): InvoicePreview {
   const invalid: string[] = []
   const lineAmounts = lines.map((l, i) => {
     if (l.useQuantity) {

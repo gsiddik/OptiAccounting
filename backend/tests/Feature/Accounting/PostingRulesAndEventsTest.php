@@ -176,7 +176,7 @@ class PostingRulesAndEventsTest extends TestCase
         });
 
         $overview = $client->getJson(self::MAPPINGS)->assertOk()->json();
-        $this->assertSame(10, collect($overview['roles'])->where('mapped', true)->count());
+        $this->assertSame(11, collect($overview['roles'])->where('mapped', true)->count());
 
         $header = $this->account($this->tenant, '6000');
         $client->putJson(self::MAPPINGS, ['account_role' => 'EXPENSE', 'account_id' => $header->id])->assertStatus(422)->assertJsonPath('code', 'ACCOUNT_NOT_MAPPABLE');

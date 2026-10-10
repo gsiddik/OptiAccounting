@@ -4,7 +4,7 @@ import { ConfirmDialog, FormModal } from '../../../components/Modal'
 import { useToast } from '../../../components/Toast'
 import { Button, EmptyState, ErrorNotice, Field, Loading, StatusBadge } from '../../../components/ui'
 import { api } from '../../../lib/api'
-import { API, usePaymentTerms, type PaymentTerm } from '../../../lib/operational'
+import { API, usePaymentTerms, type PaymentTerm, type TermsEndpoint } from '../../../lib/operational'
 import { termTypeLabels } from '../../../lib/operationalLabels'
 import { fieldMessage, useAct } from './messages'
 
@@ -13,17 +13,20 @@ const TYPES: TermType[] = ['NET_DAYS', 'END_OF_MONTH', 'CUSTOM']
 
 const rule = (t: PaymentTerm) => (t.term_type === 'CUSTOM' ? 'Tanggal diisi sendiri' : t.term_type === 'END_OF_MONTH' ? `Akhir bulan + ${t.due_days ?? 0} hari` : `Tanggal dokumen + ${t.due_days ?? 0} hari`)
 
-/** The "Termin pembayaran" tab: list, create / edit, activate / deactivate, delete, and the standard set. */
-export function PaymentTermsPanel({ manage }: { manage: boolean }) {
+/**
+ * The "Termin pembayaran" tab: list, create / edit, activate / deactivate, delete, and the standard set. Payables use `payment-terms`; a
+ * receivables page uses `ar-payment-terms` (the same terms, behind the customer permissions). `usedBy` names who may be using a term.
+ */
+export function PaymentTermsPanel({ manage, endpoint = 'payment-terms', usedBy = 'vendor atau faktur' }: { manage: boolean; endpoint?: TermsEndpoint; usedBy?: string }) {
   const toast = useToast()
-  const { terms, loading, error, reload } = usePaymentTerms()
+  const { terms, loading, error, reload } = usePaymentTerms(endpoint)
   const defaults = useAct()
   const [editing, setEditing] = useState<PaymentTerm | 'new' | null>(null)
   const [toggling, setToggling] = useState<PaymentTerm | null>(null)
   const [deleting, setDeleting] = useState<PaymentTerm | null>(null)
 
   async function applyDefaults() {
-    const r = await defaults.run(async () => (await api.post<{ created: string[] }>(`${API}/payment-terms/defaults`)).data)
+    const r = await defaults.run(async () => (await api.post<{ created: string[] }>(`${API}/${endpoint}/defaults`)).data)
     if (!r.ok) return
     toast.success(r.value.created.length > 0 ? `${r.value.created.length} termin standar ditambahkan (${r.value.created.join(', ')}).` : 'Semua termin standar sudah ada.')
     reload()
@@ -72,14 +75,14 @@ export function PaymentTermsPanel({ manage }: { manage: boolean }) {
           ]}
         />
       )}
-      {editing && <TermForm term={editing === 'new' ? null : editing} onClose={() => setEditing(null)} onDone={() => { setEditing(null); reload(); toast.success('Termin pembayaran disimpan.') }} />}
-      {toggling && <TermStatus term={toggling} onClose={() => setToggling(null)} onDone={() => { setToggling(null); reload(); toast.success('Status termin diperbarui.') }} />}
-      {deleting && <TermDelete term={deleting} onClose={() => setDeleting(null)} onDone={() => { setDeleting(null); reload(); toast.success('Termin dihapus.') }} />}
+      {editing && <TermForm endpoint={endpoint} term={editing === 'new' ? null : editing} onClose={() => setEditing(null)} onDone={() => { setEditing(null); reload(); toast.success('Termin pembayaran disimpan.') }} />}
+      {toggling && <TermStatus endpoint={endpoint} term={toggling} onClose={() => setToggling(null)} onDone={() => { setToggling(null); reload(); toast.success('Status termin diperbarui.') }} />}
+      {deleting && <TermDelete endpoint={endpoint} usedBy={usedBy} term={deleting} onClose={() => setDeleting(null)} onDone={() => { setDeleting(null); reload(); toast.success('Termin dihapus.') }} />}
     </>
   )
 }
 
-function TermForm({ term, onClose, onDone }: { term: PaymentTerm | null; onClose: () => void; onDone: () => void }) {
+function TermForm({ endpoint, term, onClose, onDone }: { endpoint: TermsEndpoint; term: PaymentTerm | null; onClose: () => void; onDone: () => void }) {
   const { busy, error, run } = useAct()
   const [f, setF] = useState({
     code: term?.code ?? '',
@@ -99,7 +102,7 @@ function TermForm({ term, onClose, onDone }: { term: PaymentTerm | null; onClose
       allows_due_date_override: custom ? true : f.allows_due_date_override,
       description: f.description.trim() || null,
     }
-    const r = await run(() => (term ? api.patch(`${API}/payment-terms/${term.id}`, body) : api.post(`${API}/payment-terms`, body)))
+    const r = await run(() => (term ? api.patch(`${API}/${endpoint}/${term.id}`, body) : api.post(`${API}/${endpoint}`, body)))
     if (r.ok) onDone()
   }
 
@@ -130,7 +133,7 @@ function TermForm({ term, onClose, onDone }: { term: PaymentTerm | null; onClose
   )
 }
 
-function TermStatus({ term, onClose, onDone }: { term: PaymentTerm; onClose: () => void; onDone: () => void }) {
+function TermStatus({ endpoint, term, onClose, onDone }: { endpoint: TermsEndpoint; term: PaymentTerm; onClose: () => void; onDone: () => void }) {
   const { busy, error, run } = useAct()
   const next = term.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE'
   return (
@@ -143,14 +146,14 @@ function TermStatus({ term, onClose, onDone }: { term: PaymentTerm; onClose: () 
       message={next === 'ACTIVE' ? `Aktifkan kembali ${term.code} · ${term.name}?` : `${term.code} · ${term.name} tidak dapat dipilih untuk faktur baru. Faktur yang sudah ada tidak berubah.`}
       onClose={onClose}
       onConfirm={async () => {
-        const r = await run(() => api.post(`${API}/payment-terms/${term.id}/status`, { status: next }))
+        const r = await run(() => api.post(`${API}/${endpoint}/${term.id}/status`, { status: next }))
         if (r.ok) onDone()
       }}
     />
   )
 }
 
-function TermDelete({ term, onClose, onDone }: { term: PaymentTerm; onClose: () => void; onDone: () => void }) {
+function TermDelete({ endpoint, usedBy, term, onClose, onDone }: { endpoint: TermsEndpoint; usedBy: string; term: PaymentTerm; onClose: () => void; onDone: () => void }) {
   const { busy, error, run } = useAct()
   return (
     <ConfirmDialog
@@ -159,10 +162,10 @@ function TermDelete({ term, onClose, onDone }: { term: PaymentTerm; onClose: () 
       danger
       busy={busy}
       error={error}
-      message={`Hapus ${term.code} · ${term.name}? Termin yang sudah dipakai vendor atau faktur tidak dapat dihapus; nonaktifkan saja.`}
+      message={`Hapus ${term.code} · ${term.name}? Termin yang sudah dipakai ${usedBy} tidak dapat dihapus; nonaktifkan saja.`}
       onClose={onClose}
       onConfirm={async () => {
-        const r = await run(() => api.delete(`${API}/payment-terms/${term.id}`))
+        const r = await run(() => api.delete(`${API}/${endpoint}/${term.id}`))
         if (r.ok) onDone()
       }}
     />

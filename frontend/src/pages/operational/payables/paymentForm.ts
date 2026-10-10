@@ -48,11 +48,16 @@ function decimal(input: string): string {
   return units === null ? input.trim() : amountToApi(units)
 }
 
-/** Allocation rows to send: only invoices with a non-zero amount, as decimal strings. */
-export function allocationRows(inputs: AllocationInputs): { ap_invoice_id: string; amount: string }[] {
+/** Non-zero allocation inputs as [invoice id, decimal string] pairs, in input order (shared with the customer receipt form). */
+export function allocationEntries(inputs: AllocationInputs): [string, string][] {
   return Object.entries(inputs)
     .filter(([, text]) => text.trim() !== '' && parseAmount(text) !== 0n)
-    .map(([ap_invoice_id, text]) => ({ ap_invoice_id, amount: decimal(text) }))
+    .map(([id, text]): [string, string] => [id, decimal(text)])
+}
+
+/** Allocation rows to send: only invoices with a non-zero amount, as decimal strings. */
+export function allocationRows(inputs: AllocationInputs): { ap_invoice_id: string; amount: string }[] {
+  return allocationEntries(inputs).map(([ap_invoice_id, amount]) => ({ ap_invoice_id, amount }))
 }
 
 /** The body of POST / PATCH /vendor-payments. */

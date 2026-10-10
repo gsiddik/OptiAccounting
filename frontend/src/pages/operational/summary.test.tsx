@@ -16,6 +16,7 @@ const summary = (over: Partial<OperationalSummary> = {}): OperationalSummary => 
   payments: { pending_approval: 1, awaiting_posting: 0 },
   expenses: { pending_approval: 2, awaiting_posting: 1 },
   cash_bank: { book_balance: '3250000.0000', cash: '3000000.0000', bank: '250000.0000', accounts: 2, as_of: '2026-10-08' },
+  receivables: null, receipts: null, credit_notes: null, // OA3 sections: see receivables.summary.test.tsx
   complete: true,
   ...over,
 })

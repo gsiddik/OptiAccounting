@@ -2,6 +2,7 @@
 
 namespace App\Domain\Audit\Services;
 
+use App\Support\Database\Micros;
 use App\Support\TenantContext;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -46,7 +47,7 @@ class AuditService
                 'ip' => $request?->ip(),
                 'user_agent' => Str::limit((string) $request?->userAgent(), 200, ''),
             ])),
-            'occurred_at' => now(),
+            'occurred_at' => Micros::now(),
         ]);
     }
 

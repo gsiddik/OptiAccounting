@@ -210,4 +210,34 @@ class SeederAndBootstrapTest extends TestCase
         $this->as($manager)->postJson("/api/v1/app/accounting/ap-invoices/{$submitted}/approve")->assertOk();
         $this->as($manager)->getJson('/api/v1/app/accounting/operational-summary')->assertOk();
     }
+
+    public function test_the_demo_books_carry_receivables_in_every_state_and_reconcile_to_the_control_account(): void
+    {
+        $this->seed(DemoSeeder::class);
+        $tenant = DB::table('tenants')->where('code', 'maju-jaya')->value('id');
+        $count = fn (string $table, array $where = []) => DB::table($table)->where('tenant_id', $tenant)->where($where)->count();
+
+        $this->assertSame(4, $count('customers'));
+        $this->assertSame([4, 1, 1, 1], [$count('ar_invoices', ['status' => 'POSTED']), $count('ar_invoices', ['status' => 'SUBMITTED']), $count('ar_invoices', ['status' => 'APPROVED']), $count('ar_invoices', ['status' => 'DRAFT'])]);
+        $this->assertSame([2, 1], [$count('customer_receipts', ['status' => 'POSTED']), $count('customer_receipts', ['status' => 'SUBMITTED'])]);
+        $this->assertSame(1, $count('ar_credit_notes', ['status' => 'POSTED']));
+
+        $login = fn (string $email) => $this->postJson('/api/v1/auth/login', ['email' => $email, 'password' => DemoSeeder::DEFAULT_PASSWORD])->assertOk()->json('token');
+        $accountant = $login('akuntan@majujaya.demo.test');
+        $manager = $login('manajer@majujaya.demo.test');
+
+        // The receivables control account equals the subledger plus the opening-balance receivable, and the reconciliation says so.
+        $reconciliation = $this->as($manager)->getJson('/api/v1/app/accounting/reconciliation/ar')->assertOk()->assertJsonPath('status', 'MATCHED')->json();
+        $this->assertSame(['120000000.0000', '31750000.0000', '0.0000'], [$reconciliation['opening_balance_component'], $reconciliation['subledger_balance'], $reconciliation['difference']]);
+        $this->as($manager)->getJson('/api/v1/app/accounting/ar-aging')->assertOk()->assertJsonPath('totals.total', '31750000.0000');
+        $this->assertSame(0, DB::table('journal_entries as j')->join('journal_lines as l', 'l.journal_entry_id', '=', 'j.id')->where('j.tenant_id', $tenant)->where('j.status', 'POSTED')
+            ->groupBy('j.id')->havingRaw('sum(l.debit) <> sum(l.credit)')->select('j.id')->get()->count());
+
+        // The demo accountant prepares but cannot approve; the manager approves and posts.
+        $this->as($accountant)->getJson('/api/v1/app/accounting/customers')->assertOk()->assertJsonPath('total', 4);
+        $submitted = DB::table('ar_invoices')->where('tenant_id', $tenant)->where('status', 'SUBMITTED')->value('id');
+        $this->as($accountant)->postJson("/api/v1/app/accounting/ar-invoices/{$submitted}/approve")->assertForbidden();
+        $this->as($manager)->postJson("/api/v1/app/accounting/ar-invoices/{$submitted}/approve")->assertOk();
+        $this->as($manager)->getJson('/api/v1/app/accounting/operational-summary')->assertOk()->assertJsonPath('receivables.pending_approval', 0);
+    }
 }

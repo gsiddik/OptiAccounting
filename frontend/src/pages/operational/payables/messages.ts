@@ -40,10 +40,13 @@ export function fieldMessage(error: unknown, name: string): string | undefined {
   return undefined
 }
 
+/** Wording for a refusal shown on the line it points at, where the general text (written for journals) would mislead. */
+const LINE_WORDING: Record<string, string> = { LINE_AMOUNT_INVALID: 'Jumlah baris harus lebih besar dari nol.' }
+
 /** The message of a domain refusal that points at line `number` (1-based) of a document, if it does. */
 export function lineMessage(error: unknown, number: number): string | undefined {
   if (!(error instanceof ApiError) || error.details.line !== number) return undefined
-  return describeError(localizeError(error))
+  return (error.code && LINE_WORDING[error.code]) || describeError(localizeError(error))
 }
 
 /** The message of a domain refusal that points at allocation `number` (1-based, in the order the allocations were sent), if it does. */
@@ -55,4 +58,10 @@ export function allocationMessage(error: unknown, number: number): string | unde
 /** Text of any error for a banner or a notice. */
 export function errorText(error: unknown): string {
   return describeError(localizeError(error))
+}
+
+/** A refusal that points at allocation N of the request (validation key `allocations.N-1.amount` or `details.allocation`) is shown on that invoice's row. */
+export function allocationErrorFor(error: unknown, sentIds: string[], invoiceId: string): string | undefined {
+  const index = sentIds.indexOf(invoiceId)
+  return index < 0 ? undefined : (fieldMessage(error, `allocations.${index}.amount`) ?? allocationMessage(error, index + 1))
 }

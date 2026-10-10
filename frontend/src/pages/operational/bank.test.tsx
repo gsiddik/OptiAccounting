@@ -543,11 +543,11 @@ describe('cash/bank vs general ledger report', () => {
 
   it('renders a mismatch, the partial-scope notice, other activity and the latest statement of each account', async () => {
     const mismatched = reportAccount({
-      documents: { receipts: '5000000.0000', cash_payments: '225000.0000', vendor_payments: '900000.0000', paid_expenses: '0.0000', net: '3875000.0000', ledger_net: '3775000.0000', difference: '-100000.0000', status: 'MISMATCH' },
+      documents: { receipts: '5000000.0000', cash_payments: '225000.0000', vendor_payments: '900000.0000', customer_receipts: '0.0000', paid_expenses: '0.0000', net: '3875000.0000', ledger_net: '3775000.0000', difference: '-100000.0000', status: 'MISMATCH' },
     })
     const cash = reportAccount({
       cash_bank_account_id: 'cb-2', code: 'KAS', name: 'Kas kecil', kind: 'CASH', book_balance: '250000.0000', other_activity: '0.0000', statement: null,
-      documents: { receipts: '0.0000', cash_payments: '0.0000', vendor_payments: '0.0000', paid_expenses: '0.0000', net: '0.0000', ledger_net: '0.0000', difference: '0.0000', status: 'MATCHED' },
+      documents: { receipts: '0.0000', cash_payments: '0.0000', vendor_payments: '0.0000', customer_receipts: '0.0000', paid_expenses: '0.0000', net: '0.0000', ledger_net: '0.0000', difference: '0.0000', status: 'MATCHED' },
     })
     const calls = boot({ permissions }, {
       [`GET ${REPORT}`]: { data: report({ accounts: [mismatched, cash], mismatched_accounts: 1, status: 'MISMATCH', book_balance: '4325000.0000', complete: false }) },

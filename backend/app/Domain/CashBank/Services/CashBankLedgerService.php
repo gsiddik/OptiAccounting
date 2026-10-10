@@ -87,7 +87,7 @@ class CashBankLedgerService
     /** @param list<object> $rows */
     private function attachDocumentNumbers(array $rows): void
     {
-        $tables = ['vendor_payment' => 'vendor_payments', 'expense' => 'expenses', 'cash_transaction' => 'cash_transactions', 'ap_invoice' => 'ap_invoices'];
+        $tables = ['vendor_payment' => 'vendor_payments', 'customer_receipt' => 'customer_receipts', 'expense' => 'expenses', 'cash_transaction' => 'cash_transactions', 'ap_invoice' => 'ap_invoices'];
         foreach ($tables as $type => $table) {
             $ids = collect($rows)->where('source_type', $type)->pluck('source_id')->unique()->values()->all();
             if ($ids === []) {

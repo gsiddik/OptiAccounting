@@ -7,11 +7,9 @@ import { formatDate } from '../../lib/format'
 import { useDebounced, useResource } from '../../lib/hooks'
 import { API, useVendors } from '../../lib/operational'
 import { useDimensions } from '../accounting/data'
-import { exportQuery, useBusinessDate } from './payables/lists'
+import { BUCKET_PATTERN, exportQuery, useBusinessDate } from './payables/lists'
 import type { AgingReport } from './payables/types'
 import { DimensionFilters, ExportButton, Filters, Money } from './shared'
-
-const BUCKET_PATTERN = /^\d{1,4}(,\d{1,4}){0,7}$/
 
 /** One line of the vendor table: a vendor, or the grand total (`strong`). */
 type Line = { id: string; name: ReactNode; count: number; amounts: Record<string, string>; strong?: boolean }

@@ -123,6 +123,8 @@ export type ReportAccount = {
     receipts: string
     cash_payments: string
     vendor_payments: string
+    /** Posted OA3 customer receipts that moved this account (already part of `net`). */
+    customer_receipts: string
     paid_expenses: string
     net: string
     ledger_net: string

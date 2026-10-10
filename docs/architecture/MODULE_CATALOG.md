@@ -10,7 +10,7 @@ data-driven compositions of these modules and are never hardcoded.
 | `ACCOUNTING_AP` | Vendors, vendor invoices, payments, AP subledger, AP aging | CORE | `VENDOR`, `VENDOR_INVOICE`, `AP_PAYMENT`, `AP_AGING` | OA2 |
 | `ACCOUNTING_EXPENSE` | Expense categories and expense claims | CORE | `EXPENSE` | OA2 |
 | `ACCOUNTING_CASH_BANK` | Cash/bank accounts, payments, receipts, bank transactions, bank reconciliation | CORE | `CASH_BANK_ACCOUNT`, `PAYMENT`, `RECEIPT`, `BANK_RECONCILIATION` | OA2 |
-| `ACCOUNTING_AR` | Customers, customer invoices, credit/debit notes, receipts allocation, AR aging | CORE | `CUSTOMER_INVOICE`, `CREDIT_NOTE`, `AR_AGING` | OA3 |
+| `ACCOUNTING_AR` | Customers, customer invoices, customer receipts with allocation, credit notes, AR aging and AR-to-GL reconciliation | CORE | `CUSTOMER`, `CUSTOMER_INVOICE`, `AR_RECEIPT`, `CREDIT_NOTE`, `AR_AGING` | OA3 |
 | `ACCOUNTING_BUDGET` | Budgets, versions, budget vs actual | CORE | `BUDGET` | OA4 |
 | `ACCOUNTING_FIXED_ASSET` | Asset register, depreciation, disposal | CORE | `ASSET_REGISTER`, `DEPRECIATION` | OA4 |
 | `ACCOUNTING_TAX` | Tax codes, effective-dated rates, tax postings and reports | CORE | `TAX_CONFIGURATION`, `TAX_REPORT` | OA4 |

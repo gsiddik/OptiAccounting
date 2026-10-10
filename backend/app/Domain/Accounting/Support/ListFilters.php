@@ -45,6 +45,44 @@ final class ListFilters
     }
 
     /** @return array<string,mixed> */
+    public static function customers(): array
+    {
+        return ['status' => ['nullable', Rule::in(['ACTIVE', 'INACTIVE'])], 'payment_term_id' => ['nullable', 'uuid'], 'q' => ['nullable', 'string', 'max:100'], 'per_page' => ['nullable', 'integer', 'between:1,200']];
+    }
+
+    /** @return array<string,mixed> */
+    public static function arInvoices(): array
+    {
+        return [
+            'status' => ['nullable', Rule::in(self::STATUSES)], 'customer_id' => ['nullable', 'uuid'],
+            'document_from' => self::DATE, 'document_to' => self::DATE, 'posting_from' => self::DATE, 'posting_to' => self::DATE, 'due_from' => self::DATE, 'due_to' => self::DATE,
+            'payment_status' => ['nullable', Rule::in(['UNPAID', 'PARTIALLY_PAID', 'PAID'])], 'open' => ['nullable', 'boolean'], 'overdue' => ['nullable', 'boolean'],
+            'due_within' => ['nullable', 'integer', 'between:1,365'],
+            'q' => ['nullable', 'string', 'max:100'], 'mine' => ['nullable', 'boolean'], 'per_page' => ['nullable', 'integer', 'between:1,100'],
+        ] + self::DIMENSIONS;
+    }
+
+    /** @return array<string,mixed> */
+    public static function receipts(): array
+    {
+        return [
+            'status' => ['nullable', Rule::in(self::STATUSES)], 'customer_id' => ['nullable', 'uuid'], 'cash_bank_account_id' => ['nullable', 'uuid'],
+            'receipt_from' => self::DATE, 'receipt_to' => self::DATE, 'posting_from' => self::DATE, 'posting_to' => self::DATE,
+            'q' => ['nullable', 'string', 'max:100'], 'mine' => ['nullable', 'boolean'], 'per_page' => ['nullable', 'integer', 'between:1,100'],
+        ] + self::DIMENSIONS;
+    }
+
+    /** @return array<string,mixed> */
+    public static function creditNotes(): array
+    {
+        return [
+            'status' => ['nullable', Rule::in(self::STATUSES)], 'customer_id' => ['nullable', 'uuid'], 'ar_invoice_id' => ['nullable', 'uuid'],
+            'document_from' => self::DATE, 'document_to' => self::DATE, 'posting_from' => self::DATE, 'posting_to' => self::DATE,
+            'q' => ['nullable', 'string', 'max:100'], 'mine' => ['nullable', 'boolean'], 'per_page' => ['nullable', 'integer', 'between:1,100'],
+        ] + self::DIMENSIONS;
+    }
+
+    /** @return array<string,mixed> */
     public static function expenses(): array
     {
         return [

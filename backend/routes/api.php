@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\App\CashBank;
 use App\Http\Controllers\Api\App\Expense;
 use App\Http\Controllers\Api\App\Operational;
 use App\Http\Controllers\Api\App\Payables;
+use App\Http\Controllers\Api\App\Receivables;
 use App\Http\Controllers\Api\Auth\AuthController;
 use App\Http\Controllers\Api\Auth\SsoController;
 use App\Http\Controllers\Api\HealthController;
@@ -333,6 +334,76 @@ Route::prefix('v1')->middleware('request.id')->group(function () {
             Route::post('expenses/{expense}/cancel', [Expense\ExpenseController::class, 'cancel'])->middleware($ex('accounting.expense.update'));
             Route::post('expenses/{expense}/post', [Expense\ExpenseController::class, 'post'])->middleware($ex('accounting.expense.post'));
             Route::post('expenses/{expense}/reverse', [Expense\ExpenseController::class, 'reverse'])->middleware($ex('accounting.expense.reverse'));
+
+            // ------------------------------------------------ OA3: receivables and revenue (ACCOUNTING_AR). Depends on ACCOUNTING_CORE; a receipt also needs ACCOUNTING_CASH_BANK writable, checked at submit/approve/post.
+            $ar = fn (string $permission, string $feature) => "access:{$permission},module=ACCOUNTING_AR,feature={$feature}";
+
+            Route::get('customers', [Receivables\CustomerController::class, 'index'])->middleware($ar('accounting.customer.view', 'CUSTOMER'));
+            Route::post('customers', [Receivables\CustomerController::class, 'store'])->middleware($ar('accounting.customer.manage', 'CUSTOMER'));
+            Route::get('customers/export', [Receivables\ArExportController::class, 'customers'])->middleware($ar('accounting.report.export', 'CUSTOMER'));
+            Route::get('customers/{customer}', [Receivables\CustomerController::class, 'show'])->middleware($ar('accounting.customer.view', 'CUSTOMER'));
+            Route::patch('customers/{customer}', [Receivables\CustomerController::class, 'update'])->middleware($ar('accounting.customer.manage', 'CUSTOMER'));
+            Route::post('customers/{customer}/status', [Receivables\CustomerController::class, 'status'])->middleware($ar('accounting.customer.manage', 'CUSTOMER'));
+            Route::delete('customers/{customer}', [Receivables\CustomerController::class, 'destroy'])->middleware($ar('accounting.customer.manage', 'CUSTOMER'));
+            // Payment terms are shared master data; an AR-only tenant manages them here with the customer permissions.
+            Route::get('ar-payment-terms', [Receivables\CustomerController::class, 'terms'])->middleware($ar('accounting.customer.view', 'CUSTOMER'));
+            Route::post('ar-payment-terms', [Receivables\CustomerController::class, 'storeTerm'])->middleware($ar('accounting.customer.manage', 'CUSTOMER'));
+            Route::post('ar-payment-terms/defaults', [Receivables\CustomerController::class, 'applyTermDefaults'])->middleware($ar('accounting.customer.manage', 'CUSTOMER'));
+            Route::patch('ar-payment-terms/{term}', [Receivables\CustomerController::class, 'updateTerm'])->middleware($ar('accounting.customer.manage', 'CUSTOMER'));
+            Route::post('ar-payment-terms/{term}/status', [Receivables\CustomerController::class, 'termStatus'])->middleware($ar('accounting.customer.manage', 'CUSTOMER'));
+            Route::delete('ar-payment-terms/{term}', [Receivables\CustomerController::class, 'destroyTerm'])->middleware($ar('accounting.customer.manage', 'CUSTOMER'));
+
+            $ci = 'CUSTOMER_INVOICE';
+            Route::get('ar-invoices', [Receivables\ArInvoiceController::class, 'index'])->middleware($ar('accounting.ar_invoice.view', $ci));
+            Route::post('ar-invoices', [Receivables\ArInvoiceController::class, 'store'])->middleware($ar('accounting.ar_invoice.create', $ci));
+            Route::get('ar-invoices/export', [Receivables\ArExportController::class, 'invoices'])->middleware($ar('accounting.report.export', $ci));
+            Route::get('ar-invoices/{invoice}', [Receivables\ArInvoiceController::class, 'show'])->middleware($ar('accounting.ar_invoice.view', $ci));
+            Route::patch('ar-invoices/{invoice}', [Receivables\ArInvoiceController::class, 'update'])->middleware($ar('accounting.ar_invoice.update', $ci));
+            Route::post('ar-invoices/{invoice}/submit', [Receivables\ArInvoiceController::class, 'submit'])->middleware($ar('accounting.ar_invoice.submit', $ci));
+            Route::post('ar-invoices/{invoice}/approve', [Receivables\ArInvoiceController::class, 'approve'])->middleware($ar('accounting.ar_invoice.approve', $ci));
+            Route::post('ar-invoices/{invoice}/reject', [Receivables\ArInvoiceController::class, 'reject'])->middleware($ar('accounting.ar_invoice.approve', $ci));
+            Route::post('ar-invoices/{invoice}/reopen', [Receivables\ArInvoiceController::class, 'reopen'])->middleware($ar('accounting.ar_invoice.update', $ci));
+            Route::post('ar-invoices/{invoice}/cancel', [Receivables\ArInvoiceController::class, 'cancel'])->middleware($ar('accounting.ar_invoice.update', $ci));
+            Route::post('ar-invoices/{invoice}/post', [Receivables\ArInvoiceController::class, 'post'])->middleware($ar('accounting.ar_invoice.post', $ci));
+            Route::post('ar-invoices/{invoice}/reverse', [Receivables\ArInvoiceController::class, 'reverse'])->middleware($ar('accounting.ar_invoice.reverse', $ci));
+
+            // Customer receipts and allocations (feature AR_RECEIPT).
+            $rc = 'AR_RECEIPT';
+            Route::get('customer-receipts', [Receivables\CustomerReceiptController::class, 'index'])->middleware($ar('accounting.ar_receipt.view', $rc));
+            Route::post('customer-receipts', [Receivables\CustomerReceiptController::class, 'store'])->middleware($ar('accounting.ar_receipt.create', $rc));
+            Route::get('customer-receipts/export', [Receivables\ArExportController::class, 'receipts'])->middleware($ar('accounting.report.export', $rc));
+            Route::get('customer-receipts/{receipt}', [Receivables\CustomerReceiptController::class, 'show'])->middleware($ar('accounting.ar_receipt.view', $rc));
+            Route::patch('customer-receipts/{receipt}', [Receivables\CustomerReceiptController::class, 'update'])->middleware($ar('accounting.ar_receipt.create', $rc));
+            Route::post('customer-receipts/{receipt}/submit', [Receivables\CustomerReceiptController::class, 'submit'])->middleware($ar('accounting.ar_receipt.submit', $rc));
+            Route::post('customer-receipts/{receipt}/approve', [Receivables\CustomerReceiptController::class, 'approve'])->middleware($ar('accounting.ar_receipt.approve', $rc));
+            Route::post('customer-receipts/{receipt}/reject', [Receivables\CustomerReceiptController::class, 'reject'])->middleware($ar('accounting.ar_receipt.approve', $rc));
+            Route::post('customer-receipts/{receipt}/reopen', [Receivables\CustomerReceiptController::class, 'reopen'])->middleware($ar('accounting.ar_receipt.create', $rc));
+            Route::post('customer-receipts/{receipt}/cancel', [Receivables\CustomerReceiptController::class, 'cancel'])->middleware($ar('accounting.ar_receipt.create', $rc));
+            Route::post('customer-receipts/{receipt}/post', [Receivables\CustomerReceiptController::class, 'post'])->middleware($ar('accounting.ar_receipt.post', $rc));
+            Route::post('customer-receipts/{receipt}/reverse', [Receivables\CustomerReceiptController::class, 'reverse'])->middleware($ar('accounting.ar_receipt.reverse', $rc));
+            Route::get('customers/{customer}/open-invoices', [Receivables\CustomerReceiptController::class, 'openInvoices'])->middleware($ar('accounting.ar_receipt.view', $rc));
+            Route::get('customers/{customer}/allocation-suggestion', [Receivables\CustomerReceiptController::class, 'suggest'])->middleware($ar('accounting.ar_receipt.create', $rc));
+
+            // Credit notes (feature CREDIT_NOTE).
+            $cn = 'CREDIT_NOTE';
+            Route::get('ar-credit-notes', [Receivables\ArCreditNoteController::class, 'index'])->middleware($ar('accounting.ar_credit_note.view', $cn));
+            Route::post('ar-credit-notes', [Receivables\ArCreditNoteController::class, 'store'])->middleware($ar('accounting.ar_credit_note.create', $cn));
+            Route::get('ar-credit-notes/export', [Receivables\ArExportController::class, 'creditNotes'])->middleware($ar('accounting.report.export', $cn));
+            Route::get('ar-credit-notes/{note}', [Receivables\ArCreditNoteController::class, 'show'])->middleware($ar('accounting.ar_credit_note.view', $cn));
+            Route::patch('ar-credit-notes/{note}', [Receivables\ArCreditNoteController::class, 'update'])->middleware($ar('accounting.ar_credit_note.create', $cn));
+            Route::post('ar-credit-notes/{note}/submit', [Receivables\ArCreditNoteController::class, 'submit'])->middleware($ar('accounting.ar_credit_note.submit', $cn));
+            Route::post('ar-credit-notes/{note}/approve', [Receivables\ArCreditNoteController::class, 'approve'])->middleware($ar('accounting.ar_credit_note.approve', $cn));
+            Route::post('ar-credit-notes/{note}/reject', [Receivables\ArCreditNoteController::class, 'reject'])->middleware($ar('accounting.ar_credit_note.approve', $cn));
+            Route::post('ar-credit-notes/{note}/reopen', [Receivables\ArCreditNoteController::class, 'reopen'])->middleware($ar('accounting.ar_credit_note.create', $cn));
+            Route::post('ar-credit-notes/{note}/cancel', [Receivables\ArCreditNoteController::class, 'cancel'])->middleware($ar('accounting.ar_credit_note.create', $cn));
+            Route::post('ar-credit-notes/{note}/post', [Receivables\ArCreditNoteController::class, 'post'])->middleware($ar('accounting.ar_credit_note.post', $cn));
+            Route::post('ar-credit-notes/{note}/reverse', [Receivables\ArCreditNoteController::class, 'reverse'])->middleware($ar('accounting.ar_credit_note.reverse', $cn));
+
+            // AR aging and AR-to-GL reconciliation (feature AR_AGING).
+            Route::get('ar-aging', [Receivables\ArReportController::class, 'aging'])->middleware($ar('accounting.ar_aging.view', 'AR_AGING'));
+            Route::get('ar-aging/export', [Receivables\ArReportController::class, 'exportAging'])->middleware($ar('accounting.report.export', 'AR_AGING'));
+            Route::get('reconciliation/ar', [Receivables\ArReportController::class, 'reconciliation'])->middleware($ar('accounting.reconciliation.ar.view', 'AR_AGING'));
+            Route::get('reconciliation/ar/export', [Receivables\ArExportController::class, 'reconciliation'])->middleware($ar('accounting.report.export', 'AR_AGING'));
         });
     });
 });
