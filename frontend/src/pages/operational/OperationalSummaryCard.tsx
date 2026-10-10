@@ -5,6 +5,7 @@ import { api } from '../../lib/api'
 import { formatDate, formatNumber } from '../../lib/format'
 import { useResource } from '../../lib/hooks'
 import { API, type OperationalSummary } from '../../lib/operational'
+import { AR_PATH } from './receivables/paths'
 import { Money } from './shared'
 
 const PATH = { invoices: '/app/akuntansi/faktur-vendor', payments: '/app/akuntansi/pembayaran-vendor', expenses: '/app/akuntansi/beban', cashBank: '/app/akuntansi/kas-bank' }
@@ -37,7 +38,7 @@ function CountStat({ label, status, sources }: { label: string; status: 'SUBMITT
 }
 
 /**
- * The OA2 counters on the accounting home: payables, approvals waiting, cash and bank balance. The API decides which sections the
+ * The operational counters on the accounting home (OA2 payables, approvals waiting, cash and bank balance; OA3 receivables, receipts, credit notes). The API decides which sections the
  * user may see (a section is null otherwise) and computes every figure; this only lays them out. It never breaks the home: while
  * loading, or when no section is available (a tenant without the OA2 modules), it renders nothing, and a failure is a small notice.
  */
@@ -55,13 +56,16 @@ export function OperationalSummaryCard() {
   }
 
   const s = summary.data
-  const { payables, payments, expenses, cash_bank: cashBank } = s
-  if (!payables && !payments && !expenses && !cashBank) return null
+  const { payables, payments, expenses, cash_bank: cashBank, receivables, receipts, credit_notes: creditNotes } = s
+  if (!payables && !payments && !expenses && !cashBank && !receivables && !receipts && !creditNotes) return null
 
   const waiting = [
     payables && { noun: 'faktur', path: PATH.invoices, approval: payables.pending_approval, posting: payables.awaiting_posting },
     payments && { noun: 'pembayaran', path: PATH.payments, approval: payments.pending_approval, posting: payments.awaiting_posting },
     expenses && { noun: 'beban', path: PATH.expenses, approval: expenses.pending_approval, posting: expenses.awaiting_posting },
+    receivables && { noun: 'faktur pelanggan', path: AR_PATH.invoices, approval: receivables.pending_approval, posting: receivables.awaiting_posting },
+    receipts && { noun: 'penerimaan', path: AR_PATH.receipts, approval: receipts.pending_approval, posting: receipts.awaiting_posting },
+    creditNotes && { noun: 'nota kredit', path: AR_PATH.creditNotes, approval: creditNotes.pending_approval, posting: creditNotes.awaiting_posting },
   ].filter((source): source is NonNullable<typeof source> => Boolean(source))
 
   return (
@@ -77,6 +81,13 @@ export function OperationalSummaryCard() {
             <LinkedStat to={`${PATH.invoices}?open=1`} label="Utang beredar" value={<Money value={payables.outstanding.amount} />} hint={`${formatNumber(payables.outstanding.invoices)} faktur`} />
             <LinkedStat to={`${PATH.invoices}?overdue=1`} label="Jatuh tempo lewat" value={<Money value={payables.overdue.amount} />} hint={`${formatNumber(payables.overdue.invoices)} faktur`} />
             <LinkedStat to={`${PATH.invoices}?due_within=${payables.due_soon.days}`} label={`Jatuh tempo ≤ ${payables.due_soon.days} hari`} value={<Money value={payables.due_soon.amount} />} hint={`${formatNumber(payables.due_soon.invoices)} faktur`} />
+          </>
+        )}
+        {receivables && (
+          <>
+            <LinkedStat to={`${AR_PATH.invoices}?open=1`} label="Piutang beredar" value={<Money value={receivables.outstanding.amount} />} hint={`${formatNumber(receivables.outstanding.invoices)} faktur`} />
+            <LinkedStat to={`${AR_PATH.invoices}?overdue=1`} label="Piutang lewat jatuh tempo" value={<Money value={receivables.overdue.amount} />} hint={`${formatNumber(receivables.overdue.invoices)} faktur`} />
+            <LinkedStat to={`${AR_PATH.invoices}?due_within=${receivables.due_soon.days}`} label={`Piutang jatuh tempo ≤ ${receivables.due_soon.days} hari`} value={<Money value={receivables.due_soon.amount} />} hint={`${formatNumber(receivables.due_soon.invoices)} faktur`} />
           </>
         )}
         {waiting.length > 0 && (

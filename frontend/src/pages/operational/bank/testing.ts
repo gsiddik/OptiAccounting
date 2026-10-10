@@ -58,7 +58,7 @@ export const dashboard = () => ({ business_date: '2026-10-08', fiscal_year: null
 
 export const reportAccount = (over: Partial<ReportAccount> = {}): ReportAccount => ({
   cash_bank_account_id: 'cb-1', code: 'BCA', name: 'Bank BCA', kind: 'BANK', status: 'ACTIVE', gl_account: { id: 'gl-1', code: '1120', name: 'Bank BCA' }, book_balance: '4075000.0000',
-  documents: { receipts: '5000000.0000', cash_payments: '225000.0000', vendor_payments: '1000000.0000', paid_expenses: '0.0000', net: '3775000.0000', ledger_net: '3775000.0000', difference: '0.0000', status: 'MATCHED' },
+  documents: { receipts: '5000000.0000', cash_payments: '225000.0000', vendor_payments: '1000000.0000', customer_receipts: '0.0000', paid_expenses: '0.0000', net: '3775000.0000', ledger_net: '3775000.0000', difference: '0.0000', status: 'MATCHED' },
   other_activity: '300000.0000',
   statement: { id: 'st-1', reference: 'BCA-2026-03', statement_date: '2026-03-31', status: 'OPEN', statement_balance: '4000000.0000', book_minus_statement: '75000.0000', unexplained_difference: null, reconciliation: 'IN_PROGRESS' },
   ...over,

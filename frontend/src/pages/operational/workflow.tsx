@@ -19,6 +19,11 @@ export type WorkflowConfig = {
   perms: { update: string; submit?: string; approve?: string; post: string; reverse: string }
   /** OA2 modules this document writes to; every one of them, and the accounting core, must be writable for a button to show. */
   modules: string[]
+  /**
+   * Modules that must be writable, besides `modules`, to submit, approve or post (not to edit, reject, reopen, cancel or reverse): a customer
+   * receipt draws on a cash or bank account only when it moves forward, so a read-only cash and bank module still lets a draft be cancelled.
+   */
+  stepModules?: string[]
   /** false for documents with no approval step (cash payments and receipts): a DRAFT is posted directly. Default true. */
   approvalFlow?: boolean
   /** Route of the editor; shown as "Ubah" while the document is a draft. */
@@ -44,6 +49,7 @@ export function useWritable(modules: string[]): boolean {
 export function useDocumentActions(config: WorkflowConfig): { buttons: ReactNode[]; notes: string[]; dialogs: ReactNode; error: unknown } {
   const { can } = useCapabilities()
   const writable = useWritable(config.modules)
+  const stepWritable = useWritable([...config.modules, ...(config.stepModules ?? [])])
   const toast = useToast()
   const action = useAction()
   const [dialog, setDialog] = useState<Dialog>(null)
@@ -51,6 +57,8 @@ export function useDocumentActions(config: WorkflowConfig): { buttons: ReactNode
   const sod = config.sod ?? { approve: false, post: false }
   const approvalFlow = config.approvalFlow !== false
   const allowed = (permission: string | undefined) => writable && permission !== undefined && can(permission)
+  /** Like `allowed`, for the steps that also need `stepModules` (submit, approve, post). */
+  const allowedStep = (permission: string | undefined) => stepWritable && permission !== undefined && can(permission)
 
   async function step(path: string, body: object | undefined, done: string) {
     const r = await action.run(async () => (await api.post(`${config.base}/${path}`, body)).data)
@@ -69,21 +77,23 @@ export function useDocumentActions(config: WorkflowConfig): { buttons: ReactNode
 
   if (status === 'DRAFT') {
     if (allowed(perms.update) && config.editPath) buttons.push(<Link key="edit" className="btn" to={config.editPath}>Ubah</Link>)
-    if (approvalFlow && sod.approval_required !== false && allowed(perms.submit)) {
+    if (approvalFlow && sod.approval_required !== false && allowedStep(perms.submit)) {
       buttons.push(<Button key="submit" variant="primary" loading={action.busy} onClick={() => void step('submit', undefined, `${cap(noun)} diajukan.`)}>Ajukan</Button>)
     }
     // Without an approval policy (or for documents that have none) a draft is posted directly.
-    if ((!approvalFlow || sod.approval_required === false) && allowed(perms.post)) {
+    if ((!approvalFlow || sod.approval_required === false) && allowedStep(perms.post)) {
       buttons.push(postButton)
       if (!sod.post) notes.push(`Pemisahan tugas: Anda tidak dapat memposting ${noun} yang Anda siapkan sendiri.`)
     }
   }
   if (status === 'SUBMITTED' && allowed(perms.approve)) {
-    buttons.push(<Button key="approve" variant="primary" disabled={!sod.approve} loading={action.busy} onClick={() => void step('approve', undefined, `${cap(noun)} disetujui.`)}>Setujui</Button>)
+    if (allowedStep(perms.approve)) {
+      buttons.push(<Button key="approve" variant="primary" disabled={!sod.approve} loading={action.busy} onClick={() => void step('approve', undefined, `${cap(noun)} disetujui.`)}>Setujui</Button>)
+    }
     buttons.push(<Button key="reject" disabled={!sod.approve} onClick={() => setDialog('reject')}>Tolak</Button>)
     if (!sod.approve) notes.push(`Pemisahan tugas: Anda tidak dapat menyetujui ${noun} yang Anda siapkan atau ajukan sendiri.`)
   }
-  if (status === 'APPROVED' && allowed(perms.post)) {
+  if (status === 'APPROVED' && allowedStep(perms.post)) {
     buttons.push(postButton)
     if (!sod.post) notes.push(`Pemisahan tugas: Anda tidak dapat memposting ${noun} yang Anda siapkan atau setujui sendiri.`)
   }

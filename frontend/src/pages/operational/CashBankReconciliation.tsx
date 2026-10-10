@@ -112,6 +112,7 @@ function AccountCard({ account: a }: { account: ReportAccount }) {
             <Fact label="Akun buku besar">{a.gl_account.code ? `${a.gl_account.code} · ${a.gl_account.name ?? ''}` : '—'}</Fact>
             <Fact label="Saldo buku" hint="Dari baris buku besar yang sudah diposting."><Money value={a.book_balance} strong /></Fact>
             <Fact label="Penerimaan kas"><Money value={d.receipts} /></Fact>
+            <Fact label="Penerimaan pelanggan"><Money value={d.customer_receipts} /></Fact>
             <Fact label="Pembayaran kas"><Money value={d.cash_payments} /></Fact>
             <Fact label="Pembayaran vendor"><Money value={d.vendor_payments} /></Fact>
             <Fact label="Beban dibayar langsung"><Money value={d.paid_expenses} /></Fact>

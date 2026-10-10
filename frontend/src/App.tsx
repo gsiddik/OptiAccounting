@@ -38,6 +38,14 @@ import ApInvoiceDetail from './pages/operational/ApInvoiceDetail'
 import ApInvoiceEditor from './pages/operational/ApInvoiceEditor'
 import ApInvoices from './pages/operational/ApInvoices'
 import ApReconciliation from './pages/operational/ApReconciliation'
+import ArAging from './pages/operational/ArAging'
+import ArCreditNoteDetail from './pages/operational/ArCreditNoteDetail'
+import ArCreditNoteEditor from './pages/operational/ArCreditNoteEditor'
+import ArCreditNotes from './pages/operational/ArCreditNotes'
+import ArInvoiceDetail from './pages/operational/ArInvoiceDetail'
+import ArInvoiceEditor from './pages/operational/ArInvoiceEditor'
+import ArInvoices from './pages/operational/ArInvoices'
+import ArReconciliation from './pages/operational/ArReconciliation'
 import BankStatementDetail from './pages/operational/BankStatementDetail'
 import BankStatements from './pages/operational/BankStatements'
 import CashBankAccountDetail from './pages/operational/CashBankAccountDetail'
@@ -46,6 +54,10 @@ import CashBankReconciliation from './pages/operational/CashBankReconciliation'
 import CashTransactionDetail from './pages/operational/CashTransactionDetail'
 import CashTransactionEditor from './pages/operational/CashTransactionEditor'
 import CashTransactions from './pages/operational/CashTransactions'
+import CustomerReceiptDetail from './pages/operational/CustomerReceiptDetail'
+import CustomerReceiptEditor from './pages/operational/CustomerReceiptEditor'
+import CustomerReceipts from './pages/operational/CustomerReceipts'
+import Customers from './pages/operational/Customers'
 import ExpenseCategories from './pages/operational/ExpenseCategories'
 import ExpenseDetail from './pages/operational/ExpenseDetail'
 import ExpenseEditor from './pages/operational/ExpenseEditor'
@@ -81,6 +93,12 @@ const TENANT_NAV: NavItem[] = [
   { to: '/app/akuntansi/faktur-vendor', label: 'Faktur vendor', icon: 'list', permission: 'accounting.ap_invoice.view', module: 'ACCOUNTING_AP', feature: 'VENDOR_INVOICE', group: 'Utang usaha' },
   { to: '/app/akuntansi/pembayaran-vendor', label: 'Pembayaran vendor', icon: 'card', permission: 'accounting.ap_payment.view', module: 'ACCOUNTING_AP', feature: 'AP_PAYMENT', group: 'Utang usaha' },
   { to: '/app/akuntansi/umur-utang', label: 'Umur utang', icon: 'calendar', permission: 'accounting.ap_aging.view', module: 'ACCOUNTING_AP', feature: 'AP_AGING', group: 'Utang usaha' },
+  // OA3: receivables and revenue (module ACCOUNTING_AR).
+  { to: '/app/akuntansi/pelanggan', label: 'Pelanggan', icon: 'users', permission: 'accounting.customer.view', module: 'ACCOUNTING_AR', feature: 'CUSTOMER', group: 'Piutang' },
+  { to: '/app/akuntansi/faktur-pelanggan', label: 'Faktur pelanggan', icon: 'list', permission: 'accounting.ar_invoice.view', module: 'ACCOUNTING_AR', feature: 'CUSTOMER_INVOICE', group: 'Piutang' },
+  { to: '/app/akuntansi/penerimaan-pelanggan', label: 'Penerimaan pelanggan', icon: 'card', permission: 'accounting.ar_receipt.view', module: 'ACCOUNTING_AR', feature: 'AR_RECEIPT', group: 'Piutang' },
+  { to: '/app/akuntansi/nota-kredit', label: 'Nota kredit', icon: 'tag', permission: 'accounting.ar_credit_note.view', module: 'ACCOUNTING_AR', feature: 'CREDIT_NOTE', group: 'Piutang' },
+  { to: '/app/akuntansi/umur-piutang', label: 'Umur piutang', icon: 'calendar', permission: 'accounting.ar_aging.view', module: 'ACCOUNTING_AR', feature: 'AR_AGING', group: 'Piutang' },
   { to: '/app/akuntansi/beban', label: 'Beban', icon: 'tag', permission: 'accounting.expense.view', module: 'ACCOUNTING_EXPENSE', feature: 'EXPENSE', group: 'Beban' },
   { to: '/app/akuntansi/kategori-beban', label: 'Kategori beban', icon: 'grid', permission: 'accounting.expense.view', module: 'ACCOUNTING_EXPENSE', feature: 'EXPENSE', group: 'Beban' },
   { to: '/app/akuntansi/kas-bank', label: 'Akun kas & bank', icon: 'building', permission: 'accounting.cash_bank.view', module: 'ACCOUNTING_CASH_BANK', feature: 'CASH_BANK_ACCOUNT', group: 'Kas & bank' },
@@ -88,6 +106,7 @@ const TENANT_NAV: NavItem[] = [
   { to: '/app/akuntansi/penerimaan-kas', label: 'Penerimaan kas', icon: 'box', permission: 'accounting.cash_transaction.view', module: 'ACCOUNTING_CASH_BANK', feature: 'RECEIPT', group: 'Kas & bank' },
   { to: '/app/akuntansi/rekening-koran', label: 'Rekening koran', icon: 'book', permission: 'accounting.bank_reconciliation.view', module: 'ACCOUNTING_CASH_BANK', feature: 'BANK_RECONCILIATION', group: 'Kas & bank' },
   { to: '/app/akuntansi/rekonsiliasi/utang', label: 'Utang vs buku besar', icon: 'scale', permission: 'accounting.reconciliation.ap.view', module: 'ACCOUNTING_AP', feature: 'AP_AGING', group: 'Rekonsiliasi' },
+  { to: '/app/akuntansi/rekonsiliasi/piutang', label: 'Piutang vs buku besar', icon: 'scale', permission: 'accounting.reconciliation.ar.view', module: 'ACCOUNTING_AR', feature: 'AR_AGING', group: 'Rekonsiliasi' },
   { to: '/app/akuntansi/rekonsiliasi/kas-bank', label: 'Kas/bank vs buku besar', icon: 'scale', permission: 'accounting.reconciliation.cash_bank.view', module: 'ACCOUNTING_CASH_BANK', feature: 'BANK_RECONCILIATION', group: 'Rekonsiliasi' },
   { to: '/app/akuntansi/profil', label: 'Profil akuntansi', icon: 'cog', permission: 'accounting.profile.view', module: 'ACCOUNTING_CORE', group: 'Konfigurasi akuntansi' },
   { to: '/app/akuntansi/periode', label: 'Tahun fiskal & periode', icon: 'calendar', permission: 'accounting.period.view', module: 'ACCOUNTING_CORE', group: 'Konfigurasi akuntansi' },
@@ -194,6 +213,21 @@ export default function App() {
             <Route path="pembayaran-vendor/:id/ubah" element={<Guard permission="accounting.ap_payment.create" module="ACCOUNTING_AP" feature="AP_PAYMENT"><VendorPaymentEditor /></Guard>} />
             <Route path="umur-utang" element={<Guard permission="accounting.ap_aging.view" module="ACCOUNTING_AP" feature="AP_AGING"><ApAging /></Guard>} />
             <Route path="rekonsiliasi/utang" element={<Guard permission="accounting.reconciliation.ap.view" module="ACCOUNTING_AP" feature="AP_AGING"><ApReconciliation /></Guard>} />
+            <Route path="pelanggan" element={<Guard permission="accounting.customer.view" module="ACCOUNTING_AR" feature="CUSTOMER"><Customers /></Guard>} />
+            <Route path="faktur-pelanggan" element={<Guard permission="accounting.ar_invoice.view" module="ACCOUNTING_AR" feature="CUSTOMER_INVOICE"><ArInvoices /></Guard>} />
+            <Route path="faktur-pelanggan/baru" element={<Guard permission="accounting.ar_invoice.create" module="ACCOUNTING_AR" feature="CUSTOMER_INVOICE"><ArInvoiceEditor /></Guard>} />
+            <Route path="faktur-pelanggan/:id" element={<Guard permission="accounting.ar_invoice.view" module="ACCOUNTING_AR" feature="CUSTOMER_INVOICE"><ArInvoiceDetail /></Guard>} />
+            <Route path="faktur-pelanggan/:id/ubah" element={<Guard permission="accounting.ar_invoice.update" module="ACCOUNTING_AR" feature="CUSTOMER_INVOICE"><ArInvoiceEditor /></Guard>} />
+            <Route path="penerimaan-pelanggan" element={<Guard permission="accounting.ar_receipt.view" module="ACCOUNTING_AR" feature="AR_RECEIPT"><CustomerReceipts /></Guard>} />
+            <Route path="penerimaan-pelanggan/baru" element={<Guard permission="accounting.ar_receipt.create" module="ACCOUNTING_AR" feature="AR_RECEIPT"><CustomerReceiptEditor /></Guard>} />
+            <Route path="penerimaan-pelanggan/:id" element={<Guard permission="accounting.ar_receipt.view" module="ACCOUNTING_AR" feature="AR_RECEIPT"><CustomerReceiptDetail /></Guard>} />
+            <Route path="penerimaan-pelanggan/:id/ubah" element={<Guard permission="accounting.ar_receipt.create" module="ACCOUNTING_AR" feature="AR_RECEIPT"><CustomerReceiptEditor /></Guard>} />
+            <Route path="nota-kredit" element={<Guard permission="accounting.ar_credit_note.view" module="ACCOUNTING_AR" feature="CREDIT_NOTE"><ArCreditNotes /></Guard>} />
+            <Route path="nota-kredit/baru" element={<Guard permission="accounting.ar_credit_note.create" module="ACCOUNTING_AR" feature="CREDIT_NOTE"><ArCreditNoteEditor /></Guard>} />
+            <Route path="nota-kredit/:id" element={<Guard permission="accounting.ar_credit_note.view" module="ACCOUNTING_AR" feature="CREDIT_NOTE"><ArCreditNoteDetail /></Guard>} />
+            <Route path="nota-kredit/:id/ubah" element={<Guard permission="accounting.ar_credit_note.create" module="ACCOUNTING_AR" feature="CREDIT_NOTE"><ArCreditNoteEditor /></Guard>} />
+            <Route path="umur-piutang" element={<Guard permission="accounting.ar_aging.view" module="ACCOUNTING_AR" feature="AR_AGING"><ArAging /></Guard>} />
+            <Route path="rekonsiliasi/piutang" element={<Guard permission="accounting.reconciliation.ar.view" module="ACCOUNTING_AR" feature="AR_AGING"><ArReconciliation /></Guard>} />
             <Route path="beban" element={<Guard permission="accounting.expense.view" module="ACCOUNTING_EXPENSE" feature="EXPENSE"><Expenses /></Guard>} />
             <Route path="beban/baru" element={<Guard permission="accounting.expense.create" module="ACCOUNTING_EXPENSE" feature="EXPENSE"><ExpenseEditor /></Guard>} />
             <Route path="beban/:id" element={<Guard permission="accounting.expense.view" module="ACCOUNTING_EXPENSE" feature="EXPENSE"><ExpenseDetail /></Guard>} />

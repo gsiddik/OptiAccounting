@@ -11,7 +11,7 @@ import { useDimensions } from '../../accounting/data'
 import { DimensionFields } from '../shared'
 import { AllocationSummary, AllocationTable, type AllocationRow } from './AllocationTable'
 import { useBusinessDate } from './lists'
-import { allocationMessage, errorText, fieldMessage, useAct } from './messages'
+import { allocationErrorFor, errorText, fieldMessage, useAct } from './messages'
 import { allocationRows, allocationsFrom, paymentHeaderFrom, paymentPayload, paymentProblem, previewAllocation, type AllocationInputs, type PaymentHeader } from './paymentForm'
 import type { OpenInvoice, Payment, SuggestedAllocation } from './types'
 
@@ -38,9 +38,9 @@ export function PaymentFormView({ payment }: { payment: Payment | null }) {
   const accounts = payment?.cash_bank_account && !cash.accounts.some((a) => a.id === payment.cash_bank_account_id) ? [...cash.accounts, payment.cash_bank_account] : cash.accounts
 
   // Open invoices, plus any invoice this draft still names that is no longer open (so the user can clear it).
-  const openRows: AllocationRow[] = (open.data ?? []).map((i) => ({ id: i.id, document_number: i.document_number, vendor_invoice_number: i.vendor_invoice_number, due_date: i.due_date, outstanding_amount: i.outstanding_amount }))
+  const openRows: AllocationRow[] = (open.data ?? []).map((i) => ({ id: i.id, document_number: i.document_number, reference: i.vendor_invoice_number, due_date: i.due_date, outstanding_amount: i.outstanding_amount }))
   const staleRows: AllocationRow[] = h.vendor_id === payment?.vendor_id
-    ? (payment?.allocations ?? []).filter((a) => !openRows.some((r) => r.id === a.ap_invoice_id) && a.invoice).map((a) => ({ id: a.ap_invoice_id, document_number: a.invoice?.document_number ?? null, vendor_invoice_number: a.invoice?.vendor_invoice_number ?? '', due_date: a.invoice?.due_date ?? '', outstanding_amount: null }))
+    ? (payment?.allocations ?? []).filter((a) => !openRows.some((r) => r.id === a.ap_invoice_id) && a.invoice).map((a) => ({ id: a.ap_invoice_id, document_number: a.invoice?.document_number ?? null, reference: a.invoice?.vendor_invoice_number ?? '', due_date: a.invoice?.due_date ?? '', outstanding_amount: null }))
     : []
   const rows = open.data && !open.loading ? [...openRows, ...staleRows] : []
   const preview = previewAllocation(h.amount, alloc)
@@ -169,7 +169,7 @@ export function PaymentFormView({ payment }: { payment: Payment | null }) {
           ) : rows.length === 0 ? (
             <EmptyState title="Tidak ada faktur terbuka">Vendor ini tidak memiliki faktur terposting dengan saldo terutang.</EmptyState>
           ) : (
-            <AllocationTable rows={rows} values={alloc} onChange={(id, text) => setAlloc((s) => ({ ...s, [id]: text }))} errorFor={(id) => allocationError(error, sentIds, id)} />
+            <AllocationTable rows={rows} values={alloc} onChange={(id, text) => setAlloc((s) => ({ ...s, [id]: text }))} errorFor={(id) => allocationErrorFor(error, sentIds, id)} />
           )}
           <div className="card-body">
             <AllocationSummary preview={preview} />
@@ -185,10 +185,4 @@ export function PaymentFormView({ payment }: { payment: Payment | null }) {
       </form>
     </>
   )
-}
-
-/** A refusal that points at allocation N of the request (validation key `allocations.N-1.amount` or `details.allocation`) is shown on that invoice's row. */
-function allocationError(error: unknown, sentIds: string[], invoiceId: string): string | undefined {
-  const index = sentIds.indexOf(invoiceId)
-  return index < 0 ? undefined : (fieldMessage(error, `allocations.${index}.amount`) ?? allocationMessage(error, index + 1))
 }

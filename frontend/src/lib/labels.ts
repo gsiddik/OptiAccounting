@@ -1,3 +1,4 @@
+import { formatAmount } from './accounting'
 import { ApiError } from './api'
 import { ACCOUNTING_ERRORS, ACCOUNTING_STATUS } from './accountingLabels'
 import { OPERATIONAL_ERRORS, OPERATIONAL_STATUS, operationalModuleLabels } from './operationalLabels'
@@ -149,6 +150,23 @@ export function describeSsoError(code: string | null | undefined): string | null
   return SSO_ERRORS[code] ?? SSO_ERRORS.sso_failed
 }
 
+/**
+ * Figures the server computed for a refusal (what the receipt amount and its allocation are, what is still outstanding on an invoice),
+ * appended exactly as reported. Nothing is calculated here.
+ */
+function serverFigures(error: ApiError): string {
+  const { code, details: d } = error
+  const money = (value: unknown) => (typeof value === 'string' ? formatAmount(value) : null)
+  const parts: (string | null)[] = []
+  if (code === 'RECEIPT_NOT_FULLY_ALLOCATED') {
+    parts.push(money(d.amount) && `jumlah penerimaan ${money(d.amount)}`, money(d.allocated) && `teralokasi ${money(d.allocated)}`)
+  } else if (code === 'AR_ALLOCATION_EXCEEDS_OUTSTANDING' || code === 'AR_CREDIT_NOTE_EXCEEDS_OUTSTANDING') {
+    parts.push(typeof d.document_number === 'string' ? `faktur ${d.document_number}` : null, money(d.outstanding) && `saldo piutang ${money(d.outstanding)}`)
+  }
+  const shown = parts.filter((part): part is string => Boolean(part))
+  return shown.length > 0 ? ` (${shown.join(', ')})` : ''
+}
+
 /** A message a person can act on, from any thrown value. */
 export function describeError(error: unknown): string {
   if (error instanceof ApiError) {
@@ -169,7 +187,7 @@ export function describeError(error: unknown): string {
     if (error.code === 'MODULE_NOT_AVAILABLE' && typeof error.details.module === 'string') {
       return `Dokumen ini membutuhkan modul ${operationalModuleLabels[error.details.module] ?? error.details.module} yang aktif dan tidak dalam mode hanya baca.`
     }
-    if (error.code && ERRORS[error.code]) return ERRORS[error.code]
+    if (error.code && ERRORS[error.code]) return `${ERRORS[error.code]}${serverFigures(error)}`
     const first = Object.values(error.fields)[0]?.[0]
     if (error.status === 422 && first) return first
     if (error.status === 0) return 'Tidak dapat terhubung ke server. Periksa koneksi Anda.'

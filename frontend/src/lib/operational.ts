@@ -3,7 +3,7 @@ import { api } from './api'
 import { useCapabilities } from './capabilities'
 import { useResource } from './hooks'
 
-// Types and hooks shared by every OA2 page (payables, expense, cash & bank). Amounts are strings from the API and are only
+// Types and hooks shared by every OA2 and OA3 page (payables, receivables, expense, cash & bank). Amounts are strings from the API and are only
 // formatted for display; every total, balance and allocation proposal comes from the backend.
 
 export const API = '/app/accounting'
@@ -55,6 +55,32 @@ export type Vendor = {
   notes: string | null
 }
 
+/** A customer master (backend: Receivables\Services\CustomerService). `credit_limit` is information only: nothing enforces it. */
+export type Customer = {
+  id: string
+  code: string
+  name: string
+  legal_name: string | null
+  status: 'ACTIVE' | 'INACTIVE'
+  contact_name: string | null
+  email: string | null
+  phone: string | null
+  address: string | null
+  tax_id: string | null
+  tax_registered: boolean
+  payment_term_id: string | null
+  payment_term?: Pick<PaymentTerm, 'id' | 'code' | 'name'> | null
+  default_currency: string | null
+  receivable_account_id: string | null
+  default_revenue_account_id: string | null
+  receivable_account?: { id: string; code: string; name: string } | null
+  default_revenue_account?: { id: string; code: string; name: string } | null
+  credit_limit: string | null
+  external_source: string | null
+  external_id: string | null
+  notes: string | null
+}
+
 export type CashBankAccount = {
   id: string
   code: string
@@ -87,23 +113,30 @@ export type ExpenseCategory = {
   status: 'ACTIVE' | 'INACTIVE'
 }
 
-/** OA2 counters for the accounting home. A section is null when the user may not open the matching list. */
+/** What the accounting home shows for a list of invoices: open, overdue and soon-due balances, and the documents waiting for a decision. */
+export type InvoiceSummary = {
+  outstanding: { amount: string; invoices: number }
+  overdue: { amount: string; invoices: number }
+  due_soon: { days: number; amount: string; invoices: number }
+  pending_approval: number
+  awaiting_posting: number
+}
+export type PendingCounts = { pending_approval: number; awaiting_posting: number }
+
+/** OA2 and OA3 counters for the accounting home. A section is null when the user may not open the matching list. */
 export type OperationalSummary = {
   business_date: string
-  payables: {
-    outstanding: { amount: string; invoices: number }
-    overdue: { amount: string; invoices: number }
-    due_soon: { days: number; amount: string; invoices: number }
-    pending_approval: number
-    awaiting_posting: number
-  } | null
-  payments: { pending_approval: number; awaiting_posting: number } | null
-  expenses: { pending_approval: number; awaiting_posting: number } | null
+  payables: InvoiceSummary | null
+  payments: PendingCounts | null
+  expenses: PendingCounts | null
   cash_bank: { book_balance: string; cash: string; bank: string; accounts: number; as_of: string } | null
+  receivables: InvoiceSummary | null
+  receipts: PendingCounts | null
+  credit_notes: PendingCounts | null
   complete: boolean
 }
 
-export const MODULES = { core: 'ACCOUNTING_CORE', ap: 'ACCOUNTING_AP', expense: 'ACCOUNTING_EXPENSE', cashBank: 'ACCOUNTING_CASH_BANK' } as const
+export const MODULES = { core: 'ACCOUNTING_CORE', ap: 'ACCOUNTING_AP', ar: 'ACCOUNTING_AR', expense: 'ACCOUNTING_EXPENSE', cashBank: 'ACCOUNTING_CASH_BANK' } as const
 
 /**
  * Permission and entitlement check for an OA2 page. A change needs the permission AND this module AND the accounting core to be
@@ -128,8 +161,17 @@ export function useVendors(status?: 'ACTIVE') {
   return { ...r, vendors: r.data ?? [] }
 }
 
-export function usePaymentTerms() {
-  const r = useResource(async () => (await api.get<Options<PaymentTerm>>(`${API}/payment-terms`)).data.data, [])
+/** Customers for a select box (up to 200, active first by code). */
+export function useCustomers(status?: 'ACTIVE') {
+  const r = useResource(async () => (await api.get<Page<Customer>>(`${API}/customers`, { params: { per_page: 200, ...(status && { status }) } })).data.data, [status])
+  return { ...r, customers: r.data ?? [] }
+}
+
+/** Payment terms are shared master data; a receivables-only tenant reads and manages them through `ar-payment-terms`. */
+export type TermsEndpoint = 'payment-terms' | 'ar-payment-terms'
+
+export function usePaymentTerms(endpoint: TermsEndpoint = 'payment-terms') {
+  const r = useResource(async () => (await api.get<Options<PaymentTerm>>(`${API}/${endpoint}`)).data.data, [endpoint])
   return { ...r, terms: r.data ?? [] }
 }
 
