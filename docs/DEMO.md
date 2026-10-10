@@ -26,8 +26,8 @@ Demo password for every account below: `Demo#Passw0rd2026`
 | `keuangan@majujaya.demo.test` | `Demo#Passw0rd2026` | tenant | PT Maju Jaya, "Staf Keuangan" (organization view, subscription view, audit view) | branch Jakarta (JKT) |
 | `cabang.sby@majujaya.demo.test` | `Demo#Passw0rd2026` | tenant | PT Maju Jaya, "Admin Cabang" (organization manage, user view) | branch Surabaya (SBY) |
 | `viewer@majujaya.demo.test` | `Demo#Passw0rd2026` | tenant | PT Maju Jaya, read-only viewer | whole tenant |
-| `akuntan@majujaya.demo.test` | `Demo#Passw0rd2026` | tenant | PT Maju Jaya, "Akuntan": prepares and submits journals, reads the books (cannot approve or post) | whole tenant |
-| `manajer@majujaya.demo.test` | `Demo#Passw0rd2026` | tenant | PT Maju Jaya, "Manajer Keuangan": approves and posts journals, reverses, closes periods, opening balance, configuration, exports | whole tenant |
+| `akuntan@majujaya.demo.test` | `Demo#Passw0rd2026` | tenant | PT Maju Jaya, "Akuntan": prepares and submits journals, vendor invoices, vendor payments, expenses and cash transactions, reconciles bank statements, reads the books (cannot approve or post) | whole tenant |
+| `manajer@majujaya.demo.test` | `Demo#Passw0rd2026` | tenant | PT Maju Jaya, "Manajer Keuangan": approves and posts journals and every payables, expense and cash/bank document, reverses, manages vendors, categories and cash/bank accounts, closes periods, opening balance, configuration, exports | whole tenant |
 | `admin@sinarabadi.demo.test` | `Demo#Passw0rd2026` | tenant | CV Sinar Abadi (Starter bundle, 1 branch limit), full administration | whole tenant |
 | `admin@tunggakan.demo.test` | `Demo#Passw0rd2026` | tenant | PT Tunggakan Demo, subscription PAST_DUE: every module READ_ONLY (module reads work, module changes refused); tenant administration (users, roles, organization) stays available | whole tenant |
 | `multi@demo.test` | `Demo#Passw0rd2026` | identity | Viewer in PT Maju Jaya and administrator in CV Sinar Abadi: choose a tenant after signing in, then switch | per tenant |
@@ -40,9 +40,24 @@ enter directly, `identity` means the user must pick a tenant (`POST /api/v1/auth
 
 PT Maju Jaya is seeded with working books for the current calendar year: SAK EP profile in IDR, the `UMUM_ID` chart of
 accounts, an opening balance on 1 January, monthly sales / rent / salary journals (branches JKT and SBY) taken through the
-real prepare, approve and post workflow, a published posting rule with two accounting events, one reversal, pending journals
-in every state (2 draft, 1 submitted, 1 approved), January closed and February soft-closed. Sign in as
-`akuntan@majujaya.demo.test` (prepares) and `manajer@majujaya.demo.test` (approves, posts), or as the tenant administrator.
+real prepare, approve and post workflow, one reversal, pending journals in every state (2 draft, 1 submitted, 1 approved),
+January closed and February soft-closed. Sign in as `akuntan@majujaya.demo.test` (prepares) and `manajer@majujaya.demo.test`
+(approves, posts), or as the tenant administrator.
+
+## Demo payables, expenses and cash/bank (OA2)
+
+On top of those books, PT Maju Jaya has the default OA2 posting rules (published from 1 January), payment terms and expense categories, plus
+dates relative to today (inside the open periods):
+
+- 4 vendors (`SUMBER`, `LISTRIK`, `SERVIS`, `ATK`) and 2 accounts: `BCA-OPS` (bank, GL 1120) and `KAS-KECIL` (cash, GL 1110).
+- 6 vendor invoices: 3 posted (one overdue and part-paid, one fully paid, one with a payment awaiting approval), 1 submitted,
+  1 approved (waiting to post), 1 draft. Vendor payments: 2 posted, 1 submitted.
+- 4 expenses: a posted payable expense, a posted directly paid one, one submitted, one draft.
+- Cash/bank: 3 posted cash transactions and 1 draft; a bank statement `BCA-<year-month>` in progress with 3 matched lines and 1 unmatched
+  deposit (the reconciliation cannot be completed until it is matched or flagged).
+- The AP-to-GL reconciliation reads MATCHED (the opening-balance payable is shown as its own component); the home page shows the operational summary.
+
+The accountant cannot approve or post (segregation of duties); the manager approves and posts. Re-running the seeder changes nothing.
 
 ## Demo tenants
 

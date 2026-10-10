@@ -73,7 +73,7 @@ docker-compose.yml       local runtime (postgres, redis, backend, frontend)
 | `Audit` | OA0 | append-only audit trail |
 | `Numbering` | OA1 | one concurrency-safe document numbering service for every module |
 | `Ledger` | OA1 | profile, fiscal year, period, COA, dimensions, journal, posting engine, GL, TB |
-| `Payables` / `Expense` / `CashBank` | OA2 | AP subledger, payments, expense, cash & bank |
+| `Payables` / `Expense` / `CashBank` | OA2 | AP subledger, payments, expense, cash & bank (`PAYABLES_CASH_BANK.md`) |
 | `Receivables` | OA3 | AR subledger, receipts, credit/debit notes |
 | `Budget` / `FixedAsset` / `Tax` / `Currency` | OA4 | |
 | `Reporting` / `Closing` / `Reconciliation` | OA5 | |

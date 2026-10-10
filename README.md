@@ -4,10 +4,13 @@ Double-entry accounting platform, delivered from one codebase as a multi-tenant
 SaaS in the OptiNexus ecosystem or as a standalone product. Integration-ready
 (OptiFleet-v2 first) through versioned events, never shared databases.
 
-Status: **OA1 — accounting core & general ledger** on top of OA0 (standalone SaaS foundation) and OA0-N
-(OptiNexus identity adapter): fiscal calendar, chart of accounts, dimensions, journals with approval and
-segregation of duties, central posting engine, posting rules, reversal, opening balance, general ledger and
-trial balance. See `docs/architecture/ROADMAP.md`, `docs/architecture/ACCOUNTING_CORE.md` and `docs/status/`.
+Status: **OA2 — accounts payable, expense and cash/bank** on top of OA1 (accounting core & general ledger), OA0
+(standalone SaaS foundation) and OA0-N (OptiNexus identity adapter). OA1: fiscal calendar, chart of accounts,
+dimensions, journals with approval and segregation of duties, central posting engine, posting rules, reversal,
+opening balance, general ledger and trial balance. OA2: vendors, vendor invoices, payments with allocation, AP
+aging and AP-to-GL reconciliation, expenses, cash/bank accounts and transactions, manual bank reconciliation,
+exports and an operational summary. See `docs/architecture/ROADMAP.md`, `ACCOUNTING_CORE.md`,
+`PAYABLES_CASH_BANK.md` and `docs/status/`.
 
 ## Layout
 
