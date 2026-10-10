@@ -190,6 +190,18 @@ final class PermissionCatalog
                     'accounting.budget.submit' => 'Submit budget versions for approval',
                     'accounting.budget.approve' => 'Approve or reject budget versions, activate versions, open and close budgets',
                 ],
+                'Fixed assets' => [
+                    'accounting.asset.view' => 'View the asset register, categories, schedules, depreciation runs and disposals',
+                    'accounting.asset.manage' => 'Create and edit draft assets, discard drafts',
+                    'accounting.asset_category.manage' => 'Create and edit asset categories',
+                    'accounting.asset.capitalize' => 'Capitalize assets and reverse a capitalization',
+                    'accounting.asset.depreciation.run' => 'Calculate and cancel depreciation runs',
+                    'accounting.asset.depreciation.post' => 'Post and reverse depreciation runs',
+                    'accounting.asset.dispose' => 'Prepare asset disposals and submit them for approval',
+                    'accounting.asset.disposal.approve' => 'Approve or reject asset disposals',
+                    'accounting.asset.disposal.post' => 'Post and reverse asset disposals',
+                    'accounting.asset.reconciliation.view' => 'View the asset register to ledger reconciliation',
+                ],
                 'Audit' => [
                     'audit.view' => 'View the tenant audit log',
                 ],

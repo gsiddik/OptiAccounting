@@ -202,8 +202,9 @@ class PostingRuleService
      * amounts); both refinements are explicit data in the payload and therefore part of the stored posting snapshot:
      *  - `role_accounts`: {ROLE: account_id} the account this document names for a role (a vendor's payable override, the GL
      *    account of the cash/bank account chosen on a payment);
-     *  - `distribution`: {amount_key: [{amount, account_id?|account_role?, description?, cost_center_id?}]} spreads one rule line
-     *    over several destinations (invoice lines classified to different expense accounts); the parts must add up to the component.
+     *  - `distribution`: {amount_key: [{amount, account_id?|account_role?, description?, cost_center_id?, branch_id?, business_unit_id?}]} spreads one
+     *    rule line over several destinations (invoice lines classified to different expense accounts, one depreciation journal over the branches of
+     *    its assets); the parts must add up to the component. A part that names no branch or business unit takes the event's.
      * Resolution order for a line: the part's account, the document's role account, the tenant mapping (DOCUMENT-bound roles have no mapping).
      *
      * @param  array<string,mixed>  $payload
@@ -247,7 +248,8 @@ class PostingRuleService
                 $resolved = $this->resolveAccount($role, $part['account_id'] ?? null, $roleAccounts, $branch, $unit);
                 $lines[] = [
                     'account_id' => $resolved['account']->id, $side => Money::str($partAmount), 'description' => $part['description'] ?? $line->description,
-                    'branch_id' => $branch, 'business_unit_id' => $unit, 'cost_center_id' => $part['cost_center_id'] ?? $dimensions['cost_center_id'] ?? null,
+                    'branch_id' => array_key_exists('branch_id', $part) ? $part['branch_id'] : $branch, 'business_unit_id' => array_key_exists('business_unit_id', $part) ? $part['business_unit_id'] : $unit,
+                    'cost_center_id' => $part['cost_center_id'] ?? $dimensions['cost_center_id'] ?? null,
                 ];
                 $trace[] = [
                     'line' => $line->line_number, 'side' => $line->side, 'account_role' => $role, 'amount_key' => $line->amount_key, 'amount' => Money::str($partAmount),
