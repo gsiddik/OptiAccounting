@@ -11,7 +11,7 @@ import { Filters, ReadOnlyNotice } from '../operational/shared'
 import { EventBadge } from './components'
 import { RetryDialog } from './EventDialogs'
 import { ENDPOINTS, PATHS, useIntegrationAccess } from './data'
-import { KNOWN_EVENT_TYPES, eventStatusText, eventTypeLabel, integrationError, sourceLabel } from './labels'
+import { KNOWN_EVENT_TYPES, eventStatusText, eventTypeLabel, integrationError } from './labels'
 import { EVENT_STATUSES, RETRYABLE, type Connection, type IntegrationEvent } from './types'
 
 type Filter = { connection_id: string; status: string; event_type: string; from: string; to: string; conflict: boolean }
@@ -74,7 +74,6 @@ export default function IntegrationEvents() {
               scroll
               columns={[
                 { header: 'Diterima', primary: true, cell: (e) => formatDateTime(e.received_at) },
-                { header: 'Sistem sumber', cell: (e) => sourceLabel(e.source_system) },
                 { header: 'Jenis kejadian', cell: (e) => eventTypeLabel(e.event_type) },
                 { header: 'ID kejadian', cell: (e) => <Link className="mono" to={PATHS.event(e.id)}>{e.event_id}</Link> },
                 { header: 'Status', cell: (e) => <><EventBadge status={e.status} />{e.conflict && <> <Badge tone="warn">Konflik isi</Badge></>}</> },
