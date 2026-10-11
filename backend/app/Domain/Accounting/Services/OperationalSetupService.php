@@ -51,12 +51,15 @@ class OperationalSetupService
 
     public function __construct(private readonly PostingRuleService $rules, private readonly AccountMappingService $mappings) {}
 
-    /** @return list<array{event_type:string,name:string,ready:bool,rule_code:?string,effective_from:?string}> which OA2 and OA3 events can post today */
-    public function status(): array
+    /**
+     * @param  array<string,array{0:string,1:string,2:list<array{0:string,1:string,2:string,3:string}>}>|null  $rules  another module's set (OA4 fixed assets); default: the OA2 and OA3 set
+     * @return list<array{event_type:string,name:string,ready:bool,rule_code:?string,effective_from:?string}> which of these events can post today
+     */
+    public function status(?array $rules = null): array
     {
         $published = PostingRule::query()->where('status', PostingRule::PUBLISHED)->get()->groupBy('event_type');
 
-        return collect(self::RULES)->map(fn ($def, $event) => [
+        return collect($rules ?? self::RULES)->map(fn ($def, $event) => [
             'event_type' => $event, 'name' => $def[1], 'ready' => $published->has($event),
             'rule_code' => $published->get($event)?->first()?->code, 'effective_from' => $published->get($event)?->first()?->effective_from?->toDateString(),
         ])->values()->all();
@@ -65,7 +68,7 @@ class OperationalSetupService
     /**
      * @return array{created:list<string>,skipped:list<array{event_type:string,reason:string}>}
      */
-    public function applyDefaults(?string $effectiveFrom = null): array
+    public function applyDefaults(?string $effectiveFrom = null, ?array $rules = null): array
     {
         $from = $effectiveFrom ?? FiscalYear::query()->min('start_date');
         if ($from === null) {
@@ -75,7 +78,7 @@ class OperationalSetupService
 
         $created = [];
         $skipped = [];
-        foreach (self::RULES as $event => [$code, $name, $lines]) {
+        foreach ($rules ?? self::RULES as $event => [$code, $name, $lines]) {
             if (PostingRule::query()->where('event_type', $event)->where('status', PostingRule::PUBLISHED)->exists()) {
                 $skipped[] = ['event_type' => $event, 'reason' => 'ALREADY_PUBLISHED'];
 

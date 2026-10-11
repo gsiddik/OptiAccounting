@@ -3,7 +3,7 @@ import { api } from './api'
 import { useCapabilities } from './capabilities'
 import { useResource } from './hooks'
 
-// Types and hooks shared by every OA2 and OA3 page (payables, receivables, expense, cash & bank). Amounts are strings from the API and are only
+// Types and hooks shared by every OA2, OA3 and OA4 page (payables, receivables, expense, cash & bank). Amounts are strings from the API and are only
 // formatted for display; every total, balance and allocation proposal comes from the backend.
 
 export const API = '/app/accounting'
@@ -136,7 +136,10 @@ export type OperationalSummary = {
   complete: boolean
 }
 
-export const MODULES = { core: 'ACCOUNTING_CORE', ap: 'ACCOUNTING_AP', ar: 'ACCOUNTING_AR', expense: 'ACCOUNTING_EXPENSE', cashBank: 'ACCOUNTING_CASH_BANK' } as const
+export const MODULES = {
+  core: 'ACCOUNTING_CORE', ap: 'ACCOUNTING_AP', ar: 'ACCOUNTING_AR', expense: 'ACCOUNTING_EXPENSE', cashBank: 'ACCOUNTING_CASH_BANK',
+  budget: 'ACCOUNTING_BUDGET', fixedAsset: 'ACCOUNTING_FIXED_ASSET', tax: 'ACCOUNTING_TAX', multiCurrency: 'ACCOUNTING_MULTI_CURRENCY',
+} as const
 
 /**
  * Permission and entitlement check for an OA2 page. A change needs the permission AND this module AND the accounting core to be

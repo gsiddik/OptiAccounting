@@ -3,13 +3,16 @@ import { amountToApi, formatAmount, type Account } from '../../../lib/accounting
 import { fieldError } from '../../../lib/forms'
 import type { ExpenseCategory } from '../../../lib/operational'
 import { accountLabel, type DimensionCatalog } from '../../accounting/data'
+import { placesHint } from '../foreignSupport'
+import { TaxCodeField, TaxPreviewNote } from '../taxOptions'
+import { type TaxSupport } from '../taxSupport'
 import { emptyInvoiceLine, type InvoicePreview, type LineForm } from './invoiceForm'
 import { lineMessage } from './messages'
 
 type Role = { code: string; name: string }
 
 /** The lines of a vendor invoice: description, an amount (or quantity x unit price) and the classification the posting engine uses. */
-export function InvoiceLines({ lines, onChange, preview, categories, accounts, roles, catalog, error }: {
+export function InvoiceLines({ lines, onChange, preview, categories, accounts, roles, catalog, error, tax, fx }: {
   lines: LineForm[]
   onChange: (lines: LineForm[]) => void
   preview: InvoicePreview
@@ -18,6 +21,10 @@ export function InvoiceLines({ lines, onChange, preview, categories, accounts, r
   roles: Role[]
   catalog: DimensionCatalog
   error: unknown
+  /** Present only when the user may use tax codes: each line then offers a "Kode pajak" select and the server's preview of its tax. */
+  tax?: TaxSupport
+  /** Present only for a foreign-currency document: the currency and its decimal places, for the amount hints. */
+  fx?: { code: string; places: number } | null
 }) {
   const patch = (key: string, change: Partial<LineForm>) => onChange(lines.map((l) => (l.key === key ? { ...l, ...change } : l)))
   const destinations = accounts.filter((a) => a.status === 'ACTIVE' && a.is_postable && !a.is_control && (a.account_type === 'EXPENSE' || a.account_type === 'ASSET'))
@@ -54,9 +61,15 @@ export function InvoiceLines({ lines, onChange, preview, categories, accounts, r
                   <p className="muted full" style={{ margin: 0 }}>Jumlah baris (pratinjau): <span className="money">{shownAmount === null ? '—' : formatAmount(amountToApi(shownAmount))}</span></p>
                 </>
               ) : (
-                <Field label={`Jumlah baris ${n}`} error={problem(i, 'amount')}>
+                <Field label={`Jumlah baris ${n}`} error={problem(i, 'amount')} hint={placesHint(fx ?? null, line.amount) ?? (line.tax_code_id ? 'Jumlah yang Anda masukkan; untuk kode pajak inklusif sudah termasuk pajak.' : undefined)}>
                   {(p) => <input className="input amount" inputMode="decimal" autoComplete="off" placeholder="0" value={line.amount} onChange={(e) => patch(line.key, { amount: e.target.value })} {...p} />}
                 </Field>
+              )}
+              {tax && (
+                <>
+                  <TaxCodeField label={`Kode pajak baris ${n}`} value={line.tax_code_id} codes={tax.codes} onChange={(id) => patch(line.key, { tax_code_id: id })} error={problem(i, 'tax_code_id')} />
+                  <TaxPreviewNote codeId={line.tax_code_id} amount={shownAmount !== null && shownAmount > 0n ? amountToApi(shownAmount) : ''} date={tax.date} foreign={tax.foreign} />
+                </>
               )}
               <Field label={`Kategori beban baris ${n}`} error={problem(i, 'expense_category_id')}>
                 {(p) => (

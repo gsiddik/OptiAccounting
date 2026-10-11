@@ -49,6 +49,13 @@ export type JournalLine = {
   reference: string | null
   debit: string
   credit: string
+  /** Transaction-currency snapshot of the line (the ledger sums debit/credit; these show what was entered in a foreign currency). */
+  transaction_currency?: string
+  transaction_debit?: string
+  transaction_credit?: string
+  exchange_rate?: string
+  /** A realised exchange difference posted by the system when a foreign document is settled. */
+  is_fx_difference?: boolean
   branch_id: string | null
   business_unit_id: string | null
   cost_center_id: string | null

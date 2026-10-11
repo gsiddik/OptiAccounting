@@ -22,6 +22,9 @@ use Illuminate\Support\Facades\DB;
  */
 class PostingRuleService
 {
+    /** The roles of the realised exchange difference: their lines are functional-currency results without a foreign leg. */
+    public const FX_ROLES = ['FX_GAIN', 'FX_LOSS'];
+
     public function __construct(
         private readonly AuditService $audit,
         private readonly AccountMappingService $mappings,
@@ -202,8 +205,9 @@ class PostingRuleService
      * amounts); both refinements are explicit data in the payload and therefore part of the stored posting snapshot:
      *  - `role_accounts`: {ROLE: account_id} the account this document names for a role (a vendor's payable override, the GL
      *    account of the cash/bank account chosen on a payment);
-     *  - `distribution`: {amount_key: [{amount, account_id?|account_role?, description?, cost_center_id?}]} spreads one rule line
-     *    over several destinations (invoice lines classified to different expense accounts); the parts must add up to the component.
+     *  - `distribution`: {amount_key: [{amount, account_id?|account_role?, description?, cost_center_id?, branch_id?, business_unit_id?, transaction?}]} spreads one
+     *    rule line over several destinations (invoice lines classified to different expense accounts, one depreciation journal over the branches of
+     *    its assets); the parts must add up to the component. A part that names no branch or business unit takes the event's.
      * Resolution order for a line: the part's account, the document's role account, the tenant mapping (DOCUMENT-bound roles have no mapping).
      *
      * @param  array<string,mixed>  $payload
@@ -245,10 +249,18 @@ class PostingRuleService
                 }
                 $role = (string) ($part['account_role'] ?? $line->account_role);
                 $resolved = $this->resolveAccount($role, $part['account_id'] ?? null, $roleAccounts, $branch, $unit);
-                $lines[] = [
+                $built = [
                     'account_id' => $resolved['account']->id, $side => Money::str($partAmount), 'description' => $part['description'] ?? $line->description,
-                    'branch_id' => $branch, 'business_unit_id' => $unit, 'cost_center_id' => $part['cost_center_id'] ?? $dimensions['cost_center_id'] ?? null,
+                    'branch_id' => array_key_exists('branch_id', $part) ? $part['branch_id'] : $branch, 'business_unit_id' => array_key_exists('business_unit_id', $part) ? $part['business_unit_id'] : $unit,
+                    'cost_center_id' => $part['cost_center_id'] ?? $dimensions['cost_center_id'] ?? null,
                 ];
+                if (isset($part['transaction'])) {
+                    $built['transaction'] = $part['transaction']; // a foreign-currency part: currency, amount and rate beside the functional amount of the line
+                }
+                if (in_array($role, self::FX_ROLES, true)) {
+                    $built['fx_difference'] = true;
+                }
+                $lines[] = $built;
                 $trace[] = [
                     'line' => $line->line_number, 'side' => $line->side, 'account_role' => $role, 'amount_key' => $line->amount_key, 'amount' => Money::str($partAmount),
                     'account_id' => $resolved['account']->id, 'account_code' => $resolved['account']->code, 'account_name' => $resolved['account']->name,

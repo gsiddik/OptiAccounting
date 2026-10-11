@@ -129,8 +129,8 @@ class CashTransactionTest extends TestCase
         $this->postJson($uri, $this->body($bank->id, '6000'))->assertStatus(422)->assertJsonPath('code', 'ACCOUNT_NOT_POSTABLE');
         $this->postJson($uri, $this->body($bank->id, '6900', ['counter_account_id' => (string) Str::uuid()]))->assertStatus(422)->assertJsonPath('code', 'ACCOUNT_NOT_FOUND');
         $this->postJson($uri, $this->body($bank->id, '6900', ['counter_account_id' => null]))->assertStatus(422)->assertJsonValidationErrors('counter_account_id');
-        $this->postJson(self::AP."/accounts/{$this->account($this->tenant, '6600')->id}/status", ['status' => 'INACTIVE'])->assertOk();
-        $this->postJson($uri, $this->body($bank->id, '6600'))->assertStatus(422)->assertJsonPath('code', 'ACCOUNT_INACTIVE');
+        $this->postJson(self::AP."/accounts/{$this->account($this->tenant, '6400')->id}/status", ['status' => 'INACTIVE'])->assertOk();
+        $this->postJson($uri, $this->body($bank->id, '6400'))->assertStatus(422)->assertJsonPath('code', 'ACCOUNT_INACTIVE');
         $this->assertSame(0, $this->rows('cash_transactions'));
 
         // A foreign tenant's account looks missing.

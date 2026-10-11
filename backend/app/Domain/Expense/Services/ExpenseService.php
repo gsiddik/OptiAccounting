@@ -31,7 +31,9 @@ use App\Domain\Payables\Services\ApSubledgerService;
 use App\Domain\Payables\Services\PaymentTermService;
 use App\Domain\Payables\Services\VendorService;
 use App\Domain\Shared\DomainException;
+use App\Domain\Tax\Services\TaxDocumentService;
 use App\Support\TenantContext;
+use Brick\Math\BigDecimal;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 
@@ -63,6 +65,7 @@ class ExpenseService
         private readonly ApSubledgerService $subledger,
         private readonly AuditService $audit,
         private readonly TenantContext $context,
+        private readonly TaxDocumentService $taxes,
     ) {}
 
     // ------------------------------------------------------------------------------------------------ queries
@@ -125,6 +128,7 @@ class ExpenseService
             $expense->status = Expense::DRAFT;
             $expense->created_by = $actor->id;
             $expense->save();
+            $this->syncTax($expense, $prepared, $actor);
             $this->workflow->created($expense, $actor->id);
             $this->audit->record('expense.expense.created', 'expense', $expense->id, null, $this->summary($expense));
 
@@ -143,6 +147,7 @@ class ExpenseService
             $expense->fill($prepared['header']);
             $expense->forceFill($prepared['columns']);
             $expense->save();
+            $this->syncTax($expense, $prepared, $actor);
             $this->audit->record('expense.expense.updated', 'expense', $expense->id, $before, $this->summary($expense->refresh()));
 
             return $this->load($expense);
@@ -173,7 +178,12 @@ class ExpenseService
 
     public function cancel(Expense $expense, User $actor, string $reason): Expense
     {
-        return $this->load($this->workflow->cancel($expense, $actor, $reason));
+        return DB::transaction(function () use ($expense, $actor, $reason) {
+            $cancelled = $this->workflow->cancel($expense, $actor, $reason);
+            $this->taxes->discard(Expense::DOCUMENT_TYPE, $cancelled->id);
+
+            return $this->load($cancelled);
+        });
     }
 
     // ------------------------------------------------------------------------------------------------ posting
@@ -191,7 +201,8 @@ class ExpenseService
             ['vendor' => $vendor, 'cash' => $cash, 'category' => $category] = $this->validateForPosting($expense, $actor, true);
 
             $payable = $expense->settlement === Expense::PAYABLE;
-            $payload = $this->payload($expense, $category, $vendor, $cash);
+            $tax = $this->taxes->postingParts(Expense::DOCUMENT_TYPE, $expense->id);
+            $payload = $this->payload($expense, $category, $vendor, $cash, $tax);
             $dims = ['branch_id' => $expense->branch_id, 'business_unit_id' => $expense->business_unit_id, 'cost_center_id' => $expense->cost_center_id];
 
             $event = $this->engine->postEvent(
@@ -208,6 +219,7 @@ class ExpenseService
                 $this->assertPaidJournal($journal, $expense->total_amount, $cash->account_id);
                 $this->workflow->markPosted($expense, $actor, $journal, $event, 'EXPENSE', 'EXP', ['gl_account_id' => $cash->account_id]);
             }
+            $this->taxes->markPosted(Expense::DOCUMENT_TYPE, $expense->id, $journal, $expense->document_number);
 
             return $this->load($expense);
         });
@@ -241,6 +253,7 @@ class ExpenseService
             if ($payable !== null) {
                 $this->workflow->markReversed($payable, $actor, $reversal, $reason);
             }
+            $this->taxes->markReversed(Expense::DOCUMENT_TYPE, $expense->id, $reversal);
 
             return $this->load($expense);
         });
@@ -297,6 +310,7 @@ class ExpenseService
             $cash = $this->cashAccounts->usable($expense->cash_bank_account_id, $lock);
         }
 
+        $this->taxes->assertCurrent(Expense::DOCUMENT_TYPE, $expense->id, $actor, $lock);
         $postingDate = $expense->posting_date->toDateString();
         $this->readiness->assertCanPost($postingDate, JournalEntry::SYSTEM);
         $this->periods->resolveForPosting($postingDate, $this->authority->canPostSoftClosed($actor));
@@ -337,11 +351,15 @@ class ExpenseService
         $expenseDate = $date($field('expense_date')) ?? throw new DomainException('The expense date is required.', 'EXPENSE_DATE_REQUIRED', 422, ['field' => 'expense_date']);
         $postingDate = $date(array_key_exists('posting_date', $data) && $data['posting_date'] !== null ? $data['posting_date'] : ($existing?->posting_date ?? $expenseDate));
 
-        $net = Money::parse($field('net_amount'), $scale, 'net_amount');
-        if ($net->isLessThanOrEqualTo(0)) {
+        // The amount is kept as entered; with a tax code the net is the base the code leaves (for an inclusive code, the amount without tax).
+        $taxCodeId = $field('tax_code_id');
+        $entered = Money::parse(array_key_exists('net_amount', $data) ? $data['net_amount'] : ($existing?->tax_code_id ? $existing->entered_amount : $existing?->net_amount), $scale, 'net_amount');
+        if ($entered->isLessThanOrEqualTo(0)) {
             throw new DomainException('The expense amount must be greater than zero.', 'EXPENSE_AMOUNT_INVALID', 422, ['field' => 'net_amount']);
         }
-        $tax = Money::parse($field('tax_amount'), $scale, 'tax_amount');
+        $app = $this->taxes->apply(TaxDocumentService::INPUT, [['amount' => $entered, 'tax_code_id' => $taxCodeId]], substr((string) $expenseDate, 0, 10), $scale, $actor);
+        $net = $app->lines[0]['amount'];
+        $tax = $this->taxes->headerTax($app, $data, $existing?->id ? Expense::DOCUMENT_TYPE : null, $existing?->id, $existing?->tax_amount, BigDecimal::zero(), $scale);
         $total = $net->plus($tax);
 
         $vendor = $cash = null;
@@ -380,8 +398,18 @@ class ExpenseService
                 'cash_bank_account_id' => $cash?->id,
                 'branch_id' => $dims['branch_id'], 'business_unit_id' => $dims['business_unit_id'], 'cost_center_id' => $dims['cost_center_id'],
                 'net_amount' => Money::str($net), 'tax_amount' => Money::str($tax), 'total_amount' => Money::str($total),
+                'tax_code_id' => $app->active() ? $taxCodeId : null, 'entered_amount' => $app->active() ? Money::str($entered) : null,
             ] + ($existing === null ? ['description' => $data['description'] ?? throw new DomainException('The description is required.', 'DESCRIPTION_REQUIRED', 422, ['field' => 'description'])] : []),
+            'tax' => $app, 'tax_date' => substr((string) $expenseDate, 0, 10), 'vendor' => $vendor,
         ];
+    }
+
+    /** Keep the DRAFT tax transaction of the expense (one, for the whole document) in step with what was just saved. */
+    private function syncTax(Expense $expense, array $prepared, User $actor): void
+    {
+        $vendor = $prepared['vendor'];
+        $this->taxes->sync(Expense::DOCUMENT_TYPE, TaxDocumentService::INPUT, $expense, false, $prepared['tax'], $prepared['tax_date'],
+            ['type' => 'vendor', 'id' => $vendor?->id, 'name' => $vendor?->name ?? $expense->payee_name, 'tax_id' => $vendor?->tax_id], $actor);
     }
 
     // ------------------------------------------------------------------------------------------------ posting payload
@@ -392,17 +420,20 @@ class ExpenseService
      *
      * @return array<string,mixed>
      */
-    private function payload(Expense $expense, ExpenseCategory $category, ?Vendor $vendor, ?CashBankAccount $cash): array
+    private function payload(Expense $expense, ExpenseCategory $category, ?Vendor $vendor, ?CashBankAccount $cash, array $tax): array
     {
         $accountId = $expense->account_id ?? $category->account_id;
         $part = array_filter([
-            'amount' => Money::str($expense->net_amount), 'account_id' => $accountId, 'account_role' => $accountId ? null : $category->account_role,
+            'amount' => Money::str(BigDecimal::of($expense->net_amount)->plus($tax['cost'][0] ?? 0)), // a non-recoverable tax is a cost of the expense
+            'account_id' => $accountId, 'account_role' => $accountId ? null : $category->account_role,
             'description' => mb_substr($expense->description, 0, 255), 'cost_center_id' => $expense->cost_center_id,
         ], fn ($v) => $v !== null);
 
+        // with a tax code the recoverable tax is booked by account and the rest sits in the cost; a manual tax keeps its single tax line
+        $taxAmount = $tax['managed'] ? $tax['recoverable'] : BigDecimal::of($expense->tax_amount);
         $payload = [
-            'net' => Money::str($expense->net_amount), 'tax' => Money::str($expense->tax_amount), 'total' => Money::str($expense->total_amount),
-            'distribution' => ['net' => [$part]],
+            'net' => Money::str(BigDecimal::of($expense->total_amount)->minus($taxAmount)), 'tax' => Money::str($taxAmount), 'total' => Money::str($expense->total_amount),
+            'distribution' => ['net' => [$part]] + ($tax['parts'] === [] ? [] : ['tax' => $tax['parts']]),
         ];
         if ($expense->settlement === Expense::PAYABLE && $vendor?->payable_account_id) {
             $payload['role_accounts'] = ['ACCOUNTS_PAYABLE' => $vendor->payable_account_id];

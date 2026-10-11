@@ -6,10 +6,14 @@ import { formatDate, formatDateTime } from '../../lib/format'
 import { useResource } from '../../lib/hooks'
 import { API, MODULES, useModuleAccess } from '../../lib/operational'
 import { invoiceOriginLabels } from '../../lib/operationalLabels'
+import { ForeignFacts } from './foreign'
+import { isForeignDoc } from './foreignSupport'
 import { plainAmount } from './payables/invoiceForm'
 import { statusLabel } from '../../lib/labels'
 import type { Invoice, InvoiceLine } from './payables/types'
 import { Money, ReadOnlyNotice, Timeline } from './shared'
+import { TaxAmountCell, TaxCodeCell } from './taxOptions'
+import { useLineTaxFacts } from './taxSupport'
 import { useDocumentActions } from './workflow'
 
 export default function ApInvoiceDetail() {
@@ -40,6 +44,9 @@ function InvoiceView({ invoice: inv, reload }: { invoice: Invoice; reload: () =>
   })
   const settled = inv.status === 'POSTED'
   const allocations = inv.allocations ?? []
+  const foreign = isForeignDoc(inv)
+  // Tax code, rate and tax per line from the server, only when a line carries a tax code (and the user may read tax codes).
+  const tax = useLineTaxFacts(inv.lines ?? [], inv.document_date, foreign)
 
   return (
     <>
@@ -79,6 +86,7 @@ function InvoiceView({ invoice: inv, reload }: { invoice: Invoice; reload: () =>
           <div><dt>Jatuh tempo</dt><dd>{formatDate(inv.due_date)}{inv.due_date_overridden && <span className="muted"> (diisi manual)</span>}</dd></div>
           <div><dt>Termin pembayaran</dt><dd>{inv.payment_term ? `${inv.payment_term.code} · ${inv.payment_term.name}` : '—'}</dd></div>
           <div><dt>Mata uang</dt><dd>{inv.currency}</dd></div>
+          <ForeignFacts doc={inv} total={{ label: 'Total', value: inv.total_amount }} />
           <div><dt>Referensi</dt><dd>{inv.reference ?? '—'}</dd></div>
           {(inv.branch || inv.business_unit || inv.cost_center) && (
             <div><dt>Dimensi</dt><dd>{[inv.branch && `Cabang ${inv.branch.code}`, inv.business_unit && `Unit ${inv.business_unit.code}`, inv.cost_center && `Biaya ${inv.cost_center.code}`].filter(Boolean).join(' · ')}</dd></div>
@@ -105,16 +113,22 @@ function InvoiceView({ invoice: inv, reload }: { invoice: Invoice; reload: () =>
               { header: 'Deskripsi', primary: true, cell: (l) => <>{l.description}{classification(l) && <div className="muted">{classification(l)}</div>}</> },
               { header: 'Kuantitas × harga', align: 'right', cell: (l) => (l.quantity !== null && l.unit_price !== null ? <>{plainAmount(l.quantity)} × <Money value={l.unit_price} /></> : <span className="muted">—</span>) },
               { header: 'Pusat biaya', cell: (l) => (l.cost_center ? l.cost_center.code : <span className="muted">—</span>) },
-              { header: 'Jumlah', align: 'right', cell: (l) => <Money value={l.amount} /> },
+              ...(tax.taxed ? [
+                { header: 'Kode pajak', cell: (l: InvoiceLine) => <TaxCodeCell taxCodeId={l.tax_code_id} fact={tax.facts[l.id]} /> },
+                { header: 'Pajak', align: 'right' as const, cell: (l: InvoiceLine) => <TaxAmountCell taxCodeId={l.tax_code_id} fact={tax.facts[l.id]} /> },
+              ] : []),
+              { header: tax.taxed ? 'Dasar (jumlah)' : 'Jumlah', align: 'right', cell: (l) => <><Money value={l.amount} />{l.tax_code_id && l.entered_amount != null && l.entered_amount !== l.amount && <div className="muted">Diinput <Money value={l.entered_amount} /></div>}</> },
             ]}
           />
         )}
+        {tax.taxed && <div className="card-body"><p className="muted preview-note">Kode pajak, tarif dan pajak per baris adalah hitungan server atas jumlah yang diinput, dengan tarif pada tanggal dokumen{foreign ? '; pajak faktur mata uang asing hanya tampil pada total' : ''}. Total pajak faktur adalah angka tersimpan.</p></div>}
         <div className="table-total">
           <span>Subtotal <Money value={inv.subtotal_amount} /></span>
           <span>Diskon <Money value={inv.discount_amount} /></span>
           <span>Pajak <Money value={inv.tax_amount} /></span>
           <span>Biaya lain <Money value={inv.other_charges_amount} /></span>
-          <span>Total <Money value={inv.total_amount} strong /></span>
+          <span>Total{foreign ? ` ${inv.currency}` : ''} <Money value={inv.total_amount} strong /></span>
+          {foreign && <span>Total fungsional <Money value={inv.functional_total_amount} strong /></span>}
         </div>
       </Card>
 
@@ -125,6 +139,7 @@ function InvoiceView({ invoice: inv, reload }: { invoice: Invoice; reload: () =>
               <div><dt>Total faktur</dt><dd><Money value={inv.total_amount} /></dd></div>
               <div><dt>Sudah dibayar</dt><dd><Money value={inv.paid_amount} /></dd></div>
               <div><dt>Saldo terutang</dt><dd><Money value={inv.outstanding_amount} strong /></dd></div>
+              {foreign && inv.outstanding_functional != null && <div><dt>Saldo fungsional</dt><dd><Money value={inv.outstanding_functional} strong /></dd></div>}
               <div><dt>Status bayar</dt><dd>{inv.payment_status ? <StatusBadge status={inv.payment_status} /> : '—'}</dd></div>
             </dl>
             <p className="muted preview-note">Saldo dihitung server dari alokasi pembayaran yang sudah diposting; tidak ada saldo yang disimpan atau diubah manual.</p>

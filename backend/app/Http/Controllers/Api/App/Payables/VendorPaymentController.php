@@ -37,20 +37,22 @@ class VendorPaymentController extends AppController
     }
 
     /** Posted invoices of a vendor with what is still outstanding, oldest due date first: the choices a payment allocates to. */
-    public function openInvoices(Vendor $vendor): JsonResponse
+    public function openInvoices(Request $request, Vendor $vendor): JsonResponse
     {
-        return response()->json(['data' => $this->subledger->openInvoices($vendor->id)->map->only([
-            'id', 'document_number', 'vendor_invoice_number', 'posting_date', 'due_date', 'total_amount', 'paid_amount', 'outstanding_amount', 'payment_status', 'branch',
+        $currency = $request->validate(['currency' => ['nullable', 'regex:/^[A-Z]{3}$/']])['currency'] ?? null;
+
+        return response()->json(['data' => $this->subledger->openInvoices($vendor->id, $currency)->map->only([
+            'id', 'document_number', 'vendor_invoice_number', 'posting_date', 'due_date', 'currency', 'exchange_rate', 'total_amount', 'paid_amount', 'outstanding_amount', 'outstanding_functional', 'payment_status', 'branch',
         ])->values()]);
     }
 
     /** The backend's own proposal for applying an amount to the open invoices (oldest due first); the client never computes allocations. */
     public function suggest(Request $request, Vendor $vendor): JsonResponse
     {
-        $data = $request->validate(['amount' => ['required'], 'posting_date' => ['nullable', 'date_format:Y-m-d']]);
+        $data = $request->validate(['amount' => ['required'], 'posting_date' => ['nullable', 'date_format:Y-m-d'], 'currency' => ['nullable', 'regex:/^[A-Z]{3}$/']]);
         $amount = Money::parse($data['amount'], 4, 'amount');
 
-        return response()->json(['data' => $this->payments->suggest($vendor, $amount, $data['posting_date'] ?? null)]);
+        return response()->json(['data' => $this->payments->suggest($vendor, $amount, $data['posting_date'] ?? null, $data['currency'] ?? null)]);
     }
 
     public function store(Request $request): JsonResponse
@@ -126,7 +128,7 @@ class VendorPaymentController extends AppController
 
         return $request->validate([
             'vendor_id' => [$req, 'uuid'], 'cash_bank_account_id' => [$req, 'uuid'], 'amount' => [$req],
-            'payment_date' => [$req, 'date_format:Y-m-d'], 'posting_date' => ['nullable', 'date_format:Y-m-d'], 'currency' => ['nullable', 'regex:/^[A-Z]{3}$/'],
+            'payment_date' => [$req, 'date_format:Y-m-d'], 'posting_date' => ['nullable', 'date_format:Y-m-d'], 'currency' => ['nullable', 'regex:/^[A-Z]{3}$/'], 'exchange_rate_type' => ['nullable', 'in:SPOT,DAILY,MONTH_END,MANUAL'],
             'payment_method' => ['nullable', Rule::in(VendorPayment::METHODS)], 'reference' => ['nullable', 'string', 'max:100'], 'description' => ['nullable', 'string', 'max:500'],
             'branch_id' => ['nullable', 'uuid'], 'business_unit_id' => ['nullable', 'uuid'], 'cost_center_id' => ['nullable', 'uuid'],
             'auto_allocate' => ['sometimes', 'boolean'], 'allocations' => ['sometimes', 'array', 'max:200'],

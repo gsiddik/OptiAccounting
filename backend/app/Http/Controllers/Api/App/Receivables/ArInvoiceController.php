@@ -109,14 +109,14 @@ class ArInvoiceController extends AppController
         return $request->validate([
             'customer_id' => [$req, 'uuid'], 'customer_reference' => ['nullable', 'string', 'max:100'],
             'document_date' => [$req, 'date_format:Y-m-d'], 'posting_date' => ['nullable', 'date_format:Y-m-d'], 'due_date' => ['nullable', 'date_format:Y-m-d'],
-            'payment_term_id' => ['nullable', 'uuid'], 'currency' => ['nullable', 'regex:/^[A-Z]{3}$/'],
+            'payment_term_id' => ['nullable', 'uuid'], 'currency' => ['nullable', 'regex:/^[A-Z]{3}$/'], 'exchange_rate_type' => ['nullable', 'in:SPOT,DAILY,MONTH_END,MANUAL'],
             'description' => [$req, 'string', 'max:500'], 'reference' => ['nullable', 'string', 'max:100'],
             'branch_id' => ['nullable', 'uuid'], 'business_unit_id' => ['nullable', 'uuid'], 'cost_center_id' => ['nullable', 'uuid'],
             'discount_amount' => ['nullable'], 'tax_amount' => ['nullable'], 'other_charges_amount' => ['nullable'],
             'lines' => [$req, 'array', 'min:1', 'max:300'],
             'lines.*.description' => ['required', 'string', 'max:255'], 'lines.*.quantity' => ['nullable'], 'lines.*.unit_price' => ['nullable'], 'lines.*.amount' => ['nullable'],
             'lines.*.account_role' => ['nullable', 'string', 'max:40'], 'lines.*.account_id' => ['nullable', 'uuid'],
-            'lines.*.cost_center_id' => ['nullable', 'uuid'], 'lines.*.metadata' => ['nullable', 'array', 'max:20'],
+            'lines.*.cost_center_id' => ['nullable', 'uuid'], 'lines.*.tax_code_id' => ['nullable', 'uuid'], 'lines.*.metadata' => ['nullable', 'array', 'max:20'],
         ]);
     }
 }

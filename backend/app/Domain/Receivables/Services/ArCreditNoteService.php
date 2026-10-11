@@ -308,6 +308,10 @@ class ArCreditNoteService
         if ($existing !== null && $existing->ar_invoice_id !== $invoice->id) {
             throw new DomainException('The invoice of a credit note cannot be changed; create a new note.', 'AR_CREDIT_NOTE_INVOICE_LOCKED', 422, ['field' => 'ar_invoice_id']);
         }
+        if ($invoice->exchange_rate_id !== null) {
+            // a credit note would have to reverse the invoice at its own rate and recompute the exchange difference of earlier receipts: not part of OA4
+            throw new DomainException('A credit note cannot be raised against a foreign-currency invoice; reverse the invoice or settle it with receipts.', 'AR_CREDIT_NOTE_FOREIGN_INVOICE', 422, ['field' => 'ar_invoice_id', 'currency' => $invoice->currency]);
+        }
         $customer = Customer::query()->findOrFail($invoice->customer_id);
         if ($existing === null) {
             $this->customers->assertUsable($customer);

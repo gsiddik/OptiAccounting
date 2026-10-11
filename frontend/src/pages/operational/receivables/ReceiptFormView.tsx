@@ -8,6 +8,8 @@ import { useResource } from '../../../lib/hooks'
 import { API, MODULES, useCashBankAccounts, useCustomers, useModuleAccess } from '../../../lib/operational'
 import { paymentMethodLabels } from '../../../lib/operationalLabels'
 import { useDimensions } from '../../accounting/data'
+import { CurrencyFields, ExchangeRateLink } from '../foreign'
+import { currencyChoiceFrom, currencyPayload, isForeignDoc, placesHint, useForeignSupport, type CurrencyChoice } from '../foreignSupport'
 import { AllocationSummary, AllocationTable, type AllocationLabels, type AllocationRow } from '../payables/AllocationTable'
 import { useBusinessDate } from '../payables/lists'
 import { allocationErrorFor, errorText, fieldMessage, useAct } from '../payables/messages'
@@ -35,19 +37,35 @@ export function ReceiptFormView({ receipt }: { receipt: Receipt | null }) {
   const customerList = useCustomers('ACTIVE')
   const cash = useCashBankAccounts('ACTIVE')
   const { catalog } = useDimensions()
+  const foreign = useForeignSupport()
 
   const [h, setH] = useState<ReceiptHeader>(() => receiptHeaderFrom(receipt, today))
   const [alloc, setAlloc] = useState<AllocationInputs>(() => receiptAllocationsFrom(receipt))
+  const [choice, setChoice] = useState<CurrencyChoice>(() => currencyChoiceFrom(receipt))
   const [hint, setHint] = useState<string | null>(null)
   const set = (patch: Partial<ReceiptHeader>) => setH((s) => ({ ...s, ...patch }))
 
-  const open = useResource(async () => (h.customer_id ? (await api.get<{ data: OpenArInvoice[] }>(`${API}/customers/${h.customer_id}/open-invoices`)).data.data : []), [h.customer_id])
+  // A receipt settles invoices of its own currency only: the open invoices and the allocation proposal are asked for the receipt's currency.
+  const open = useResource(
+    async () => (h.customer_id ? (await api.get<{ data: OpenArInvoice[] }>(`${API}/customers/${h.customer_id}/open-invoices`, { params: choice.currency ? { currency: choice.currency } : undefined })).data.data : []),
+    [h.customer_id, choice.currency],
+  )
+  const places = choice.currency ? foreign.placesOf(choice.currency) : null
+  const fx = choice.currency && places !== null ? { code: choice.currency, places } : null
+
+  function chooseCurrency(patch: Partial<CurrencyChoice>) {
+    setChoice((c) => ({ ...c, ...patch }))
+    if ('currency' in patch) setAlloc({}) // allocations belong to the invoices of the previous currency
+  }
 
   const customers = receipt?.customer && !customerList.customers.some((c) => c.id === receipt.customer_id) ? [...customerList.customers, receipt.customer] : customerList.customers
   const accounts = receipt?.cash_bank_account && !cash.accounts.some((a) => a.id === receipt.cash_bank_account_id) ? [...cash.accounts, receipt.cash_bank_account] : cash.accounts
 
   // Open invoices, plus any invoice this draft still names that is no longer open (so the user can clear it).
-  const openRows: AllocationRow[] = (open.data ?? []).map((i) => ({ id: i.id, document_number: i.document_number, reference: i.customer_reference ?? '', due_date: i.due_date, outstanding_amount: i.outstanding_amount }))
+  const openRows: AllocationRow[] = (open.data ?? []).map((i) => ({
+    id: i.id, document_number: i.document_number, reference: i.customer_reference ?? '', due_date: i.due_date, outstanding_amount: i.outstanding_amount,
+    currency: i.currency, exchange_rate: i.exchange_rate, outstanding_functional: i.outstanding_functional,
+  }))
   const staleRows: AllocationRow[] = h.customer_id === receipt?.customer_id
     ? (receipt?.allocations ?? []).filter((a) => !openRows.some((r) => r.id === a.ar_invoice_id) && a.invoice).map((a) => ({ id: a.ar_invoice_id, document_number: a.invoice?.document_number ?? null, reference: a.invoice?.customer_reference ?? '', due_date: a.invoice?.due_date ?? '', outstanding_amount: null }))
     : []
@@ -75,7 +93,7 @@ export function ReceiptFormView({ receipt }: { receipt: Receipt | null }) {
       return
     }
     setHint(null)
-    const r = await suggestion.run(async () => (await api.get<{ data: SuggestedAllocation[] }>(`${API}/customers/${h.customer_id}/allocation-suggestion`, { params: { amount: amountToApi(units), ...(h.posting_date && { posting_date: h.posting_date }) } })).data.data)
+    const r = await suggestion.run(async () => (await api.get<{ data: SuggestedAllocation[] }>(`${API}/customers/${h.customer_id}/allocation-suggestion`, { params: { amount: amountToApi(units), ...(h.posting_date && { posting_date: h.posting_date }), ...(choice.currency && { currency: choice.currency }) } })).data.data)
     if (r.ok) setAlloc(Object.fromEntries(r.value.map((a) => [a.ar_invoice_id, a.amount])))
   }
 
@@ -84,7 +102,8 @@ export function ReceiptFormView({ receipt }: { receipt: Receipt | null }) {
     setHint(problem)
     if (problem) return
     clearError()
-    const body = receiptPayload(h, alloc)
+    const currency = currencyPayload(choice, { shown: foreign.visible, wasForeign: isForeignDoc(receipt), functional: foreign.functional })
+    const body = receiptPayload(h, alloc, currency)
     const saved = await run(async () => {
       const draft = (await (receipt ? api.patch<Receipt>(`${API}/customer-receipts/${receipt.id}`, body) : api.post<Receipt>(`${API}/customer-receipts`, body))).data
       let submitError: unknown = null
@@ -115,6 +134,7 @@ export function ReceiptFormView({ receipt }: { receipt: Receipt | null }) {
       />
       <form onSubmit={(e) => { e.preventDefault(); void save(false) }} noValidate className="stack">
         {error != null && <Banner tone="bad">{errorText(error)}</Banner>}
+        <ExchangeRateLink error={error} />
         {hint && <Banner tone="warn">{hint}</Banner>}
 
         <Card title="Informasi penerimaan">
@@ -135,7 +155,8 @@ export function ReceiptFormView({ receipt }: { receipt: Receipt | null }) {
                 </select>
               )}
             </Field>
-            <Field label="Jumlah penerimaan" error={fieldMessage(error, 'amount')} hint="Mata uang fungsional.">
+            <CurrencyFields support={foreign} value={choice} onChange={chooseCurrency} date={h.posting_date} doc={receipt} error={error} />
+            <Field label="Jumlah penerimaan" error={fieldMessage(error, 'amount')} hint={placesHint(fx, h.amount) ?? 'Mata uang fungsional.'}>
               {(p) => <input className="input amount" inputMode="decimal" autoComplete="off" placeholder="0" required value={h.amount} onChange={(e) => set({ amount: e.target.value })} {...p} />}
             </Field>
             <Field label="Metode penerimaan" error={fieldMessage(error, 'receipt_method')}>
@@ -180,7 +201,7 @@ export function ReceiptFormView({ receipt }: { receipt: Receipt | null }) {
           ) : rows.length === 0 ? (
             <EmptyState title="Tidak ada faktur terbuka">Pelanggan ini tidak memiliki faktur terposting dengan saldo piutang.</EmptyState>
           ) : (
-            <AllocationTable rows={rows} values={alloc} onChange={(id, text) => setAlloc((s) => ({ ...s, [id]: text }))} errorFor={(id) => allocationErrorFor(error, sentIds, id)} labels={LABELS} />
+            <AllocationTable rows={rows} values={alloc} onChange={(id, text) => setAlloc((s) => ({ ...s, [id]: text }))} errorFor={(id) => allocationErrorFor(error, sentIds, id)} labels={LABELS} foreign={choice.currency !== ''} />
           )}
           <div className="card-body">
             <AllocationSummary preview={preview} noun="penerimaan" />

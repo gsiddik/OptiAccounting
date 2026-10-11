@@ -16,6 +16,8 @@ export type LineForm = {
   account_role: string
   account_id: string
   cost_center_id: string
+  /** Optional input tax code (only with the tax module); with one, the amount is what the user entered and the server splits base and tax. */
+  tax_code_id: string
 }
 
 export type InvoiceHeader = {
@@ -37,7 +39,7 @@ export type InvoiceHeader = {
 
 let counter = 0
 export const emptyInvoiceLine = (): LineForm => ({
-  key: `il${++counter}`, description: '', useQuantity: false, quantity: '', unit_price: '', amount: '', expense_category_id: '', account_role: '', account_id: '', cost_center_id: '',
+  key: `il${++counter}`, description: '', useQuantity: false, quantity: '', unit_price: '', amount: '', expense_category_id: '', account_role: '', account_id: '', cost_center_id: '', tax_code_id: '',
 })
 
 /** "1000000.0000" -> "1000000", "12.5000" -> "12.5": how a stored amount is shown in an input. */
@@ -61,10 +63,14 @@ export function headerFrom(invoice: Invoice | null, today: string): InvoiceHeade
     business_unit_id: invoice?.business_unit_id ?? '',
     cost_center_id: invoice?.cost_center_id ?? '',
     discount_amount: plainAmount(invoice?.discount_amount),
-    tax_amount: plainAmount(invoice?.tax_amount),
+    // With tax codes the stored tax is the server's calculation, not a manual amount: never send it back.
+    tax_amount: invoice?.lines?.some((l) => l.tax_code_id) ? '' : plainAmount(invoice?.tax_amount),
     other_charges_amount: plainAmount(invoice?.other_charges_amount),
   }
 }
+
+/** True when any line names a tax code: the document's tax then comes from the codes and the server refuses a manual tax. */
+export const hasTaxCodes = (lines: Pick<LineForm, 'tax_code_id'>[]): boolean => lines.some((l) => l.tax_code_id !== '')
 
 export function linesFromInvoice(lines: InvoiceLine[] | undefined): LineForm[] {
   if (!lines || lines.length === 0) return [emptyInvoiceLine()]
@@ -74,11 +80,13 @@ export function linesFromInvoice(lines: InvoiceLine[] | undefined): LineForm[] {
     useQuantity: l.quantity !== null && l.unit_price !== null,
     quantity: plainAmount(l.quantity),
     unit_price: plainAmount(l.unit_price),
-    amount: plainAmount(l.amount),
+    // A taxed line stores the base in `amount`; the editor works with what was entered.
+    amount: plainAmount(l.tax_code_id ? l.entered_amount : l.amount),
     expense_category_id: l.expense_category_id ?? '',
     account_role: l.account_role ?? '',
     account_id: l.account_id ?? '',
     cost_center_id: l.cost_center_id ?? '',
+    tax_code_id: l.tax_code_id ?? '',
   }))
 }
 
@@ -103,13 +111,17 @@ export function linePayload(l: LineForm) {
     account_role: l.account_role || null,
     account_id: l.account_id || null,
     cost_center_id: l.cost_center_id || null,
+    ...(l.tax_code_id ? { tax_code_id: l.tax_code_id } : {}),
   }
 }
 
 export type DuplicateOverride = { reason: string }
 
-/** The body of POST / PATCH /ap-invoices. `dueDateEditable` says whether the term lets the user name the due date. */
-export function invoicePayload(h: InvoiceHeader, lines: LineForm[], options: { dueDateEditable: boolean; override: DuplicateOverride | null }) {
+/**
+ * The body of POST / PATCH /ap-invoices. `dueDateEditable` says whether the term lets the user name the due date; `currency` is the currency part of
+ * the request (empty for a functional document of a single-currency organisation, so its payload does not change).
+ */
+export function invoicePayload(h: InvoiceHeader, lines: LineForm[], options: { dueDateEditable: boolean; override: DuplicateOverride | null; currency?: Record<string, string | null> }) {
   return {
     vendor_id: h.vendor_id,
     vendor_invoice_number: h.vendor_invoice_number.trim(),
@@ -123,9 +135,11 @@ export function invoicePayload(h: InvoiceHeader, lines: LineForm[], options: { d
     business_unit_id: h.business_unit_id || null,
     cost_center_id: h.cost_center_id || null,
     discount_amount: optionalDecimal(h.discount_amount),
-    tax_amount: optionalDecimal(h.tax_amount),
+    // The tax of a document with tax codes is calculated from its lines; a manual amount next to them is refused (TAX_AMOUNT_CONFLICT).
+    tax_amount: hasTaxCodes(lines) ? null : optionalDecimal(h.tax_amount),
     other_charges_amount: optionalDecimal(h.other_charges_amount),
     lines: lines.map(linePayload),
+    ...(options.currency ?? {}),
     ...(options.override ? { duplicate_override: true, duplicate_override_reason: options.override.reason.trim() } : {}),
   }
 }
@@ -144,17 +158,18 @@ export type InvoicePreview = {
   discountTooHigh: boolean
 }
 
-/** quantity x unit price at two decimals, half-up, as units of 1/10 000. The server rounds to the currency's own scale: this is only a preview. */
-function product(quantity: bigint, unitPrice: bigint): bigint {
-  const cents = (quantity * unitPrice + 500_000n) / 1_000_000n
-  return cents * 100n
+/** quantity x unit price at `places` decimals (two unless the currency says otherwise), half-up, as units of 1/10 000. The server rounds to the currency's own scale: this is only a preview. */
+function product(quantity: bigint, unitPrice: bigint, places: number): bigint {
+  const divisor = 10n ** BigInt(8 - places)
+  const smallest = 10n ** BigInt(4 - places)
+  return ((quantity * unitPrice + divisor / 2n) / divisor) * smallest
 }
 
 /** The part of an invoice form the preview reads: the header amounts and the quantity / price / amount of each line (also used by the receivables forms). */
 export type PreviewHeader = Pick<InvoiceHeader, 'discount_amount' | 'tax_amount' | 'other_charges_amount'>
 export type PreviewLine = Pick<LineForm, 'useQuantity' | 'quantity' | 'unit_price' | 'amount'>
 
-export function previewInvoice(h: PreviewHeader, lines: PreviewLine[]): InvoicePreview {
+export function previewInvoice(h: PreviewHeader, lines: PreviewLine[], places = 2): InvoicePreview {
   const invalid: string[] = []
   const lineAmounts = lines.map((l, i) => {
     if (l.useQuantity) {
@@ -164,7 +179,7 @@ export function previewInvoice(h: PreviewHeader, lines: PreviewLine[]): InvoiceP
         invalid.push(`baris ${i + 1}`)
         return null
       }
-      return product(q, p)
+      return product(q, p, Math.min(Math.max(places, 0), 4))
     }
     const a = parseAmount(l.amount)
     if (a === null) invalid.push(`baris ${i + 1}`)

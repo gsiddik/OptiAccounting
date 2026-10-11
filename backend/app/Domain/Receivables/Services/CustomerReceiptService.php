@@ -17,6 +17,9 @@ use App\Domain\Accounting\Support\Money;
 use App\Domain\Audit\Services\AuditService;
 use App\Domain\CashBank\Models\CashBankAccount;
 use App\Domain\CashBank\Services\CashBankAccountService;
+use App\Domain\Currency\Services\ForeignDocumentService;
+use App\Domain\Currency\Services\ForeignPostingService;
+use App\Domain\Currency\Services\ResolvedRate;
 use App\Domain\Identity\Models\User;
 use App\Domain\Receivables\Models\ArCreditNote;
 use App\Domain\Receivables\Models\ArInvoice;
@@ -38,6 +41,10 @@ use Illuminate\Support\Str;
  * shared mechanism and releases the allocations in the same transaction. Outstanding is derived (see ArSubledgerService); no
  * balance is ever written. A receipt is allocated in full: customer advances and prereceipts do not exist in OA2, so nothing can make
  * a receivable negative.
+ *
+ * A receipt in a foreign currency settles invoices of that currency only. It has its own rate (the one in force on its posting date); the
+ * invoices keep the value they were recognised at (`carrying`), the bank receives the receipt at its own rate (`settlement`) and the difference
+ * is the realised exchange gain or loss, booked by CUSTOMER_RECEIPT_FX in the same journal (ForeignPostingService::settle).
  */
 class CustomerReceiptService
 {
@@ -56,6 +63,8 @@ class CustomerReceiptService
         private readonly ArSubledgerService $subledger,
         private readonly AuditService $audit,
         private readonly TenantContext $context,
+        private readonly ForeignDocumentService $foreign,
+        private readonly ForeignPostingService $fxPosting,
     ) {}
 
     // ------------------------------------------------------------------------------------------------ queries
@@ -179,18 +188,24 @@ class CustomerReceiptService
             $invoices = ArInvoice::query()->whereIn('id', $allocations->pluck('ar_invoice_id'))->orderBy('id')->lockForUpdate()->get()->keyBy('id');
             $this->assertSettleable($receipt, $allocations->all(), $invoices->all());
 
-            $payload = $this->payload($receipt, $allocations->all(), $invoices->all(), $cash->account_id, (int) $this->workflow->profile()->currency_scale);
+            $profile = $this->workflow->profile();
+            $rate = $this->foreign->current($receipt, $receipt->posting_date->toDateString(), true); // the rate row is held until this posting commits
+            $settlement = $rate->foreign() ? $this->settlement($receipt, $allocations->all(), $invoices->all(), $rate, $profile) : null;
+            $payload = $settlement === null
+                ? $this->payload($receipt, $allocations->all(), $invoices->all(), $cash->account_id, (int) $profile->currency_scale)
+                : $this->foreignPayload($receipt, $allocations->all(), $invoices->all(), $cash->account_id, $rate, $settlement);
             $dims = ['branch_id' => $receipt->branch_id, 'business_unit_id' => $receipt->business_unit_id, 'cost_center_id' => $receipt->cost_center_id];
 
             $event = $this->engine->postEvent(
-                'CUSTOMER_RECEIPT', CustomerReceipt::DOCUMENT_TYPE, $receipt->id, $receipt->posting_date->toDateString(), $payload, $dims, 'POST',
+                $settlement === null ? 'CUSTOMER_RECEIPT' : 'CUSTOMER_RECEIPT_FX', CustomerReceipt::DOCUMENT_TYPE, $receipt->id, $receipt->posting_date->toDateString(), $payload, $dims, 'POST',
                 mb_substr("Penerimaan pelanggan {$receipt->customer->code}", 0, 500), $receipt->reference, $actor, $this->authority->canPostSoftClosed($actor),
             );
             $journal = JournalEntry::query()->findOrFail($event->journal_entry_id);
-            $this->assertJournal($journal, $receipt->amount);
+            $settlement === null ? $this->assertJournal($journal, $receipt->amount) : $this->assertForeignJournal($journal, $settlement);
 
-            $this->workflow->markPosted($receipt, $actor, $journal, $event, 'CUSTOMER_RECEIPT', 'RCT', ['gl_account_id' => $cash->account_id]);
-            $this->makeEffective($receipt, $allocations->all(), $invoices->all());
+            $this->workflow->markPosted($receipt, $actor, $journal, $event, 'CUSTOMER_RECEIPT', 'RCT', ['gl_account_id' => $cash->account_id]
+                + ($settlement === null ? [] : ['functional_amount' => Money::str($settlement['settlement']), 'fx_difference' => Money::str($settlement['difference'])]));
+            $this->makeEffective($receipt, $allocations->all(), $invoices->all(), $settlement);
 
             return $this->load($receipt);
         });
@@ -205,6 +220,7 @@ class CustomerReceiptService
                 throw new DomainException($receipt->status === CustomerReceipt::REVERSED ? 'This receipt has already been reversed.' : 'Only a posted receipt can be reversed.', $receipt->status === CustomerReceipt::REVERSED ? 'AR_RECEIPT_ALREADY_REVERSED' : 'AR_RECEIPT_NOT_POSTED', 409, ['status' => $receipt->status]);
             }
             $this->authority->assertLedgerWritable($actor);
+            $this->foreign->assertWritable($actor, $receipt);
             $allocations = ArReceiptAllocation::query()->where('customer_receipt_id', $receipt->id)->orderBy('ar_invoice_id')->get();
             ArInvoice::query()->whereIn('id', $allocations->pluck('ar_invoice_id'))->orderBy('id')->lockForUpdate()->get();
 
@@ -248,6 +264,11 @@ class CustomerReceiptService
         }
 
         $postingDate = $receipt->posting_date->toDateString();
+        $this->foreign->assertWritable($actor, $receipt);
+        $rate = $this->foreign->current($receipt, $postingDate, $lock);
+        if ($rate->foreign() && ! $rate->convert(BigDecimal::of($receipt->amount))->isEqualTo($receipt->functional_amount)) {
+            throw new DomainException('The functional amount of this receipt no longer matches its exchange rate.', 'EXCHANGE_RATE_CHANGED', 409);
+        }
         $this->readiness->assertCanPost($postingDate, JournalEntry::SYSTEM);
         $this->periods->resolveForPosting($postingDate, $this->authority->canPostSoftClosed($actor));
 
@@ -276,6 +297,9 @@ class CustomerReceiptService
             if ($invoice->customer_id !== $receipt->customer_id) {
                 throw new DomainException('A receipt settles invoices of its own customer only.', 'AR_ALLOCATION_CUSTOMER_MISMATCH', 422, ['ar_invoice_id' => $invoice->id]);
             }
+            if ($invoice->currency !== $receipt->currency) {
+                throw new DomainException('A receipt settles invoices in its own currency only.', 'AR_ALLOCATION_CURRENCY_MISMATCH', 422, ['ar_invoice_id' => $invoice->id, 'invoice_currency' => $invoice->currency, 'receipt_currency' => $receipt->currency]);
+            }
             if ($invoice->posting_date->toDateString() > $receipt->posting_date->toDateString()) {
                 throw new DomainException('A receipt cannot be posted before the invoice it settles.', 'AR_RECEIPT_BEFORE_INVOICE', 422, ['document_number' => $invoice->document_number]);
             }
@@ -295,7 +319,6 @@ class CustomerReceiptService
      */
     private function prepare(array $data, ?CustomerReceipt $existing, User $actor, AccountingProfile $profile): array
     {
-        $scale = (int) $profile->currency_scale;
         $field = fn (string $key, mixed $default = null) => array_key_exists($key, $data) ? $data[$key] : ($existing?->{$key} ?? $default);
         $date = fn (mixed $v) => $v instanceof \DateTimeInterface ? $v->format('Y-m-d') : $v;
 
@@ -307,15 +330,15 @@ class CustomerReceiptService
         if ($existing !== null && $existing->customer_id !== $customer->id && ! array_key_exists('allocations', $data) && ! ($data['auto_allocate'] ?? false)) {
             throw new DomainException('Changing the customer requires new allocations.', 'AR_ALLOCATION_CUSTOMER_MISMATCH', 422, ['field' => 'allocations']);
         }
-        if (isset($data['currency']) && $data['currency'] !== $profile->functional_currency) {
-            throw new DomainException("OA2 books in the functional currency ({$profile->functional_currency}) only.", 'CURRENCY_NOT_SUPPORTED', 422, ['field' => 'currency']);
-        }
 
         $cashId = $data['cash_bank_account_id'] ?? $existing?->cash_bank_account_id ?? throw new DomainException('The cash or bank account is required.', 'CASH_BANK_ACCOUNT_REQUIRED', 422, ['field' => 'cash_bank_account_id']);
         $cash = $this->cashAccounts->usable($cashId);
 
         $receiptDate = $date($field('receipt_date')) ?? throw new DomainException('The receipt date is required.', 'RECEIPT_DATE_REQUIRED', 422);
         $postingDate = $date(array_key_exists('posting_date', $data) && $data['posting_date'] !== null ? $data['posting_date'] : ($existing?->posting_date ?? $receiptDate));
+        // the currency of the receipt and the rate for its posting date; the amount is entered with the currency's own decimal places
+        $fx = $this->foreign->prepare($data['currency'] ?? $existing?->currency, $postingDate, $data['exchange_rate_type'] ?? null, $actor, $profile);
+        $scale = $fx['scale'];
         $amount = Money::parse($field('amount'), $scale, 'amount');
         if ($amount->isLessThanOrEqualTo(0)) {
             throw new DomainException('The receipt amount must be greater than zero.', 'RECEIPT_AMOUNT_INVALID', 422, ['field' => 'amount']);
@@ -328,15 +351,15 @@ class CustomerReceiptService
         $dims = $this->dimensions->resolve($field('branch_id', $cash->branch_id), $field('business_unit_id', $cash->business_unit_id), $field('cost_center_id'));
         $this->scope->assertWritable($dims['branch_id'], $dims['business_unit_id'], $existing?->created_by ?? $actor->id);
 
-        $allocations = $this->allocations($data, $existing, $customer, $amount, $postingDate, $scale);
+        $allocations = $this->allocations($data, $existing, $customer, $amount, $postingDate, $scale, $fx['currency']);
 
         return [
             'header' => collect($data)->only(['receipt_date', 'posting_date', 'receipt_method', 'reference', 'description'])->all(),
             'columns' => [
-                'customer_id' => $customer->id, 'cash_bank_account_id' => $cash->id, 'currency' => $profile->functional_currency, 'amount' => Money::str($amount),
+                'customer_id' => $customer->id, 'cash_bank_account_id' => $cash->id, 'amount' => Money::str($amount),
                 'receipt_date' => $receiptDate, 'posting_date' => $postingDate,
                 'branch_id' => $dims['branch_id'], 'business_unit_id' => $dims['business_unit_id'], 'cost_center_id' => $dims['cost_center_id'],
-            ],
+            ] + $fx['columns'] + ['functional_amount' => $fx['rate']->foreign() ? Money::str($fx['rate']->convert($amount)) : null, 'fx_difference' => null],
             'allocations' => $allocations,
         ];
     }
@@ -347,11 +370,11 @@ class CustomerReceiptService
      *
      * @return list<array{ar_invoice_id:string,amount:string}>
      */
-    public function suggest(Customer $customer, BigDecimal $amount, ?string $postingDate = null): array
+    public function suggest(Customer $customer, BigDecimal $amount, ?string $postingDate = null, ?string $currency = null): array
     {
         $rows = [];
         $left = $amount;
-        foreach ($this->subledger->openInvoices($customer->id) as $invoice) {
+        foreach ($this->subledger->openInvoices($customer->id, $currency) as $invoice) {
             if ($left->isLessThanOrEqualTo(0)) {
                 break;
             }
@@ -368,11 +391,11 @@ class CustomerReceiptService
     }
 
     /** @return list<array{invoice:ArInvoice,amount:BigDecimal}> */
-    private function allocations(array $data, ?CustomerReceipt $existing, Customer $customer, BigDecimal $amount, string $postingDate, int $scale): array
+    private function allocations(array $data, ?CustomerReceipt $existing, Customer $customer, BigDecimal $amount, string $postingDate, int $scale, string $currency): array
     {
         $rows = [];
         if ($data['auto_allocate'] ?? false) {
-            $rows = $this->suggest($customer, $amount, $postingDate);
+            $rows = $this->suggest($customer, $amount, $postingDate, $currency);
         } elseif (array_key_exists('allocations', $data)) {
             $rows = (array) $data['allocations'];
         } elseif ($existing !== null) {
@@ -397,6 +420,9 @@ class CustomerReceiptService
             }
             if ($invoice->status !== ArInvoice::POSTED) {
                 throw new DomainException('Only posted invoices can be settled.', 'AR_INVOICE_NOT_PAYABLE', 422, ['allocation' => $n, 'status' => $invoice->status]);
+            }
+            if ($invoice->currency !== $currency) {
+                throw new DomainException('A receipt settles invoices in its own currency only.', 'AR_ALLOCATION_CURRENCY_MISMATCH', 422, ['allocation' => $n, 'document_number' => $invoice->document_number, 'invoice_currency' => $invoice->currency, 'receipt_currency' => $currency]);
             }
             if ($invoice->posting_date->toDateString() > $postingDate) {
                 throw new DomainException('A receipt cannot be posted before the invoice it settles.', 'AR_RECEIPT_BEFORE_INVOICE', 422, ['allocation' => $n, 'document_number' => $invoice->document_number]);
@@ -464,6 +490,98 @@ class CustomerReceiptService
         ];
     }
 
+    /**
+     * What each allocation releases from its invoice and what the bank receives for it, in functional currency (see ForeignPostingService::settle).
+     * Runs under the invoice locks: the committed effective allocations are what each invoice still carries. A foreign invoice cannot be credited.
+     *
+     * @param  list<ArReceiptAllocation>  $allocations
+     * @param  array<string,ArInvoice>  $invoices
+     * @return array{rows:list<array{carrying:BigDecimal,settlement:BigDecimal}>,carrying:BigDecimal,settlement:BigDecimal,difference:BigDecimal}
+     */
+    private function settlement(CustomerReceipt $receipt, array $allocations, array $invoices, ResolvedRate $rate, AccountingProfile $profile): array
+    {
+        $effective = ArReceiptAllocation::query()->whereIn('ar_invoice_id', array_keys($invoices))->where('is_effective', true)->groupBy('ar_invoice_id')
+            ->selectRaw('ar_invoice_id, sum(amount) as paid, sum(coalesce(carrying_amount, amount)) as carried')->get()->keyBy('ar_invoice_id');
+        $rows = [];
+        foreach ($allocations as $allocation) {
+            $invoice = $invoices[$allocation->ar_invoice_id];
+            $rows[] = [
+                'foreign' => BigDecimal::of($allocation->amount),
+                'outstanding' => BigDecimal::of($invoice->total_amount)->minus($effective[$invoice->id]->paid ?? '0'),
+                'carrying_left' => BigDecimal::of($invoice->functional_total_amount)->minus($effective[$invoice->id]->carried ?? '0'),
+            ];
+        }
+
+        return $this->fxPosting->settle($rate->convert(BigDecimal::of($receipt->amount)), $rows, (int) $profile->currency_scale);
+    }
+
+    /**
+     * The business fact of a foreign receipt: the value the invoices carried (credit the receivable accounts, one part per invoice with its
+     * own rate), the value the bank receives (debit cash/bank, with the receipt's foreign amount and rate) and the difference, which the
+     * rule books as exchange gain (receipt above the carrying value) or loss. The foreign legs of the receivable and cash lines are equal.
+     *
+     * @param  list<ArReceiptAllocation>  $allocations
+     * @param  array<string,ArInvoice>  $invoices
+     * @param  array{rows:list<array{carrying:BigDecimal,settlement:BigDecimal}>,carrying:BigDecimal,settlement:BigDecimal,difference:BigDecimal}  $settlement
+     * @return array<string,mixed>
+     */
+    private function foreignPayload(CustomerReceipt $receipt, array $allocations, array $invoices, string $cashGlAccountId, ResolvedRate $rate, array $settlement): array
+    {
+        $parts = [];
+        foreach (array_values($allocations) as $i => $allocation) {
+            $invoice = $invoices[$allocation->ar_invoice_id];
+            $carrying = $settlement['rows'][$i]['carrying'];
+            if ($carrying->isZero()) {
+                continue; // nothing left to carry on this invoice; its settlement is all difference
+            }
+            $parts[] = [
+                'amount' => Money::str($carrying), 'account_id' => $invoice->receivable_account_id, 'description' => mb_substr("Pelunasan piutang {$invoice->document_number}", 0, 255),
+                'transaction' => ['currency' => $invoice->currency, 'amount' => Money::str($allocation->amount), 'rate' => (string) $invoice->exchange_rate],
+            ];
+        }
+        $difference = $settlement['difference'];
+
+        return [
+            'carrying' => Money::str($settlement['carrying']),
+            'settlement' => Money::str($settlement['settlement']),
+            'fx_gain' => Money::str($difference->isPositive() ? $difference : '0'),
+            'fx_loss' => Money::str($difference->isNegative() ? $difference->negated() : '0'),
+            'role_accounts' => ['CASH_BANK_ACCOUNT' => $cashGlAccountId],
+            'distribution' => [
+                'carrying@ACCOUNTS_RECEIVABLE' => $parts,
+                'settlement@CASH_BANK_ACCOUNT' => [['amount' => Money::str($settlement['settlement']), 'transaction' => $this->fxPosting->leg($rate, BigDecimal::of($receipt->amount))]],
+            ],
+            'fx' => ['currency' => $rate->currency, 'rate' => $rate->rateString(), 'rate_id' => $rate->id, 'rate_date' => $rate->effectiveDate, 'rate_type' => $rate->type, 'source' => $rate->source],
+        ];
+    }
+
+    /**
+     * The journal of a foreign receipt: cash/bank debited by what the bank receives, receivables credited by what the invoices carried, the
+     * difference as gain (credit) or loss (debit), and nothing else.
+     *
+     * @param  array{carrying:BigDecimal,settlement:BigDecimal,difference:BigDecimal}  $settlement
+     */
+    private function assertForeignJournal(JournalEntry $journal, array $settlement): void
+    {
+        $lines = collect($journal->posting_snapshot['lines'] ?? []);
+        $sum = fn (string $role, string $side) => Money::sum($lines->where('account_role', $role)->where('side', $side)->pluck('amount')->all());
+        $difference = $settlement['difference'];
+        $expected = [
+            'receivable' => $settlement['carrying'], 'cash' => $settlement['settlement'],
+            'gain' => $difference->isPositive() ? $difference : BigDecimal::zero(), 'loss' => $difference->isNegative() ? $difference->negated() : BigDecimal::zero(),
+        ];
+        $actual = ['receivable' => $sum('ACCOUNTS_RECEIVABLE', 'CREDIT'), 'cash' => $sum('CASH_BANK_ACCOUNT', 'DEBIT'), 'gain' => $sum('FX_GAIN', 'CREDIT'), 'loss' => $sum('FX_LOSS', 'DEBIT')];
+        $roles = ['ACCOUNTS_RECEIVABLE', 'CASH_BANK_ACCOUNT', 'FX_LOSS', 'FX_GAIN'];
+        foreach ($expected as $key => $value) {
+            if (! $actual[$key]->isEqualTo($value)) {
+                throw new DomainException('The foreign customer receipt posting rule must debit cash and bank and the exchange loss, and credit accounts receivable and the exchange gain, with the amounts of the settlement.', 'AR_POSTING_RULE_INVALID', 422, ['component' => $key]);
+            }
+        }
+        if ($lines->count() !== $lines->whereIn('account_role', $roles)->count()) {
+            throw new DomainException('The foreign customer receipt posting rule books accounts the settlement does not use.', 'AR_POSTING_RULE_INVALID', 422);
+        }
+    }
+
     /** The journal the rule built must debit the cash/bank account and credit the receivable accounts by exactly the receipt amount. */
     private function assertJournal(JournalEntry $journal, string $amount): void
     {
@@ -476,13 +594,14 @@ class CustomerReceiptService
     }
 
     /** Make the allocations effective after the receipt is POSTED (the database checks the invoice locks, the remaining amount and the full allocation at commit). */
-    private function makeEffective(CustomerReceipt $receipt, array $allocations, array $invoices): void
+    private function makeEffective(CustomerReceipt $receipt, array $allocations, array $invoices, ?array $settlement = null): void
     {
-        foreach ($allocations as $allocation) {
-            $allocation->forceFill(['is_effective' => true, 'effective_at' => now()])->save();
+        foreach (array_values($allocations) as $i => $allocation) {
+            $functional = $settlement === null ? [] : ['carrying_amount' => Money::str($settlement['rows'][$i]['carrying']), 'settlement_amount' => Money::str($settlement['rows'][$i]['settlement'])];
+            $allocation->forceFill(['is_effective' => true, 'effective_at' => now()] + $functional)->save();
             $this->audit->record('receivables.customer_receipt.allocated', 'customer_receipt', $receipt->id, null, [
                 'ar_invoice_id' => $allocation->ar_invoice_id, 'invoice_number' => $invoices[$allocation->ar_invoice_id]->document_number, 'amount' => $allocation->amount,
-            ]);
+            ] + ($functional === [] ? [] : ['currency' => $receipt->currency, 'carrying_amount' => $functional['carrying_amount'], 'settlement_amount' => $functional['settlement_amount']]));
         }
     }
 
@@ -497,6 +616,6 @@ class CustomerReceiptService
 
     private function summary(CustomerReceipt $receipt): array
     {
-        return $receipt->only(['document_number', 'customer_id', 'cash_bank_account_id', 'status', 'receipt_date', 'posting_date', 'amount']);
+        return $receipt->only(['document_number', 'customer_id', 'cash_bank_account_id', 'status', 'receipt_date', 'posting_date', 'amount', 'currency', 'exchange_rate']);
     }
 }

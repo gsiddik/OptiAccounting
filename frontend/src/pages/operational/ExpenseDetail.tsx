@@ -8,6 +8,8 @@ import { paymentMethodLabels, settlementLabels } from '../../lib/operationalLabe
 import { localized } from './expense/errors'
 import type { Expense } from './expense/types'
 import { ErrorNotice, Money, ReadOnlyNotice, Timeline } from './shared'
+import { TaxCodeCell } from './taxOptions'
+import { formatPercent, useTaxFacts } from './taxSupport'
 import { useDocumentActions } from './workflow'
 
 export default function ExpenseDetail() {
@@ -27,6 +29,8 @@ export default function ExpenseDetail() {
     onChanged: expense.reload,
   })
   const { readOnly } = useModuleAccess(MODULES.expense)
+  // The tax code of the expense and its rate on the expense date, from the server (nothing is requested without tax access). The tax amount is the document's own.
+  const taxFacts = useTaxFacts(e?.tax_code_id ? [{ id: 'expense', codeId: e.tax_code_id, amount: e.net_amount }] : [], e?.expense_date ?? '', { calculate: false })
 
   if (expense.loading && !e) return <Loading />
   if (expense.error || !e) return <ErrorNotice error={localized(expense.error)} onRetry={expense.reload} />
@@ -80,8 +84,10 @@ export default function ExpenseDetail() {
 
       <Card title="Jumlah">
         <dl className="facts">
-          <div><dt>Neto</dt><dd><Money value={e.net_amount} /></dd></div>
-          <div><dt>Pajak</dt><dd><Money value={e.tax_amount} /></dd></div>
+          {e.tax_code_id && <div><dt>Kode pajak</dt><dd><TaxCodeCell taxCodeId={e.tax_code_id} fact={taxFacts.expense} /></dd></div>}
+          {e.tax_code_id && e.entered_amount != null && e.entered_amount !== e.net_amount && <div><dt>Jumlah diinput</dt><dd><Money value={e.entered_amount} /></dd></div>}
+          <div><dt>{e.tax_code_id ? 'Dasar pajak (neto)' : 'Neto'}</dt><dd><Money value={e.net_amount} /></dd></div>
+          <div><dt>Pajak{e.tax_code_id && taxFacts.expense?.rate ? ` (${formatPercent(taxFacts.expense.rate)}%)` : ''}</dt><dd><Money value={e.tax_amount} /></dd></div>
           <div><dt>Total</dt><dd><Money value={e.total_amount} strong /></dd></div>
           <div><dt>Mata uang</dt><dd>{e.currency}</dd></div>
         </dl>

@@ -60,8 +60,8 @@ export function allocationRows(inputs: AllocationInputs): { ap_invoice_id: strin
   return allocationEntries(inputs).map(([ap_invoice_id, amount]) => ({ ap_invoice_id, amount }))
 }
 
-/** The body of POST / PATCH /vendor-payments. */
-export function paymentPayload(h: PaymentHeader, inputs: AllocationInputs) {
+/** The body of POST / PATCH /vendor-payments. `currency` is the currency part of the request (empty for a functional payment of a single-currency organisation, so its payload does not change). */
+export function paymentPayload(h: PaymentHeader, inputs: AllocationInputs, currency: Record<string, string | null> = {}) {
   return {
     vendor_id: h.vendor_id,
     cash_bank_account_id: h.cash_bank_account_id,
@@ -75,6 +75,7 @@ export function paymentPayload(h: PaymentHeader, inputs: AllocationInputs) {
     business_unit_id: h.business_unit_id || null,
     cost_center_id: h.cost_center_id || null,
     allocations: allocationRows(inputs),
+    ...currency,
   }
 }
 

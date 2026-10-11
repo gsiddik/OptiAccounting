@@ -21,6 +21,8 @@ export type ExpenseForm = {
   payee_name: string
   net_amount: string
   tax_amount: string
+  /** Optional input tax code (only with the tax module). With one, `net_amount` is what the user entered and the server splits base and tax. */
+  tax_code_id: string
   branch_id: string
   business_unit_id: string
   cost_center_id: string
@@ -28,7 +30,7 @@ export type ExpenseForm = {
 
 export const emptyExpenseForm = (today: string): ExpenseForm => ({
   settlement: 'PAYABLE', expense_category_id: '', description: '', expense_date: today, posting_date: today, supporting_document: '', reference: '',
-  vendor_id: '', payment_term_id: '', due_date: '', cash_bank_account_id: '', payment_method: '', payee_name: '', net_amount: '', tax_amount: '',
+  vendor_id: '', payment_term_id: '', due_date: '', cash_bank_account_id: '', payment_method: '', payee_name: '', net_amount: '', tax_amount: '', tax_code_id: '',
   branch_id: '', business_unit_id: '', cost_center_id: '',
 })
 
@@ -43,7 +45,8 @@ export function expenseFormFrom(e: Expense): ExpenseForm {
     settlement: e.settlement, expense_category_id: e.expense_category_id, description: e.description, expense_date: e.expense_date.slice(0, 10), posting_date: e.posting_date.slice(0, 10),
     supporting_document: e.supporting_document ?? '', reference: e.reference ?? '', vendor_id: e.vendor_id ?? '', payment_term_id: e.payment_term_id ?? '',
     due_date: e.due_date_overridden ? (e.due_date ?? '').slice(0, 10) : '', cash_bank_account_id: e.cash_bank_account_id ?? '', payment_method: e.payment_method ?? '',
-    payee_name: e.payee_name ?? '', net_amount: amountInput(e.net_amount), tax_amount: amountInput(e.tax_amount),
+    // With a tax code the stored net is the base and the tax is the server's calculation: the form holds what was entered and no manual tax.
+    payee_name: e.payee_name ?? '', net_amount: amountInput(e.tax_code_id ? e.entered_amount : e.net_amount), tax_amount: e.tax_code_id ? '' : amountInput(e.tax_amount), tax_code_id: e.tax_code_id ?? '',
     branch_id: e.branch_id ?? '', business_unit_id: e.business_unit_id ?? '', cost_center_id: e.cost_center_id ?? '',
   }
 }
@@ -64,8 +67,11 @@ export function dueDateRule(term: PaymentTerm | undefined): 'free' | 'required' 
 
 export type Built = { body: Record<string, string | null> } | { problem: string }
 
-/** The request body for the chosen settlement path. Amounts are decimal strings, never numbers. */
-export function buildExpenseBody(f: ExpenseForm, vendors: Vendor[], terms: PaymentTerm[]): Built {
+/**
+ * The request body for the chosen settlement path. Amounts are decimal strings, never numbers. With a tax code the manual tax is sent as null (the
+ * server calculates it; a different amount is refused); `hadTaxCode` says the saved draft had one, so removing it is sent as an explicit null.
+ */
+export function buildExpenseBody(f: ExpenseForm, vendors: Vendor[], terms: PaymentTerm[], options: { hadTaxCode?: boolean } = {}): Built {
   const net = parseAmount(f.net_amount)
   const tax = parseAmount(f.tax_amount)
   if (net === null || tax === null) return { problem: 'Jumlah neto dan pajak harus berupa angka tanpa pemisah ribuan, dengan maksimal empat desimal.' }
@@ -76,7 +82,8 @@ export function buildExpenseBody(f: ExpenseForm, vendors: Vendor[], terms: Payme
     expense_date: f.expense_date,
     posting_date: f.posting_date,
     net_amount: amountToApi(net),
-    tax_amount: amountToApi(tax),
+    tax_amount: f.tax_code_id ? null : amountToApi(tax),
+    ...(f.tax_code_id || options.hadTaxCode ? { tax_code_id: f.tax_code_id || null } : {}),
     supporting_document: f.supporting_document.trim() || null,
     description: f.description.trim(),
     reference: f.reference.trim() || null,

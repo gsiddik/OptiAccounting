@@ -8,6 +8,7 @@ use App\Domain\Accounting\Services\JournalService;
 use App\Domain\Accounting\Services\JournalWorkflow;
 use App\Domain\Accounting\Services\ReversalService;
 use App\Domain\Accounting\Services\SegregationOfDuties;
+use App\Domain\Shared\DomainException;
 use App\Http\Controllers\Api\App\AppController;
 use App\Support\TenantContext;
 use Illuminate\Http\JsonResponse;
@@ -114,6 +115,12 @@ class JournalController extends AppController
             'reference' => ['nullable', 'string', 'max:100'],
             'posting_date' => ['nullable', 'date_format:Y-m-d'],
         ]);
+
+        $this->visible($journal); // out of scope is a 404 before anything else is said about the journal
+        // The register keeps its own state (schedule months, accumulated depreciation, status): its journals are reversed through the document that posted them.
+        if (in_array($journal->source_type, ['fixed_asset', 'depreciation_run', 'asset_disposal'], true)) {
+            throw new DomainException('This journal belongs to a fixed asset document; reverse that document instead.', 'JOURNAL_OWNED_BY_DOCUMENT', 409, ['source_type' => $journal->source_type, 'source_id' => $journal->source_id]);
+        }
 
         return response()->json($this->present($this->reversals->reverse($this->visible($journal), $request->user(), $data['reason'], $data['posting_date'] ?? null, $data['reference'] ?? null)), 201);
     }

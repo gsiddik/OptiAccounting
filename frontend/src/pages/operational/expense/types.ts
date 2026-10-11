@@ -42,6 +42,9 @@ export type Expense = {
   net_amount: string
   tax_amount: string
   total_amount: string
+  /** With a tax code, `net_amount` is the tax base and `entered_amount` what the user typed (the gross for an inclusive code). */
+  tax_code_id?: string | null
+  entered_amount?: string | null
   created_by: string | null
   posted_at: string | null
   journal_entry_id: string | null

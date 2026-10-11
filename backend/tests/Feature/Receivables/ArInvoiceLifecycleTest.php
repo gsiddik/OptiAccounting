@@ -85,7 +85,7 @@ class ArInvoiceLifecycleTest extends TestCase
         $post($line(['account_role' => 'CASH_BANK_ACCOUNT']))->assertStatus(422)->assertJsonPath('code', 'ACCOUNT_ROLE_INVALID');
         $post(['discount_amount' => '2000'] + $line())->assertStatus(422)->assertJsonPath('code', 'AR_INVOICE_DISCOUNT_INVALID');
         $post(['due_date' => '2026-03-01'])->assertStatus(422)->assertJsonPath('code', 'DUE_DATE_INVALID');
-        $post(['currency' => 'USD'])->assertStatus(422)->assertJsonPath('code', 'CURRENCY_NOT_SUPPORTED');
+        $post(['currency' => 'USD'])->assertStatus(422)->assertJsonPath('code', 'CURRENCY_NOT_FOUND'); // OA4: a foreign currency must be set up first
         $post(['branch_id' => (string) Str::uuid()])->assertStatus(422)->assertJsonPath('code', 'DIMENSION_NOT_FOUND');
         $post(['cost_center_id' => $this->costCenterOf($beta)])->assertStatus(422)->assertJsonPath('code', 'DIMENSION_NOT_FOUND');
 

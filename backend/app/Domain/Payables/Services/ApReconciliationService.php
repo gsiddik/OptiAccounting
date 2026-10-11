@@ -31,7 +31,7 @@ class ApReconciliationService
         $subledger = $this->subledger->rowsAsOf($asOf, $vendorId ? ['vendor_id' => $vendorId] : []);
         $subByVendor = [];
         foreach ($subledger as $row) {
-            $subByVendor[$row->vendor_id] = ($subByVendor[$row->vendor_id] ?? BigDecimal::zero())->plus((string) $row->outstanding_asof);
+            $subByVendor[$row->vendor_id] = ($subByVendor[$row->vendor_id] ?? BigDecimal::zero())->plus((string) $row->outstanding_functional_asof);
         }
 
         $vendorIds = array_values(array_unique(array_merge(array_keys($subByVendor), array_filter(array_keys($attributed['by_vendor'])))));

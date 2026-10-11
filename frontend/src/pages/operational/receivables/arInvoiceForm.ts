@@ -1,4 +1,4 @@
-import { optionalDecimal, plainAmount, previewInvoice } from '../payables/invoiceForm'
+import { hasTaxCodes, optionalDecimal, plainAmount, previewInvoice } from '../payables/invoiceForm'
 import { arLinePayload, firstUndescribedLine, type ArLineForm } from './arLines'
 import type { ArInvoice } from './types'
 
@@ -37,13 +37,17 @@ export function arHeaderFrom(invoice: ArInvoice | null, today: string): ArInvoic
     business_unit_id: invoice?.business_unit_id ?? '',
     cost_center_id: invoice?.cost_center_id ?? '',
     discount_amount: plainAmount(invoice?.discount_amount),
-    tax_amount: plainAmount(invoice?.tax_amount),
+    // With tax codes the stored tax is the server's calculation, not a manual amount: never send it back.
+    tax_amount: invoice?.lines?.some((l) => l.tax_code_id) ? '' : plainAmount(invoice?.tax_amount),
     other_charges_amount: plainAmount(invoice?.other_charges_amount),
   }
 }
 
-/** The body of POST / PATCH /ar-invoices. `dueDateEditable` says whether the term lets the user name the due date. */
-export function arInvoicePayload(h: ArInvoiceHeader, lines: ArLineForm[], options: { dueDateEditable: boolean }) {
+/**
+ * The body of POST / PATCH /ar-invoices. `dueDateEditable` says whether the term lets the user name the due date; `currency` is the currency part of
+ * the request (empty for a functional document of a single-currency organisation, so its payload does not change).
+ */
+export function arInvoicePayload(h: ArInvoiceHeader, lines: ArLineForm[], options: { dueDateEditable: boolean; currency?: Record<string, string | null> }) {
   return {
     customer_id: h.customer_id,
     customer_reference: h.customer_reference.trim() || null,
@@ -57,9 +61,11 @@ export function arInvoicePayload(h: ArInvoiceHeader, lines: ArLineForm[], option
     business_unit_id: h.business_unit_id || null,
     cost_center_id: h.cost_center_id || null,
     discount_amount: optionalDecimal(h.discount_amount),
-    tax_amount: optionalDecimal(h.tax_amount),
+    // The tax of a document with tax codes is calculated from its lines; a manual amount next to them is refused (TAX_AMOUNT_CONFLICT).
+    tax_amount: hasTaxCodes(lines) ? null : optionalDecimal(h.tax_amount),
     other_charges_amount: optionalDecimal(h.other_charges_amount),
     lines: lines.map(arLinePayload),
+    ...(options.currency ?? {}),
   }
 }
 

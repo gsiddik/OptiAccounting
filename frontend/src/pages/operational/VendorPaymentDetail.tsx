@@ -7,7 +7,9 @@ import { formatDate, formatDateTime } from '../../lib/format'
 import { useResource } from '../../lib/hooks'
 import { API, MODULES, useModuleAccess } from '../../lib/operational'
 import { paymentMethodLabels } from '../../lib/operationalLabels'
-import type { Payment } from './payables/types'
+import { DocAmount, ForeignFacts } from './foreign'
+import { isForeignDoc } from './foreignSupport'
+import type { Payment, PaymentAllocation } from './payables/types'
 import { Money, ReadOnlyNotice, Timeline } from './shared'
 import { useDocumentActions } from './workflow'
 
@@ -35,6 +37,7 @@ function PaymentView({ payment: pay, reload }: { payment: Payment; reload: () =>
     onChanged: reload,
   })
   const allocations = pay.allocations ?? []
+  const foreign = isForeignDoc(pay)
 
   return (
     <>
@@ -60,13 +63,14 @@ function PaymentView({ payment: pay, reload }: { payment: Payment; reload: () =>
         <dl className="facts">
           <div><dt>Vendor</dt><dd>{pay.vendor ? `${pay.vendor.code} · ${pay.vendor.name}` : '—'}</dd></div>
           <div><dt>Akun kas/bank</dt><dd>{pay.cash_bank_account ? `${pay.cash_bank_account.code} · ${pay.cash_bank_account.name}` : '—'}</dd></div>
-          <div><dt>Jumlah</dt><dd><Money value={pay.amount} strong /></dd></div>
+          <div><dt>Jumlah</dt><dd><DocAmount value={pay.amount} doc={pay} strong /></dd></div>
           <div><dt>Teralokasi</dt><dd><Money value={pay.allocated_amount} /></dd></div>
           <div><dt>Belum dialokasikan</dt><dd><Money value={pay.unallocated_amount} /></dd></div>
           <div><dt>Tanggal pembayaran</dt><dd>{formatDate(pay.payment_date)}</dd></div>
           <div><dt>Tanggal posting</dt><dd>{formatDate(pay.posting_date)}</dd></div>
           <div><dt>Metode</dt><dd>{pay.payment_method ? paymentMethodLabels[pay.payment_method] ?? pay.payment_method : '—'}</dd></div>
           <div><dt>Mata uang</dt><dd>{pay.currency}</dd></div>
+          <ForeignFacts doc={pay} total={{ label: 'Jumlah', value: pay.amount }} kind="AP" skipTotal />
           <div><dt>Referensi</dt><dd>{pay.reference ?? '—'}</dd></div>
           {pay.gl_account && <div><dt>Akun buku besar</dt><dd>{pay.gl_account.code} · {pay.gl_account.name}</dd></div>}
           {(pay.branch || pay.business_unit || pay.cost_center) && (
@@ -95,6 +99,10 @@ function PaymentView({ payment: pay, reload }: { payment: Payment; reload: () =>
               { header: 'Jatuh tempo', cell: (a) => formatDate(a.invoice?.due_date) },
               { header: 'Total faktur', align: 'right', cell: (a) => <Money value={a.invoice?.total_amount} /> },
               { header: 'Dialokasikan', align: 'right', cell: (a) => <Money value={a.amount} /> },
+              ...(foreign ? [
+                { header: 'Nilai tercatat fungsional', align: 'right' as const, cell: (a: PaymentAllocation) => <Money value={a.carrying_amount} /> },
+                { header: 'Nilai pelunasan fungsional', align: 'right' as const, cell: (a: PaymentAllocation) => <Money value={a.settlement_amount} /> },
+              ] : []),
               { header: 'Keadaan', cell: (a) => (a.released_at ? <Badge tone="neutral">Dilepas</Badge> : a.is_effective ? <Badge tone="ok">Berlaku</Badge> : pay.status === 'CANCELLED' || pay.status === 'REJECTED' ? <Badge tone="neutral">Tidak berlaku</Badge> : <Badge tone="info">Menunggu posting</Badge>) },
             ]}
           />
@@ -102,6 +110,7 @@ function PaymentView({ payment: pay, reload }: { payment: Payment; reload: () =>
         <div className="table-total">
           <span>Jumlah pembayaran <Money value={pay.amount} /></span>
           <span>Teralokasi <Money value={pay.allocated_amount} strong /></span>
+          {foreign && <span>Jumlah fungsional <Money value={pay.functional_amount} strong /></span>}
         </div>
       </Card>
 

@@ -36,7 +36,7 @@ class ApAgingService
         foreach ($rows as $row) {
             $overdue = (int) round((strtotime($asOf) - strtotime((string) $row->due_date)) / 86400);
             $bucket = AgingBuckets::keyFor($buckets, $overdue);
-            $amount = BigDecimal::of((string) $row->outstanding_asof);
+            $amount = BigDecimal::of((string) $row->outstanding_functional_asof); // buckets and totals are in functional currency, the one the control account is kept in
 
             $vendors[$row->vendor_id] ??= ['vendor_id' => $row->vendor_id, 'vendor_code' => $row->vendor_code, 'vendor_name' => $row->vendor_name, 'invoice_count' => 0, 'buckets' => $zero, 'total' => BigDecimal::zero()];
             $vendors[$row->vendor_id]['invoice_count']++;
@@ -48,8 +48,8 @@ class ApAgingService
                 $invoices[] = [
                     'id' => $row->id, 'document_number' => $row->document_number, 'vendor_invoice_number' => $row->vendor_invoice_number, 'vendor_id' => $row->vendor_id,
                     'vendor_code' => $row->vendor_code, 'vendor_name' => $row->vendor_name, 'posting_date' => substr((string) $row->posting_date, 0, 10), 'due_date' => substr((string) $row->due_date, 0, 10),
-                    'days_overdue' => max($overdue, 0), 'bucket' => $bucket, 'total_amount' => Money::str($row->total_amount),
-                    'paid_amount' => Money::str($row->paid_asof), 'outstanding_amount' => Money::str($amount),
+                    'days_overdue' => max($overdue, 0), 'bucket' => $bucket, 'currency' => $row->currency, 'exchange_rate' => (string) $row->exchange_rate, 'total_amount' => Money::str($row->total_amount),
+                    'paid_amount' => Money::str($row->paid_asof), 'outstanding_amount' => Money::str($row->outstanding_asof), 'outstanding_functional' => Money::str($amount),
                 ];
             }
         }

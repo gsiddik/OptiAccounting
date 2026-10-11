@@ -1,5 +1,5 @@
 import type { DocSod, DocStatus, DocTransition, PaymentTerm, Ref } from '../../../lib/operational'
-import type { Actor, CashBankRef, Coded, PaymentStatus } from '../payables/types'
+import type { Actor, CashBankRef, Coded, ForeignFields, LineTaxFields, PaymentStatus } from '../payables/types'
 
 // Shapes of the receivables API responses (backend: Receivables\Services\*::load()/query(), ArReportController). Amounts are decimal
 // strings ("1500000.0000") that the backend computed; the UI only formats them. Every figure of an invoice (received, credited,
@@ -7,7 +7,7 @@ import type { Actor, CashBankRef, Coded, PaymentStatus } from '../payables/types
 
 export type CustomerRef = Coded & { status?: string }
 
-export type ArInvoiceRow = {
+export type ArInvoiceRow = ForeignFields & {
   id: string
   document_number: string | null
   status: DocStatus
@@ -29,7 +29,7 @@ export type ArInvoiceRow = {
   branch?: Ref | null
 }
 
-export type ArInvoiceLine = {
+export type ArInvoiceLine = LineTaxFields & {
   id: string
   line_number: number
   description: string
@@ -95,16 +95,20 @@ export type OpenArInvoice = {
   customer_reference: string | null
   posting_date: string
   due_date: string
+  currency?: string
+  exchange_rate?: string
   total_amount: string
   received_amount: string
   credited_amount: string
   outstanding_amount: string
+  /** What the invoice still carries in the ledger, in functional currency (only differs from the outstanding amount for a foreign invoice). */
+  outstanding_functional?: string
   branch?: Ref | null
 }
 
 export type SuggestedAllocation = { ar_invoice_id: string; amount: string }
 
-export type ReceiptRow = {
+export type ReceiptRow = ForeignFields & {
   id: string
   document_number: string | null
   status: DocStatus
@@ -129,6 +133,9 @@ export type ReceiptAllocation = {
   customer_receipt_id: string
   ar_invoice_id: string
   amount: string
+  /** Foreign receipt: the functional value released from the invoice and the functional value that settled it (set when the receipt is posted). */
+  carrying_amount?: string | null
+  settlement_amount?: string | null
   is_effective: boolean
   effective_at: string | null
   released_at: string | null
@@ -209,10 +216,14 @@ export type ArAgingInvoiceRow = {
   due_date: string
   days_overdue: number
   bucket: string
+  currency?: string
+  exchange_rate?: string
   total_amount: string
   received_amount: string
   credited_amount: string
   outstanding_amount: string
+  /** Buckets and totals are functional; a foreign invoice also shows its own amounts, its rate and this functional balance. */
+  outstanding_functional?: string
 }
 export type ArAgingReport = {
   as_of: string

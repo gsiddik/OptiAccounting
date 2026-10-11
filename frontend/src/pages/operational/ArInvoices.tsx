@@ -10,6 +10,7 @@ import { API, DOC_STATUSES, MODULES, useCustomers, useModuleAccess, type Page } 
 import { useDimensions } from '../accounting/data'
 import { boundedInteger, exportQuery, listQuery, statusFromSearch, useBusinessDate } from './payables/lists'
 import { AR_PATH } from './receivables/paths'
+import { DocAmount } from './foreign'
 import type { ArInvoiceRow } from './receivables/types'
 import { DimensionFilters, ExportButton, Filters, Money, ReadOnlyNotice } from './shared'
 
@@ -123,10 +124,10 @@ export default function ArInvoices() {
                 { header: 'Referensi pelanggan', cell: (i) => (i.customer_reference ? <span className="mono">{i.customer_reference}</span> : <span className="muted">—</span>) },
                 { header: 'Tanggal posting', cell: (i) => formatDate(i.posting_date) },
                 { header: 'Jatuh tempo', cell: (i) => <>{formatDate(i.due_date)}{i.status === 'POSTED' && i.payment_status !== 'PAID' && i.due_date.slice(0, 10) < today && <div><Badge tone="bad">Lewat jatuh tempo</Badge></div>}</> },
-                { header: 'Total', align: 'right', cell: (i) => <Money value={i.total_amount} /> },
+                { header: 'Total', align: 'right', cell: (i) => <DocAmount value={i.total_amount} doc={i} functional={i.functional_total_amount} /> },
                 { header: 'Diterima', align: 'right', cell: (i) => (i.status === 'POSTED' ? <Money value={i.received_amount} /> : <span className="muted">—</span>) },
                 { header: 'Dikreditkan', align: 'right', cell: (i) => (i.status === 'POSTED' ? <Money value={i.credited_amount} /> : <span className="muted">—</span>) },
-                { header: 'Saldo piutang', align: 'right', cell: (i) => (i.status === 'POSTED' ? <Money value={i.outstanding_amount} /> : <span className="muted">—</span>) },
+                { header: 'Saldo piutang', align: 'right', cell: (i) => (i.status === 'POSTED' ? <DocAmount value={i.outstanding_amount} doc={i} /> : <span className="muted">—</span>) },
                 { header: 'Status bayar', cell: (i) => (i.payment_status ? <StatusBadge status={i.payment_status} /> : <span className="muted">—</span>) },
                 { header: 'Status', cell: (i) => <StatusBadge status={i.status} /> },
               ]}

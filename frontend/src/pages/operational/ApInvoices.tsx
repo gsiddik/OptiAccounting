@@ -9,9 +9,10 @@ import { statusLabel } from '../../lib/labels'
 import { API, DOC_STATUSES, MODULES, useModuleAccess, useVendors, type Page } from '../../lib/operational'
 import { invoiceOriginLabels } from '../../lib/operationalLabels'
 import { useDimensions } from '../accounting/data'
+import { DocAmount } from './foreign'
 import { boundedInteger, exportQuery, listQuery, useBusinessDate } from './payables/lists'
 import type { InvoiceRow } from './payables/types'
-import { DimensionFilters, ExportButton, Filters, Money, ReadOnlyNotice } from './shared'
+import { DimensionFilters, ExportButton, Filters, ReadOnlyNotice } from './shared'
 
 const PAYMENT_STATUSES = ['UNPAID', 'PARTIALLY_PAID', 'PAID']
 
@@ -120,8 +121,8 @@ export default function ApInvoices() {
                 { header: 'No. faktur vendor', cell: (i) => <span className="mono">{i.vendor_invoice_number}</span> },
                 { header: 'Tanggal posting', cell: (i) => formatDate(i.posting_date) },
                 { header: 'Jatuh tempo', cell: (i) => <>{formatDate(i.due_date)}{i.status === 'POSTED' && i.payment_status !== 'PAID' && i.due_date.slice(0, 10) < today && <div><Badge tone="bad">Lewat jatuh tempo</Badge></div>}</> },
-                { header: 'Total', align: 'right', cell: (i) => <Money value={i.total_amount} /> },
-                { header: 'Saldo', align: 'right', cell: (i) => (i.status === 'POSTED' ? <Money value={i.outstanding_amount} /> : <span className="muted">—</span>) },
+                { header: 'Total', align: 'right', cell: (i) => <DocAmount value={i.total_amount} doc={i} functional={i.functional_total_amount} /> },
+                { header: 'Saldo', align: 'right', cell: (i) => (i.status === 'POSTED' ? <DocAmount value={i.outstanding_amount} doc={i} /> : <span className="muted">—</span>) },
                 { header: 'Status bayar', cell: (i) => (i.payment_status ? <StatusBadge status={i.payment_status} /> : <span className="muted">—</span>) },
                 { header: 'Status', cell: (i) => <StatusBadge status={i.status} /> },
               ]}

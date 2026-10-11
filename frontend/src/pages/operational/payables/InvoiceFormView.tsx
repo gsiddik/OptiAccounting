@@ -11,9 +11,12 @@ import { API, MODULES, useExpenseCategories, useModuleAccess, usePaymentTerms, u
 import { termTypeLabels } from '../../../lib/operationalLabels'
 import { statusLabel } from '../../../lib/labels'
 import { useAccounts, useDimensions } from '../../accounting/data'
+import { CurrencyFields, ExchangeRateLink } from '../foreign'
+import { currencyChoiceFrom, currencyPayload, isForeignDoc, useForeignSupport, type CurrencyChoice } from '../foreignSupport'
 import { DimensionFields, Money } from '../shared'
+import { useTaxCodes } from '../taxSupport'
 import { InvoiceLines } from './InvoiceLines'
-import { headerFrom, invoicePayload, invoiceProblem, linesFromInvoice, previewInvoice, type InvoiceHeader, type LineForm } from './invoiceForm'
+import { hasTaxCodes, headerFrom, invoicePayload, invoiceProblem, linesFromInvoice, previewInvoice, type InvoiceHeader, type LineForm } from './invoiceForm'
 import { destinationRoles, useBusinessDate, useLineRoles } from './lists'
 import { errorText, fieldMessage, useAct } from './messages'
 import type { DuplicateCheck, Invoice } from './types'
@@ -38,9 +41,12 @@ export function InvoiceFormView({ invoice }: { invoice: Invoice | null }) {
   const { accounts } = useAccounts()
   const roles = destinationRoles(useLineRoles())
   const { catalog } = useDimensions()
+  const taxCodes = useTaxCodes('INPUT')
+  const foreign = useForeignSupport()
 
   const [h, setH] = useState<InvoiceHeader>(() => headerFrom(invoice, today))
   const [lines, setLines] = useState<LineForm[]>(() => linesFromInvoice(invoice?.lines))
+  const [choice, setChoice] = useState<CurrencyChoice>(() => currencyChoiceFrom(invoice))
   const [hint, setHint] = useState<string | null>(null)
   const [override, setOverride] = useState({ on: false, reason: '' })
   const set = (patch: Partial<InvoiceHeader>) => {
@@ -75,14 +81,19 @@ export function InvoiceFormView({ invoice }: { invoice: Invoice | null }) {
   const duplicate = (identityChanged && check.data?.duplicate === true ? check.data : null) ?? (error instanceof ApiError && error.code === 'AP_INVOICE_DUPLICATE' ? { duplicate: true, status: String(error.details.status ?? ''), document_number: (error.details.document_number as string | null | undefined) ?? null } : null)
   const mayOverride = can('accounting.ap_invoice.override_duplicate')
 
-  const preview = previewInvoice(h, lines)
+  // ------------------------------------------------------------------ tax codes and currency
+  const taxed = hasTaxCodes(lines)
+  const places = choice.currency ? foreign.placesOf(choice.currency) : null
+  const fx = choice.currency && places !== null ? { code: choice.currency, places } : null
+  const preview = previewInvoice(h, lines, fx?.places)
 
   async function save(thenSubmit: boolean) {
     const problem = invoiceProblem(h, lines) ?? (duplicate && override.on && !override.reason.trim() ? 'Isi alasan mencatat nomor faktur vendor yang sama.' : null)
     setHint(problem)
     if (problem) return
     clearError()
-    const body = invoicePayload(h, lines, { dueDateEditable, override: duplicate && override.on ? { reason: override.reason } : null })
+    const currency = currencyPayload(choice, { shown: foreign.visible, wasForeign: isForeignDoc(invoice), functional: foreign.functional })
+    const body = invoicePayload(h, lines, { dueDateEditable, override: duplicate && override.on ? { reason: override.reason } : null, currency })
     const saved = await run(async () => {
       const draft = (await (invoice ? api.patch<Invoice>(`${API}/ap-invoices/${invoice.id}`, body) : api.post<Invoice>(`${API}/ap-invoices`, body))).data
       let submitError: unknown = null
@@ -112,6 +123,7 @@ export function InvoiceFormView({ invoice }: { invoice: Invoice | null }) {
       />
       <form onSubmit={(e) => { e.preventDefault(); void save(false) }} noValidate className="stack">
         {error != null && <Banner tone="bad">{errorText(error)}</Banner>}
+        <ExchangeRateLink error={error} />
         {hint && <Banner tone="warn">{hint}</Banner>}
 
         <Card title="Informasi faktur">
@@ -175,6 +187,7 @@ export function InvoiceFormView({ invoice }: { invoice: Invoice | null }) {
                 {invoice && <span className="hint">Saat ini {formatDate(invoice.due_date)}; dihitung ulang saat disimpan.</span>}
               </div>
             )}
+            <CurrencyFields support={foreign} value={choice} onChange={(patch) => setChoice((c) => ({ ...c, ...patch }))} date={h.posting_date} doc={invoice} error={error} />
             <Field label="Deskripsi" error={fieldMessage(error, 'description')} full>
               {(p) => <input className="input" required maxLength={500} value={h.description} onChange={(e) => set({ description: e.target.value })} {...p} />}
             </Field>
@@ -186,16 +199,19 @@ export function InvoiceFormView({ invoice }: { invoice: Invoice | null }) {
         </Card>
 
         <Card title="Baris faktur">
-          <InvoiceLines lines={lines} onChange={setLines} preview={preview} categories={categories} accounts={accounts} roles={roles} catalog={catalog} error={error} />
+          <InvoiceLines
+            lines={lines} onChange={setLines} preview={preview} categories={categories} accounts={accounts} roles={roles} catalog={catalog} error={error}
+            tax={taxCodes.enabled ? { codes: taxCodes.codes, date: h.document_date, foreign: choice.currency !== '' } : undefined} fx={fx}
+          />
         </Card>
 
         <Card title="Diskon, pajak, dan biaya lain">
           <div className="form-grid">
-            <Field label="Diskon" error={fieldMessage(error, 'discount_amount')} hint="Mengurangi subtotal; tidak boleh melebihi subtotal.">
+            <Field label="Diskon" error={fieldMessage(error, 'discount_amount')} hint={taxed ? 'Dokumen dengan kode pajak tidak boleh memakai diskon header: kurangi jumlah pada barisnya.' : 'Mengurangi subtotal; tidak boleh melebihi subtotal.'}>
               {(p) => <input className="input amount" inputMode="decimal" autoComplete="off" placeholder="0" value={h.discount_amount} onChange={(e) => set({ discount_amount: e.target.value })} {...p} />}
             </Field>
-            <Field label="Pajak" error={fieldMessage(error, 'tax_amount')} hint="Jumlah pajak sesuai faktur vendor.">
-              {(p) => <input className="input amount" inputMode="decimal" autoComplete="off" placeholder="0" value={h.tax_amount} onChange={(e) => set({ tax_amount: e.target.value })} {...p} />}
+            <Field label="Pajak" error={fieldMessage(error, 'tax_amount')} hint={taxed ? 'Dihitung server dari kode pajak pada baris; tidak diisi manual.' : 'Jumlah pajak sesuai faktur vendor.'}>
+              {(p) => <input className="input amount" inputMode="decimal" autoComplete="off" placeholder="0" disabled={taxed} value={taxed ? '' : h.tax_amount} onChange={(e) => set({ tax_amount: e.target.value })} {...p} />}
             </Field>
             <Field label="Biaya lain" error={fieldMessage(error, 'other_charges_amount')} hint="Ongkos kirim, biaya administrasi, dan sejenisnya.">
               {(p) => <input className="input amount" inputMode="decimal" autoComplete="off" placeholder="0" value={h.other_charges_amount} onChange={(e) => set({ other_charges_amount: e.target.value })} {...p} />}
@@ -204,14 +220,21 @@ export function InvoiceFormView({ invoice }: { invoice: Invoice | null }) {
         </Card>
 
         <Card title="Ringkasan (pratinjau)">
-          <div className="totals" role="status" aria-live="polite">
-            <span>Subtotal <Money value={amountToApi(preview.subtotal)} /></span>
-            <span>Diskon <Money value={amountToApi(preview.discount)} /></span>
-            <span>Pajak <Money value={amountToApi(preview.tax)} /></span>
-            <span>Biaya lain <Money value={amountToApi(preview.other)} /></span>
-            <span>Total pratinjau <Money value={amountToApi(preview.total)} strong /></span>
-          </div>
-          {preview.discountTooHigh && <p className="balance-bad">Diskon melebihi subtotal; server akan menolaknya.</p>}
+          {taxed ? (
+            <p style={{ margin: 0 }} role="status">Subtotal, pajak, dan total dihitung server dari kode pajak pada baris saat faktur disimpan; angka pastinya tampil di halaman faktur. Pratinjau per baris ada di bawah setiap baris berpajak.</p>
+          ) : (
+            <>
+              <div className="totals" role="status" aria-live="polite">
+                <span>Subtotal <Money value={amountToApi(preview.subtotal)} /></span>
+                <span>Diskon <Money value={amountToApi(preview.discount)} /></span>
+                <span>Pajak <Money value={amountToApi(preview.tax)} /></span>
+                <span>Biaya lain <Money value={amountToApi(preview.other)} /></span>
+                <span>Total pratinjau <Money value={amountToApi(preview.total)} strong /></span>
+              </div>
+              {preview.discountTooHigh && <p className="balance-bad">Diskon melebihi subtotal; server akan menolaknya.</p>}
+            </>
+          )}
+          {fx && <p className="muted preview-note">Jumlah dalam {fx.code}. Total fungsional dihitung server dengan kurs yang berlaku dan tampil di halaman faktur.</p>}
           <p className="muted preview-note">Ini pratinjau yang dihitung saat Anda mengetik. Total yang tersimpan, jatuh tempo, dan saldo berasal dari server.</p>
         </Card>
 

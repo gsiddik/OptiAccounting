@@ -5,6 +5,7 @@ import { Banner, Button, Card, EmptyState, Field, Loading, PageHeader } from '..
 import { api } from '../../lib/api'
 import { useCapabilities } from '../../lib/capabilities'
 import { todayIn } from '../../lib/format'
+import { normalizeAmountInput } from '../../lib/accounting'
 import { useAction, useResource } from '../../lib/hooks'
 import { describeError } from '../../lib/labels'
 import { API, useCashBankAccounts, useExpenseCategories, useModuleAccess, usePaymentTerms, useVendors } from '../../lib/operational'
@@ -14,6 +15,8 @@ import { fieldMessage, localized } from './expense/errors'
 import { buildExpenseBody, dueDateRule, emptyExpenseForm, expenseFormFrom, previewTotal, type ExpenseForm } from './expense/payload'
 import { SETTLEMENTS, type Expense } from './expense/types'
 import { DimensionFields, ErrorNotice } from './shared'
+import { TaxCodeField, TaxPreviewNote } from './taxOptions'
+import { useTaxCodes } from './taxSupport'
 
 export default function ExpenseEditor() {
   const { id } = useParams()
@@ -38,6 +41,7 @@ function Form({ expense }: { expense: Expense | null }) {
   const { categories } = useExpenseCategories()
   const { accounts: cashAccounts, byId: cashByAccount } = useCashBankAccounts('ACTIVE')
   const { catalog } = useDimensions()
+  const taxCodes = useTaxCodes('INPUT')
   const today = tenant?.business_date ?? todayIn()
 
   const [f, setF] = useState<ExpenseForm>(() => (expense ? expenseFormFrom(expense) : emptyExpenseForm(today)))
@@ -66,7 +70,7 @@ function Form({ expense }: { expense: Expense | null }) {
   }
 
   async function save(thenSubmit: boolean) {
-    const built = buildExpenseBody(f, vendors, terms)
+    const built = buildExpenseBody(f, vendors, terms, { hadTaxCode: !!expense?.tax_code_id })
     if ('problem' in built) return setHint(built.problem)
     setHint(null)
     clearError()
@@ -187,13 +191,19 @@ function Form({ expense }: { expense: Expense | null }) {
             <Field label="Jumlah neto" error={fieldMessage(err, 'net_amount')} hint="Sebelum pajak. Contoh 1500000 atau 1500000,50.">
               {(p) => <input className="input amount" inputMode="decimal" autoComplete="off" placeholder="0" value={f.net_amount} onChange={set('net_amount')} {...p} />}
             </Field>
-            <Field label="Pajak" error={fieldMessage(err, 'tax_amount')} hint="Kosong berarti tanpa pajak.">
-              {(p) => <input className="input amount" inputMode="decimal" autoComplete="off" placeholder="0" value={f.tax_amount} onChange={set('tax_amount')} {...p} />}
+            {taxCodes.enabled && (
+              <TaxCodeField label="Kode pajak" value={f.tax_code_id} codes={taxCodes.codes} onChange={(id) => setF((s) => ({ ...s, tax_code_id: id }))} error={fieldMessage(err, 'tax_code_id')} hint="Opsional. Pajak masukan dihitung server dengan tarif pada tanggal beban; untuk kode inklusif isi jumlah termasuk pajak." />
+            )}
+            <Field label="Pajak" error={fieldMessage(err, 'tax_amount')} hint={f.tax_code_id ? 'Dihitung server dari kode pajak; tidak diisi manual.' : 'Kosong berarti tanpa pajak.'}>
+              {(p) => <input className="input amount" inputMode="decimal" autoComplete="off" placeholder="0" disabled={f.tax_code_id !== ''} value={f.tax_code_id ? '' : f.tax_amount} onChange={set('tax_amount')} {...p} />}
             </Field>
+            {f.tax_code_id !== '' && <TaxPreviewNote codeId={f.tax_code_id} amount={normalizeAmountInput(f.net_amount)} date={f.expense_date} />}
           </div>
-          <p className="muted preview-note" role="status" aria-live="polite">
-            {total === null ? 'Jumlah belum valid.' : <>Pratinjau total: <strong className="money">{total}</strong></>} Pratinjau saat mengetik; total yang tersimpan dihitung server.
-          </p>
+          {f.tax_code_id === '' && (
+            <p className="muted preview-note" role="status" aria-live="polite">
+              {total === null ? 'Jumlah belum valid.' : <>Pratinjau total: <strong className="money">{total}</strong></>} Pratinjau saat mengetik; total yang tersimpan dihitung server.
+            </p>
+          )}
         </Card>
 
         {(catalog.branches.length > 0 || catalog.business_units.length > 0 || catalog.cost_centers.length > 0) && (

@@ -40,13 +40,14 @@ class ArReportController extends AppController
         $this->audit->record('receivables.report.exported', 'report', 'ar_aging', null, ['as_of' => $asOf, 'filters' => $filter, 'buckets' => $buckets, 'invoices' => count($report['invoices'])]);
 
         return CsvExporter::stream("umur-piutang_{$asOf}.csv",
-            ['Pelanggan', 'Nama pelanggan', 'No. dokumen', 'Referensi pelanggan', 'Tanggal posting', 'Jatuh tempo', 'Hari lewat', 'Kelompok', 'Nilai faktur', 'Diterima', 'Nota kredit', 'Saldo'],
+            ['Pelanggan', 'Nama pelanggan', 'No. dokumen', 'Referensi pelanggan', 'Tanggal posting', 'Jatuh tempo', 'Hari lewat', 'Kelompok', 'Nilai faktur', 'Diterima', 'Nota kredit', 'Saldo', 'Mata uang', 'Kurs', 'Saldo fungsional'],
             (function () use ($report) {
                 foreach ($report['invoices'] as $i) {
                     yield [$i['customer_code'], $i['customer_name'], $i['document_number'], $i['customer_reference'],
-                        $i['posting_date'], $i['due_date'], $i['days_overdue'], $i['bucket'], CsvExporter::number($i['total_amount']), CsvExporter::number($i['received_amount']), CsvExporter::number($i['credited_amount']), CsvExporter::number($i['outstanding_amount'])];
+                        $i['posting_date'], $i['due_date'], $i['days_overdue'], $i['bucket'], CsvExporter::number($i['total_amount']), CsvExporter::number($i['received_amount']), CsvExporter::number($i['credited_amount']), CsvExporter::number($i['outstanding_amount']),
+                        $i['currency'], CsvExporter::number($i['exchange_rate']), CsvExporter::number($i['outstanding_functional'])];
                 }
-                yield ['', 'Total', '', '', '', '', '', '', '', '', '', CsvExporter::number($report['totals']['total'])];
+                yield ['', 'Total (mata uang fungsional)', '', '', '', '', '', '', '', '', '', '', '', '', CsvExporter::number($report['totals']['total'])];
             })());
     }
 

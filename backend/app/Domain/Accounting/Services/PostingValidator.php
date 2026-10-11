@@ -67,12 +67,18 @@ class PostingValidator
                 $dimensions[$type] = ['type' => $type, 'reference_id' => mb_substr((string) $dimension['reference_id'], 0, 64), 'reference_label' => isset($dimension['reference_label']) ? mb_substr((string) $dimension['reference_label'], 0, 255) : null];
             }
 
+            $transaction = $this->transaction($line['transaction'] ?? null, $profile, $journalType, $n);
+            $fxDifference = (bool) ($line['fx_difference'] ?? false);
+            if ($fxDifference && ($transaction !== null || in_array($journalType, ['MANUAL', 'OPENING'], true))) {
+                throw new DomainException('A realised exchange difference is a functional-currency line of a system posting.', 'LINE_FX_DIFFERENCE_INVALID', 422, ['line' => $n]);
+            }
+
             $debits[] = $debit;
             $credits[] = $credit;
             $normalized[] = [
                 'account_id' => $account->id, 'description' => isset($line['description']) ? mb_substr((string) $line['description'], 0, 255) : null,
                 'reference' => isset($line['reference']) ? mb_substr((string) $line['reference'], 0, 100) : null,
-                'debit' => $debit, 'credit' => $credit,
+                'debit' => $debit, 'credit' => $credit, 'transaction' => $transaction, 'fx_difference' => $fxDifference,
                 'branch_id' => $branch?->id, 'business_unit_id' => $unit?->id, 'cost_center_id' => $center?->id,
                 'dimensions' => array_values($dimensions),
             ];
@@ -94,6 +100,37 @@ class PostingValidator
         }
 
         return ['lines' => $normalized, 'total_debit' => $totalDebit, 'total_credit' => $totalCredit];
+    }
+
+    /**
+     * The foreign leg of a line (system postings and their reversals only): {currency, amount, rate} next to the functional debit or credit.
+     * The rate is the snapshot of the document the line belongs to; the functional amount is authoritative for the ledger.
+     *
+     * @return array{currency:string,amount:BigDecimal,rate:BigDecimal}|null
+     */
+    private function transaction(mixed $raw, AccountingProfile $profile, string $journalType, int $line): ?array
+    {
+        if ($raw === null) {
+            return null;
+        }
+        if (in_array($journalType, ['MANUAL', 'OPENING'], true) || ! is_array($raw)) {
+            throw new DomainException('Manual and opening journals are booked in the functional currency.', 'LINE_TRANSACTION_NOT_ALLOWED', 422, ['line' => $line]);
+        }
+        $currency = (string) ($raw['currency'] ?? '');
+        if (! preg_match('/^[A-Z]{3}$/', $currency) || $currency === $profile->functional_currency) {
+            throw new DomainException('The transaction currency must be a foreign ISO currency code.', 'LINE_TRANSACTION_INVALID', 422, ['line' => $line, 'field' => 'currency']);
+        }
+        $amount = Money::parse($raw['amount'] ?? null, 4, 'transaction amount', $line);
+        try {
+            $rate = BigDecimal::of((string) ($raw['rate'] ?? ''));
+        } catch (\Throwable) {
+            throw new DomainException('The exchange rate must be a positive decimal.', 'LINE_TRANSACTION_INVALID', 422, ['line' => $line, 'field' => 'rate']);
+        }
+        if ($amount->isLessThanOrEqualTo(0) || ! $rate->isPositive() || $rate->getScale() > 10) {
+            throw new DomainException('The transaction amount and exchange rate must be positive.', 'LINE_TRANSACTION_INVALID', 422, ['line' => $line]);
+        }
+
+        return ['currency' => $currency, 'amount' => $amount, 'rate' => $rate];
     }
 
     private function assertPostable(Account $account, AccountingProfile $profile, string $journalType, int $line): void

@@ -70,4 +70,7 @@ return [
     // Most rows one CSV export of an OA2 list may hold; beyond it the request is refused (EXPORT_TOO_LARGE) and the filters must be narrowed.
     'export_max_rows' => max(1, (int) env('OPTIENTRY_EXPORT_MAX_ROWS', env('OPTIACCOUNTING_EXPORT_MAX_ROWS', 10000))),
 
+    // How many days back an exchange rate may be used for a document date (OA4). Beyond it the rate is stale and the document needs a fresh one.
+    'fx_rate_max_age_days' => max(1, (int) env('OPTIENTRY_FX_RATE_MAX_AGE_DAYS', 31)),
+
 ];

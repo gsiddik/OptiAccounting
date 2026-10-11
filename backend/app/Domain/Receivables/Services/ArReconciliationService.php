@@ -31,7 +31,7 @@ class ArReconciliationService
         $subledger = $this->subledger->rowsAsOf($asOf, $customerId ? ['customer_id' => $customerId] : []);
         $subByCustomer = [];
         foreach ($subledger as $row) {
-            $subByCustomer[$row->customer_id] = ($subByCustomer[$row->customer_id] ?? BigDecimal::zero())->plus((string) $row->outstanding_asof);
+            $subByCustomer[$row->customer_id] = ($subByCustomer[$row->customer_id] ?? BigDecimal::zero())->plus((string) $row->outstanding_functional_asof);
         }
 
         $customerIds = array_values(array_unique(array_merge(array_keys($subByCustomer), array_filter(array_keys($attributed['by_customer'])))));

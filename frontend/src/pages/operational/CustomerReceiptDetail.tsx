@@ -8,8 +8,10 @@ import { formatDate, formatDateTime } from '../../lib/format'
 import { useResource } from '../../lib/hooks'
 import { API, MODULES, useModuleAccess } from '../../lib/operational'
 import { paymentMethodLabels } from '../../lib/operationalLabels'
+import { DocAmount, ForeignFacts } from './foreign'
+import { isForeignDoc } from './foreignSupport'
 import { AR_PATH } from './receivables/paths'
-import type { Receipt } from './receivables/types'
+import type { Receipt, ReceiptAllocation } from './receivables/types'
 import { Money, ReadOnlyNotice, Timeline } from './shared'
 import { useDocumentActions } from './workflow'
 
@@ -45,6 +47,7 @@ function ReceiptView({ receipt: rec, reload }: { receipt: Receipt; reload: () =>
     onChanged: reload,
   })
   const allocations = rec.allocations ?? []
+  const foreign = isForeignDoc(rec)
   const draft = ['DRAFT', 'SUBMITTED', 'APPROVED', 'REJECTED'].includes(rec.status)
 
   return (
@@ -74,13 +77,14 @@ function ReceiptView({ receipt: rec, reload }: { receipt: Receipt; reload: () =>
         <dl className="facts">
           <div><dt>Pelanggan</dt><dd>{rec.customer ? `${rec.customer.code} · ${rec.customer.name}` : '—'}</dd></div>
           <div><dt>Akun kas/bank</dt><dd>{rec.cash_bank_account ? `${rec.cash_bank_account.code} · ${rec.cash_bank_account.name}` : '—'}</dd></div>
-          <div><dt>Jumlah</dt><dd><Money value={rec.amount} strong /></dd></div>
+          <div><dt>Jumlah</dt><dd><DocAmount value={rec.amount} doc={rec} strong /></dd></div>
           <div><dt>Teralokasi</dt><dd><Money value={rec.allocated_amount} /></dd></div>
           <div><dt>Belum dialokasikan</dt><dd><Money value={rec.unallocated_amount} /></dd></div>
           <div><dt>Tanggal penerimaan</dt><dd>{formatDate(rec.receipt_date)}</dd></div>
           <div><dt>Tanggal posting</dt><dd>{formatDate(rec.posting_date)}</dd></div>
           <div><dt>Metode</dt><dd>{rec.receipt_method ? paymentMethodLabels[rec.receipt_method] ?? rec.receipt_method : '—'}</dd></div>
           <div><dt>Mata uang</dt><dd>{rec.currency}</dd></div>
+          <ForeignFacts doc={rec} total={{ label: 'Jumlah', value: rec.amount }} kind="AR" skipTotal />
           <div><dt>Referensi</dt><dd>{rec.reference ?? '—'}</dd></div>
           {rec.gl_account && <div><dt>Akun buku besar</dt><dd>{rec.gl_account.code} · {rec.gl_account.name}</dd></div>}
           {(rec.branch || rec.business_unit || rec.cost_center) && (
@@ -109,6 +113,10 @@ function ReceiptView({ receipt: rec, reload }: { receipt: Receipt; reload: () =>
               { header: 'Jatuh tempo', cell: (a) => formatDate(a.invoice?.due_date) },
               { header: 'Total faktur', align: 'right', cell: (a) => <Money value={a.invoice?.total_amount} /> },
               { header: 'Dialokasikan', align: 'right', cell: (a) => <Money value={a.amount} /> },
+              ...(foreign ? [
+                { header: 'Nilai tercatat fungsional', align: 'right' as const, cell: (a: ReceiptAllocation) => <Money value={a.carrying_amount} /> },
+                { header: 'Nilai penerimaan fungsional', align: 'right' as const, cell: (a: ReceiptAllocation) => <Money value={a.settlement_amount} /> },
+              ] : []),
               { header: 'Keadaan', cell: (a) => (a.released_at ? <Badge tone="neutral">Dilepas</Badge> : a.is_effective ? <Badge tone="ok">Berlaku</Badge> : rec.status === 'CANCELLED' || rec.status === 'REJECTED' ? <Badge tone="neutral">Tidak berlaku</Badge> : <Badge tone="info">Menunggu posting</Badge>) },
             ]}
           />
@@ -116,6 +124,7 @@ function ReceiptView({ receipt: rec, reload }: { receipt: Receipt; reload: () =>
         <div className="table-total">
           <span>Jumlah penerimaan <Money value={rec.amount} /></span>
           <span>Teralokasi <Money value={rec.allocated_amount} strong /></span>
+          {foreign && <span>Jumlah fungsional <Money value={rec.functional_amount} strong /></span>}
         </div>
       </Card>
 
