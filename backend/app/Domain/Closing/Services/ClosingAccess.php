@@ -8,8 +8,8 @@ use App\Domain\Shared\DomainException;
 use App\Support\TenantContext;
 
 /**
- * The in-service authorization of every closing action: the permission through the central resolver and a writable ACCOUNTING_REPORTING
- * module. The routes carry the same gate; the services repeat it because the legacy period routes are gated on ACCOUNTING_CORE only and a
+ * The in-service authorization of every closing action: the permission through the central resolver, a writable ACCOUNTING_REPORTING module and a
+ * writable core ledger (a child module that stays ACTIVE cannot close the periods of a ledger the tenant has lost). The routes carry the same gate; the services repeat it because the legacy period routes are gated on ACCOUNTING_CORE only and a
  * service can be reached from more than one route.
  */
 class ClosingAccess
@@ -26,6 +26,7 @@ class ClosingAccess
         $user = $this->user();
         $this->require($user, $permission);
         $this->authority->assertModuleWritable($user, 'ACCOUNTING_REPORTING', 'PERIOD_CLOSING');
+        $this->authority->assertModuleWritable($user, 'ACCOUNTING_CORE', 'ACCOUNTING_CONFIGURATION'); // closing changes the periods of the core ledger
 
         return $user;
     }
