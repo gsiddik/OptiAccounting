@@ -95,6 +95,19 @@ Who sees what: `akuntan` prepares budgets, assets, depreciation runs and disposa
 approves and activates budgets, capitalizes, posts runs, approves and posts disposals, and manages tax codes, currencies, rates and asset categories. `viewer@` reads everything.
 `admin@tunggakan.demo.test` reads the OA4 screens but every change is refused (PAST_DUE). CV Sinar Abadi has none of the modules. Re-running the seeder changes nothing.
 
+## Demo OA5: laporan keuangan, rekonsiliasi, penutupan
+
+`ACCOUNTING_REPORTING` is part of every demo bundle already. The 16 OA5 permissions go to the finance roles: `akuntan` 8 (read statements, reconciliations and closing state, run a
+reconciliation, pre-close), `manajer` all 16. A database seeded before OA5 gets them when `DemoSeeder` runs again. PT Maju Jaya has:
+
+- **Report definitions**: default balance sheet, profit and loss and cash flow, built from the chart of accounts and published (version 1, effective from the first day of the year). The statements balance and the cash flow reconciles to cash/bank.
+- **Reconciliation**: one stored run per type as of the day the seeder ran (AP, AR, cash/bank, fixed asset, tax, FX vs GL), all MATCHED, so the exception list is empty.
+- **Closing**: the year-end rule is published (`RETAINED_EARNINGS` is mapped); two manual checklist templates (the first is required). January and February are CLOSED (February through the closing service with a pre-close and a hard-close event);
+  the current period shows readiness, a pending checklist and its blockers. No year-end closing is run: the year-end screen shows the preview of the open fiscal year.
+
+Who sees what: `akuntan` reads and runs reconciliations; `manajer` manages report definitions, the closing policy and checklist, closes, reopens and runs the year end. `viewer@` reads statements and reconciliations.
+`admin@tunggakan.demo.test` reads every OA5 screen but every change is refused (PAST_DUE). CV Sinar Abadi has none of the accounting modules beyond the Starter ones and no demo books. Re-running the seeder changes nothing.
+
 ## Demo tenants
 
 | Tenant | Tenant status | Bundle | Subscription | Limits |
