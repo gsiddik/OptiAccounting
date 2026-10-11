@@ -287,8 +287,11 @@ class AccessMatrixTest extends TestCase
             $token = $this->tenantToken($this->member($this->alpha, [$permission])[0], $this->alpha);
             $others = array_values(array_filter($routes, fn ($r) => $r['permission'] !== $permission));
 
+            // With ACCOUNTING_REPORTING entitled, soft-close and close also need accounting.period.soft_close / hard_close inside the OA5 closing service
+            // (LegacyPeriodRoutesTest); a holder of only the OA1 permission passes the route gate and meets that second check.
+            $delegated = ['POST periods/{period}/soft-close', 'POST periods/{period}/close'];
             $opened = $this->sweep($token, $group);
-            $this->assertSame([], $this->violations($opened, fn ($o) => ! str_starts_with($o, '401') && ! str_starts_with($o, '403') && ! str_starts_with($o, '5')), "holding only {$permission}: ".json_encode($opened));
+            $this->assertSame([], $this->violations($opened, fn ($o, $label) => ! str_starts_with($o, '401') && ! str_starts_with($o, '5') && (! str_starts_with($o, '403') || (in_array($label, $delegated, true) && $o === '403:PERMISSION_DENIED'))), "holding only {$permission}: ".json_encode($opened));
             $this->assertSame([], $this->violations($this->sweep($token, $others), fn ($o) => str_starts_with($o, '403:PERMISSION_DENIED')), "{$permission} must not open other routes");
         }
     }

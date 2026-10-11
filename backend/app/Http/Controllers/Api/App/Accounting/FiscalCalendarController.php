@@ -53,18 +53,24 @@ class FiscalCalendarController extends AppController
         return response()->json(null, 204);
     }
 
-    public function openPeriod(AccountingPeriod $period): JsonResponse
+    /** The period routes accept an optional reason; a tenant under the OA5 closing workflow records it in the closing history. */
+    public function openPeriod(Request $request, AccountingPeriod $period): JsonResponse
     {
-        return response()->json($this->calendar->transitionPeriod($period, AccountingPeriod::OPEN));
+        return response()->json($this->calendar->transitionPeriodViaRoute($period, AccountingPeriod::OPEN, $this->reason($request)));
     }
 
-    public function softClosePeriod(AccountingPeriod $period): JsonResponse
+    public function softClosePeriod(Request $request, AccountingPeriod $period): JsonResponse
     {
-        return response()->json($this->calendar->transitionPeriod($period, AccountingPeriod::SOFT_CLOSED));
+        return response()->json($this->calendar->transitionPeriodViaRoute($period, AccountingPeriod::SOFT_CLOSED, $this->reason($request)));
     }
 
-    public function closePeriod(AccountingPeriod $period): JsonResponse
+    public function closePeriod(Request $request, AccountingPeriod $period): JsonResponse
     {
-        return response()->json($this->calendar->transitionPeriod($period, AccountingPeriod::CLOSED));
+        return response()->json($this->calendar->transitionPeriodViaRoute($period, AccountingPeriod::CLOSED, $this->reason($request)));
+    }
+
+    private function reason(Request $request): ?string
+    {
+        return $request->validate(['reason' => ['sometimes', 'nullable', 'string', 'max:500']])['reason'] ?? null;
     }
 }

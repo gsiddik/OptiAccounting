@@ -5,6 +5,8 @@ namespace App\Domain\Accounting\Services;
 use App\Domain\Accounting\Models\AccountingPeriod;
 use App\Domain\Accounting\Models\FiscalYear;
 use App\Domain\Audit\Services\AuditService;
+use App\Domain\Closing\Services\PeriodClosingService;
+use App\Domain\Entitlement\Services\ModuleAvailability;
 use App\Domain\Shared\DomainException;
 use App\Support\TenantContext;
 use Carbon\CarbonImmutable;
@@ -20,6 +22,7 @@ class FiscalCalendarService
         private readonly AuditService $audit,
         private readonly TenantContext $context,
         private readonly PeriodGuard $guard,
+        private readonly ModuleAvailability $modules,
     ) {}
 
     /** @param array{code:string,name:string,start_date:string,months?:int} $data */
@@ -82,7 +85,7 @@ class FiscalCalendarService
         });
     }
 
-    /** OPEN -> CLOSED once every period is closed. Year-end closing entries belong to OA5. */
+    /** OPEN -> CLOSED once every period is closed. The year-end closing entries themselves are posted by Closing\Services\YearEndClosingService before this. */
     public function closeFiscalYear(FiscalYear $year): FiscalYear
     {
         return DB::transaction(function () use ($year) {
@@ -112,6 +115,32 @@ class FiscalCalendarService
             $year->delete();
             $this->audit->record('accounting.fiscal_year.deleted', 'fiscal_year', $year->id, $year->only(['code', 'name']), null);
         });
+    }
+
+    /**
+     * The period routes (soft-close, close, open). A tenant with ACCOUNTING_REPORTING entitled is governed by the OA5 closing workflow, so these routes
+     * cannot bypass it: soft close, hard close (close readiness under the ledger gate, history, the dedicated permission) and the step back from a
+     * soft close (a reopen with a reason) all go through PeriodClosingService, which also needs a writable ACCOUNTING_REPORTING module. Every
+     * other tenant, and every other move (FUTURE -> OPEN, refused moves), keeps the OA1 behaviour of transitionPeriod exactly.
+     */
+    public function transitionPeriodViaRoute(AccountingPeriod $period, string $to, ?string $reason = null): AccountingPeriod
+    {
+        if (! $this->modules->active('ACCOUNTING_REPORTING')) {
+            return $this->transitionPeriod($period, $to);
+        }
+
+        $closing = app(PeriodClosingService::class);
+        if ($to === AccountingPeriod::SOFT_CLOSED) {
+            return $closing->softClose($period, $reason);
+        }
+        if ($to === AccountingPeriod::CLOSED) {
+            return $closing->hardClose($period, $reason);
+        }
+        if ($to === AccountingPeriod::OPEN && $period->status === AccountingPeriod::SOFT_CLOSED) {
+            return $closing->reopen($period, AccountingPeriod::OPEN, $reason ?? 'Dibuka kembali dari soft close melalui rute periode (tanpa alasan dari pengguna).');
+        }
+
+        return $this->transitionPeriod($period, $to);
     }
 
     public function transitionPeriod(AccountingPeriod $period, string $to): AccountingPeriod
