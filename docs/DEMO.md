@@ -108,6 +108,28 @@ reconciliation, pre-close), `manajer` all 16. A database seeded before OA5 gets 
 Who sees what: `akuntan` reads and runs reconciliations; `manajer` manages report definitions, the closing policy and checklist, closes, reopens and runs the year end. `viewer@` reads statements and reconciliations.
 `admin@tunggakan.demo.test` reads every OA5 screen but every change is refused (PAST_DUE). CV Sinar Abadi has none of the accounting modules beyond the Starter ones and no demo books. Re-running the seeder changes nothing.
 
+## Demo OA6: integration with OptiFleet
+
+The Business bundle (PT Maju Jaya, and PT Tunggakan Demo read-only) now includes `ACCOUNTING_INTEGRATION` (features `INTEGRATION_CONNECTION` and `OPTIFLEET_CONNECTOR`); Starter does not. The 3 OA6
+permissions go to the finance roles: `akuntan` 1 (`accounting.integration.view`), `manajer` all 3 (`view`, `manage`, `retry`). A database seeded before OA6 gets the module, entitlements and permissions when
+`DemoSeeder` runs again. PT Maju Jaya has one connection, **OptiFleet Bengkel** (ACTIVE): a placeholder base URL (`https://optifleet.example.test`) and a placeholder credential (nothing real is stored), cutover
+on 1 January, settings pointing at the bank account `BCA-OPS` and the expense category `BENGKEL` (classified to account 6400). The seeder never calls the network: it hands OptiFleet feed envelopes to the
+real inbox and processor, as a pull does, and records the connection as pulled just now (cursor 7, next pull due in a day), so the scheduler leaves it alone. **Sync now** would try the fake URL and fail,
+which is expected in a demo. The 7 events (dated inside the open periods, relative to today):
+
+- Workshop invoice `BKL-2026-0412` recorded, then paid in full: both POSTED. The invoice and the payment are posted AP documents (vendor `BENGKEL-MITRA`, created from the feed).
+- Workshop invoice `BKL-2026-0431` recorded, then corrected: all POSTED. The first AP invoice is REVERSED (reason from the correction) and the corrected one is posted.
+- A maintenance memo (billed): POSTED without a journal, because the cost is recognised once, at the workshop invoice.
+- A USD workshop invoice: NEEDS_REVIEW, `CURRENCY_NOT_SUPPORTED` (only the functional currency is booked for now).
+- A payment for an invoice that was never received: NEEDS_REVIEW, `INVOICE_NOT_FOUND`; it succeeds on retry once the invoice event has arrived.
+
+The accounting policy of the demo requires approval, so the integration user (`optifleet.integration@maju-jaya.optientry.invalid`: no password, no role, listed among the tenant's users) only submits; the
+manager approved and posted the documents afterwards. The events therefore link to their AP documents through the source links, and the journals belong to the manager's posting. The AP-to-GL
+reconciliation still reads MATCHED.
+
+Who sees what: `manajer@` and `admin@majujaya` read, manage connections and retry events; `akuntan@` and `viewer@` read only (changes are refused); `keuangan@` (Staf Keuangan) has no integration permission.
+`admin@tunggakan.demo.test` can read the OA6 screens (no connection of its own) but every change is refused (PAST_DUE). CV Sinar Abadi does not have the module. Re-running the seeder changes nothing.
+
 ## Demo tenants
 
 | Tenant | Tenant status | Bundle | Subscription | Limits |

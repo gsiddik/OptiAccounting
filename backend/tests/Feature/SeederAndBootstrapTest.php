@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Domain\Identity\Models\User;
 use Database\Seeders\DatabaseSeeder;
 use Database\Seeders\DemoOa4Seeder;
+use Database\Seeders\DemoOa6Seeder;
 use Database\Seeders\DemoSeeder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -174,7 +175,7 @@ class SeederAndBootstrapTest extends TestCase
         $this->as($finance)->getJson('/api/v1/app/users')->assertForbidden();
 
         $admin = $login('admin@majujaya.demo.test');
-        $this->as($admin)->getJson('/api/v1/app/users')->assertOk()->assertJsonPath('total', 7); // admin, 5 staff (incl. accountant and finance manager), multi-tenant viewer
+        $this->as($admin)->getJson('/api/v1/app/users')->assertOk()->assertJsonPath('total', 8); // admin, 5 staff (incl. accountant and finance manager), multi-tenant viewer, the OptiFleet integration user (OA6)
     }
 
     public function test_the_demo_books_carry_payables_expenses_and_cash_bank_in_every_state_and_stay_consistent(): void
@@ -183,11 +184,11 @@ class SeederAndBootstrapTest extends TestCase
         $tenant = DB::table('tenants')->where('code', 'maju-jaya')->value('id');
         $count = fn (string $table, array $where = []) => DB::table($table)->where('tenant_id', $tenant)->where($where)->count();
 
-        $this->assertSame(5, $count('vendors')); // four domestic vendors and the USD one (OA4)
+        $this->assertSame(6, $count('vendors')); // four domestic vendors, the USD one (OA4) and the OptiFleet workshop partner (OA6)
         $this->assertSame(2, $count('cash_bank_accounts'));
-        // posted: three OA2 invoices, two with tax codes and two in USD (OA4)
-        $this->assertSame([7, 1, 1, 1], [$count('ap_invoices', ['status' => 'POSTED', 'origin' => 'INVOICE']), $count('ap_invoices', ['status' => 'SUBMITTED']), $count('ap_invoices', ['status' => 'APPROVED']), $count('ap_invoices', ['status' => 'DRAFT'])]);
-        $this->assertSame([3, 1], [$count('vendor_payments', ['status' => 'POSTED']), $count('vendor_payments', ['status' => 'SUBMITTED'])]); // one of the posted ones is in USD
+        // posted: three OA2 invoices, two with tax codes and two in USD (OA4), two workshop invoices from OptiFleet (OA6; a third was reversed by its correction)
+        $this->assertSame([9, 1, 1, 1], [$count('ap_invoices', ['status' => 'POSTED', 'origin' => 'INVOICE']), $count('ap_invoices', ['status' => 'SUBMITTED']), $count('ap_invoices', ['status' => 'APPROVED']), $count('ap_invoices', ['status' => 'DRAFT'])]);
+        $this->assertSame([4, 1], [$count('vendor_payments', ['status' => 'POSTED']), $count('vendor_payments', ['status' => 'SUBMITTED'])]); // one of the posted ones is in USD, one comes from OptiFleet (OA6)
         $this->assertSame([2, 1, 1], [$count('expenses', ['status' => 'POSTED']), $count('expenses', ['status' => 'SUBMITTED']), $count('expenses', ['status' => 'DRAFT'])]);
         $this->assertSame([3, 1], [$count('cash_transactions', ['status' => 'POSTED']), $count('cash_transactions', ['status' => 'DRAFT'])]);
         $this->assertSame([3, 1], [$count('bank_statement_items', ['status' => 'MATCHED']), $count('bank_statement_items', ['status' => 'UNMATCHED'])]);
@@ -209,7 +210,7 @@ class SeederAndBootstrapTest extends TestCase
         $login = fn (string $email) => $this->postJson('/api/v1/auth/login', ['email' => $email, 'password' => DemoSeeder::DEFAULT_PASSWORD])->assertOk()->json('token');
         $accountant = $login('akuntan@majujaya.demo.test');
         $manager = $login('manajer@majujaya.demo.test');
-        $this->as($accountant)->getJson('/api/v1/app/accounting/vendors')->assertOk()->assertJsonPath('total', 5);
+        $this->as($accountant)->getJson('/api/v1/app/accounting/vendors')->assertOk()->assertJsonPath('total', 6);
         $submitted = DB::table('ap_invoices')->where('tenant_id', $tenant)->where('status', 'SUBMITTED')->value('id');
         $this->as($accountant)->postJson("/api/v1/app/accounting/ap-invoices/{$submitted}/approve")->assertForbidden();
         $this->as($manager)->postJson("/api/v1/app/accounting/ap-invoices/{$submitted}/approve")->assertOk();
@@ -312,6 +313,68 @@ class SeederAndBootstrapTest extends TestCase
         $this->as($viewer)->getJson('/api/v1/app/accounting/assets')->assertOk()->assertJsonPath('total', 4);
         $this->as($overdue)->getJson('/api/v1/app/accounting/tax-codes')->assertOk();
         $this->as($overdue)->postJson('/api/v1/app/accounting/currencies', ['code' => 'EUR', 'name' => 'Euro'])->assertForbidden();
+
+        Carbon::setTestNow();
+    }
+
+    public function test_the_demo_books_carry_an_optifleet_connection_whose_events_went_through_the_pipeline(): void
+    {
+        Carbon::setTestNow('2026-10-10 12:00:00');
+        $this->seed(DemoSeeder::class);
+        $tenant = DB::table('tenants')->where('code', 'maju-jaya')->value('id');
+        $count = fn (string $table, array $where = []) => DB::table($table)->where('tenant_id', $tenant)->where($where)->count();
+
+        // One active connection: placeholder base URL, cutover on 1 January, the demo bank account and a category classified to the vehicle maintenance account.
+        $connection = DB::table('integration_connections')->where('tenant_id', $tenant)->get();
+        $this->assertCount(1, $connection);
+        $this->assertSame(['OptiFleet Bengkel', 'optifleet', 'ACTIVE', 'https://optifleet.example.test', '2026-01-01', '7', 0],
+            [$connection[0]->name, $connection[0]->source_system, $connection[0]->status, $connection[0]->base_url, $connection[0]->cutover_date, $connection[0]->last_cursor, $connection[0]->consecutive_failures]);
+        $settings = json_decode($connection[0]->settings, true);
+        $this->assertSame('BCA-OPS', DB::table('cash_bank_accounts')->where('id', $settings['payables_cash_bank_account_id'])->value('code'));
+        $this->assertSame('6400', DB::table('expense_categories as c')->join('accounts as a', 'a.id', '=', 'c.account_id')->where('c.id', $settings['expense_category_id'])->value('a.code'));
+
+        // Every event went through the inbox and the processor: five are POSTED (the memo without a journal), two wait for a person.
+        $events = DB::table('external_events')->where('tenant_id', $tenant)->orderBy('sequence')->get(['event_type', 'status', 'last_error_code'])->map(fn ($e) => [$e->event_type, $e->status, $e->last_error_code])->all();
+        $this->assertSame([
+            ['optifleet.workshop_invoice.recorded', 'POSTED', null], ['optifleet.workshop_invoice.payment_recorded', 'POSTED', null],
+            ['optifleet.workshop_invoice.recorded', 'POSTED', null], ['optifleet.workshop_invoice.corrected', 'POSTED', null], ['optifleet.maintenance_memo.billed', 'POSTED', null],
+            ['optifleet.workshop_invoice.recorded', 'NEEDS_REVIEW', 'CURRENCY_NOT_SUPPORTED'], ['optifleet.workshop_invoice.payment_recorded', 'NEEDS_REVIEW', 'INVOICE_NOT_FOUND'],
+        ], $events);
+
+        // The AP documents: prepared by the integration user, approved and posted by the manager; the corrected invoice replaced a reversed one; one payment, posted.
+        $invoices = DB::table('ap_invoices')->where('tenant_id', $tenant)->where('vendor_invoice_number', 'like', 'BKL-%')->orderBy('created_at')->get();
+        $this->assertSame([['BKL-2026-0412', 'POSTED'], ['BKL-2026-0431', 'REVERSED'], ['BKL-2026-0431', 'POSTED']], $invoices->map(fn ($i) => [$i->vendor_invoice_number, $i->status])->all());
+        $integrationUser = DB::table('users')->where('email', 'optifleet.integration@maju-jaya.optientry.invalid')->value('id');
+        $manager = DB::table('users')->where('email', 'manajer@majujaya.demo.test')->value('id');
+        $this->assertSame([[$integrationUser, $manager, $manager]], $invoices->take(1)->map(fn ($i) => [$i->created_by, $i->approved_by, $i->posted_by])->all());
+        $this->assertSame(['POSTED', '2220000.0000'], [DB::table('vendor_payments')->where('reference', 'TRF-BKL-0412')->value('status'), (string) DB::table('vendor_payments')->where('reference', 'TRF-BKL-0412')->value('amount')]);
+        $this->assertSame(4, $count('external_source_links'));
+
+        // The finance roles hold the OA6 permissions: the accountant reads, the manager also manages and retries.
+        $held = fn (string $role) => DB::table('role_permissions as rp')->join('roles as r', 'r.id', '=', 'rp.role_id')->join('permissions as p', 'p.id', '=', 'rp.permission_id')
+            ->where('r.tenant_id', $tenant)->where('r.name', $role)->whereIn('p.code', [...DemoOa6Seeder::ACCOUNTANT_PERMISSIONS, ...DemoOa6Seeder::MANAGER_PERMISSIONS])->count();
+        $this->assertSame([1, 3], [$held('Akuntan'), $held('Manajer Keuangan')]);
+
+        $login = fn (string $email) => $this->postJson('/api/v1/auth/login', ['email' => $email, 'password' => DemoSeeder::DEFAULT_PASSWORD])->assertOk()->json('token');
+        $accountant = $login('akuntan@majujaya.demo.test');
+        $managerToken = $login('manajer@majujaya.demo.test');
+        $overdue = $login('admin@tunggakan.demo.test');
+        $starter = $login('admin@sinarabadi.demo.test');
+
+        $this->as($accountant)->getJson('/api/v1/app/integration/connections')->assertOk()->assertJsonPath('total', 1)->assertJsonPath('data.0.has_credential', true)->assertJsonMissingPath('data.0.credential');
+        $this->as($accountant)->getJson('/api/v1/app/integration/events?status=NEEDS_REVIEW')->assertOk()->assertJsonPath('total', 2);
+        $this->as($accountant)->postJson('/api/v1/app/integration/connections/'.$connection[0]->id.'/pause')->assertForbidden();
+        $this->as($managerToken)->getJson('/api/v1/app/integration/connections/'.$connection[0]->id.'/summary')->assertOk()->assertJsonPath('posted', 5)->assertJsonPath('counts.NEEDS_REVIEW', 2);
+        $this->as($managerToken)->getJson('/api/v1/app/accounting/reconciliation/ap')->assertOk()->assertJsonPath('status', 'MATCHED');
+        $this->as($overdue)->getJson('/api/v1/app/integration/connections')->assertOk()->assertJsonPath('total', 0); // reads (PAST_DUE), has no connection of its own
+        $this->as($overdue)->postJson('/api/v1/app/integration/connections', ['source_system' => 'optifleet', 'name' => 'X'])->assertForbidden();
+        $this->as($starter)->getJson('/api/v1/app/integration/connections')->assertForbidden(); // the Starter bundle does not include the module
+
+        // Running the seeder again changes nothing, the audit trail included.
+        $tables = ['integration_connections', 'external_events', 'external_source_links', 'external_dimensions', 'ap_invoices', 'vendor_payments', 'vendors', 'expense_categories', 'journal_entries', 'users', 'role_permissions', 'audit_logs'];
+        $before = array_map(fn ($t) => DB::table($t)->count(), $tables);
+        $this->seed(DemoSeeder::class);
+        $this->assertSame($before, array_map(fn ($t) => DB::table($t)->count(), $tables));
 
         Carbon::setTestNow();
     }
