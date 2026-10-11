@@ -119,6 +119,11 @@ page(`${ACCOUNTING}/penutupan/kebijakan`, 'Kebijakan penutupan', 'Penutupan')
 page(`${ACCOUNTING}/penutupan/akhir-tahun`, 'Tutup tahun', 'Penutupan')
 page(`${ACCOUNTING}/penutupan/akhir-tahun/:id`, 'Tahun fiskal', undefined, `${ACCOUNTING}/penutupan/akhir-tahun`)
 
+page('/app/integrasi', 'Koneksi', 'Integrasi')
+page('/app/integrasi/koneksi/:id', 'Detail', undefined, '/app/integrasi')
+page('/app/integrasi/kejadian', 'Kotak masuk kejadian', 'Integrasi')
+page('/app/integrasi/kejadian/:id', 'Detail', undefined, '/app/integrasi/kejadian')
+
 page(`${ACCOUNTING}/profil`, 'Profil akuntansi', 'Konfigurasi akuntansi')
 page(`${ACCOUNTING}/periode`, 'Tahun fiskal & periode', 'Konfigurasi akuntansi')
 page(`${ACCOUNTING}/akun`, 'Bagan akun', 'Konfigurasi akuntansi')
