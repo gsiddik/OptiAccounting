@@ -253,9 +253,9 @@ class DepreciationRunTest extends TestCase
             ->get(['a.code', 'l.branch_id', 'l.debit', 'l.credit']);
         $this->assertCount(4, $lines, 'one expense and one accumulated line per branch; the two Surabaya assets share theirs');
         $byBranch = $lines->where('code', '6600')->mapWithKeys(fn ($l) => [$l->branch_id => $l->debit])->all();
-        $this->assertSame([$jkt => '1000000.0000', $sby => '800000.0000'], $byBranch);
+        $this->assertEquals([$jkt => '1000000.0000', $sby => '800000.0000'], $byBranch, 'line order is not defined by the query');
         $accumulated = $lines->where('code', '1290')->mapWithKeys(fn ($l) => [$l->branch_id => $l->credit])->all();
-        $this->assertSame($byBranch, $accumulated);
+        $this->assertEquals($byBranch, $accumulated);
     }
 
     public function test_a_scoped_user_only_sees_the_runs_they_created_and_cannot_open_anothers(): void
