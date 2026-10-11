@@ -3,6 +3,7 @@
 namespace App\Domain\Integration\Services;
 
 use App\Domain\Audit\Services\AuditService;
+use App\Domain\Integration\Contracts\ConnectorRequirements;
 use App\Domain\Integration\Models\ExternalEvent;
 use App\Domain\Integration\Models\IntegrationConnection as Connection;
 use App\Domain\Shared\DomainException;
@@ -22,6 +23,10 @@ use Illuminate\Support\Str;
  * implemented and is refused. A DISCONNECTED connection is reconfigured (and thereby reconnected to CONFIGURING or READY) through `update`,
  * which is how the same source tenant is connected again: the unique key on (tenant, source system, source tenant reference) allows one
  * connection row per source tenant. The gap policy is stored for that case; applying it is not implemented.
+ *
+ * A source whose adapter implements ConnectorRequirements adds to this: its `settings` (references to the tenant's own setup, merged key by
+ * key and validated by the adapter, null removes a key) are part of what an ACTIVE connection needs, and activating or resuming also needs
+ * the tenant to be entitled to the connector. A source without such an adapter accepts no settings.
  */
 class ConnectionService
 {
@@ -38,12 +43,12 @@ class ConnectionService
     /** Consecutive failed pulls after which an ACTIVE connection becomes ERROR. */
     public const MAX_PULL_FAILURES = 5;
 
-    private const EDITABLE = ['name', 'source_tenant_reference', 'base_url', 'credential', 'cutover_policy', 'cutover_date', 'gap_policy', 'pull_interval_minutes'];
+    private const EDITABLE = ['name', 'source_tenant_reference', 'base_url', 'credential', 'cutover_policy', 'cutover_date', 'gap_policy', 'pull_interval_minutes', 'settings'];
 
     /** Once an event was received these identify what was received and can no longer change. */
     private const LOCKED_BY_EVENTS = ['source_tenant_reference', 'cutover_policy', 'cutover_date'];
 
-    public function __construct(private readonly AuditService $audit) {}
+    public function __construct(private readonly AuditService $audit, private readonly AdapterRegistry $adapters) {}
 
     /** @param array{status?:?string,source_system?:?string} $filter */
     public function query(array $filter = []): Builder
@@ -113,7 +118,10 @@ class ConnectionService
 
     public function activate(string $id): Connection
     {
-        return $this->move($id, Connection::ACTIVE, [Connection::READY], 'activated', fn (Connection $c) => $this->assertComplete($c));
+        return $this->move($id, Connection::ACTIVE, [Connection::READY], 'activated', function (Connection $c) {
+            $this->assertComplete($c);
+            $this->assertEntitled($c);
+        });
     }
 
     public function pause(string $id): Connection
@@ -124,7 +132,10 @@ class ConnectionService
     /** Back to ACTIVE after a pause or after the pull gave up (ERROR); the failure counter starts again. */
     public function resume(string $id): Connection
     {
-        return $this->move($id, Connection::ACTIVE, [Connection::PAUSED, Connection::ERROR], 'resumed', fn (Connection $c) => $this->assertComplete($c));
+        return $this->move($id, Connection::ACTIVE, [Connection::PAUSED, Connection::ERROR], 'resumed', function (Connection $c) {
+            $this->assertComplete($c);
+            $this->assertEntitled($c);
+        });
     }
 
     public function disconnect(string $id): Connection
@@ -170,7 +181,7 @@ class ConnectionService
             'source_tenant_reference' => $connection->source_tenant_reference, 'status' => $connection->status, 'base_url' => $connection->base_url,
             'has_credential' => $connection->credential !== null, 'cutover_policy' => $connection->cutover_policy,
             'cutover_date' => $connection->cutover_date?->toDateString(), 'gap_policy' => $connection->gap_policy,
-            'pull_interval_minutes' => $connection->pull_interval_minutes, 'last_cursor' => $connection->last_cursor,
+            'pull_interval_minutes' => $connection->pull_interval_minutes, 'settings' => $connection->settings ?: new \stdClass, 'last_cursor' => $connection->last_cursor,
             'last_pulled_at' => $connection->last_pulled_at?->toIso8601String(), 'last_error' => $connection->last_error,
             'consecutive_failures' => $connection->consecutive_failures,
             'created_at' => $connection->created_at?->toIso8601String(), 'updated_at' => $connection->updated_at?->toIso8601String(),
@@ -201,10 +212,12 @@ class ConnectionService
     /** @return list<string> what an ACTIVE connection needs and this one lacks */
     public function missingForActivation(Connection $connection): array
     {
-        return array_keys(array_filter([
+        $missing = array_keys(array_filter([
             'credential' => $connection->credential, 'base_url' => $connection->base_url,
             'source_tenant_reference' => $connection->source_tenant_reference, 'cutover_date' => $connection->cutover_date,
         ], fn ($value) => $value === null || $value === ''));
+
+        return [...$missing, ...array_map(fn (string $key) => "settings.{$key}", $this->requirements($connection->source_system)?->missingSettings($connection->settings ?? []) ?? [])];
     }
 
     private function assertComplete(Connection $connection): void
@@ -214,16 +227,47 @@ class ConnectionService
         }
     }
 
+    /** A connector the tenant is not (or no longer) entitled to cannot be switched on; the adapter names what is missing. */
+    private function assertEntitled(Connection $connection): void
+    {
+        if (($problems = $this->requirements($connection->source_system)?->entitlementProblems() ?? []) !== []) {
+            throw new DomainException('This connector is not available to the organization: '.implode('; ', $problems).'.', 'CONNECTOR_NOT_ENTITLED', 403, ['reasons' => $problems]);
+        }
+    }
+
     /** DRAFT (nothing configured), CONFIGURING (partly) or READY (complete). */
     private function configuredState(Connection $connection): string
     {
         $missing = $this->missingForActivation($connection);
+        $everything = 4 + count($this->requirements($connection->source_system)?->missingSettings([]) ?? []);
 
         return match (true) {
             $missing === [] => Connection::READY,
-            count($missing) === 4 => Connection::DRAFT,
+            count($missing) === $everything => Connection::DRAFT,
             default => Connection::CONFIGURING,
         };
+    }
+
+    private function requirements(string $sourceSystem): ?ConnectorRequirements
+    {
+        $adapter = $this->adapters->for($sourceSystem);
+
+        return $adapter instanceof ConnectorRequirements ? $adapter : null;
+    }
+
+    /** The stored settings with the ones sent merged in: each key sent is validated by the source's adapter, null removes it. */
+    private function mergedSettings(Connection $connection, mixed $sent): array
+    {
+        $current = $connection->settings ?? [];
+        $sent = is_array($sent) ? $sent : [];
+        if ($sent === []) {
+            return $current;
+        }
+        $adapter = $this->requirements($connection->source_system)
+            ?? throw new DomainException('This source system has no settings.', 'CONNECTION_SETTINGS_UNSUPPORTED', 422, ['field' => 'settings']);
+        $removed = array_keys(array_filter($sent, fn ($value) => $value === null));
+
+        return [...array_diff_key($current, array_flip($removed)), ...$adapter->cleanSettings(array_filter($sent, fn ($value) => $value !== null))];
     }
 
     private function move(string $id, string $to, array $from, string $action, ?callable $guard = null): Connection
@@ -258,6 +302,7 @@ class ConnectionService
                 'base_url' => $value === null || trim((string) $value) === '' ? null : rtrim(trim((string) $value), '/'),
                 'credential' => $value === null || $value === '' ? $connection->credential : (string) $value, // write-only: nothing sent means unchanged
                 'source_tenant_reference' => $value === null || trim((string) $value) === '' ? null : trim((string) $value),
+                'settings' => $this->mergedSettings($connection, $value),
                 default => $value,
             };
         }
@@ -289,7 +334,7 @@ class ConnectionService
             'name' => $connection->name, 'source_system' => $connection->source_system, 'source_tenant_reference' => $connection->source_tenant_reference,
             'status' => $connection->status, 'base_url' => $connection->base_url, 'auth_configured' => $connection->credential !== null,
             'cutover_policy' => $connection->cutover_policy, 'cutover_date' => $connection->cutover_date?->toDateString(),
-            'gap_policy' => $connection->gap_policy, 'pull_interval_minutes' => $connection->pull_interval_minutes,
+            'gap_policy' => $connection->gap_policy, 'pull_interval_minutes' => $connection->pull_interval_minutes, 'settings' => $connection->settings ?? [],
         ];
     }
 }

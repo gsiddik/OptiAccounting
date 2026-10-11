@@ -3,6 +3,7 @@
 namespace App\Domain\Integration\Services;
 
 use App\Domain\Audit\Services\AuditService;
+use App\Domain\Integration\Contracts\ConnectorRequirements;
 use App\Domain\Integration\Models\ExternalEvent;
 use App\Domain\Integration\Models\ExternalSourceLink;
 use App\Domain\Shared\DomainException;
@@ -21,6 +22,7 @@ use Throwable;
  *   any other throwable (technical fault)                                             -> FAILED, retried after 1, 5, 15 and 60 minutes
  *   the fifth failed attempt                                                          -> DEAD_LETTER (audited); only a person can retry
  *   no adapter for the source, or the adapter does not support the type / major       -> NEEDS_REVIEW (NO_ADAPTER / UNSUPPORTED_EVENT)
+ *   the adapter's connector is not (or no longer) entitled for the tenant             -> the event is left exactly as it is (ConnectorRequirements)
  *
  * Only RECEIVED events and FAILED events whose backoff has elapsed are processed; anything else is returned untouched, so calling this twice
  * (two workers, a retry racing the scheduler) applies an event once. Nothing here blocks manual accounting: no lock outlives the transaction.
@@ -45,6 +47,9 @@ class EventProcessor
             $adapter = $this->adapters->for($locked->source_system);
             if ($adapter === null) {
                 return $this->review($locked, 'NO_ADAPTER', "No adapter is registered for {$locked->source_system}.");
+            }
+            if ($adapter instanceof ConnectorRequirements && $adapter->entitlementProblems() !== []) {
+                return $locked; // a lapsed entitlement is not a fault of the event: it waits, and nothing reaches the books meanwhile
             }
             if (! $adapter->supports($locked->event_type, $locked->schemaMajor())) {
                 return $this->review($locked, 'UNSUPPORTED_EVENT', "The {$locked->source_system} adapter does not support {$locked->event_type} at schema major {$locked->schemaMajor()}.");

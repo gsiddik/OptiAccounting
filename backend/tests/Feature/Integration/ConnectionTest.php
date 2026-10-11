@@ -17,7 +17,7 @@ class ConnectionTest extends TestCase
 
     private function body(array $override = []): array
     {
-        return $override + ['name' => 'OptiFleet PT Maju', 'source_system' => 'optifleet'];
+        return $override + ['name' => 'ERP PT Maju', 'source_system' => 'erp']; // a source without an adapter of its own: the generic rules (OptiFleet's are in OptiFleetAdapterTest)
     }
 
     private function create(array $override = []): array

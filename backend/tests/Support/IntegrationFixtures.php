@@ -18,7 +18,7 @@ trait IntegrationFixtures
 {
     protected const IT = '/api/v1/app/integration';
 
-    /** A connection built directly (any status), complete and cut over on 2026-01-01 unless told otherwise. */
+    /** A connection built directly (any status), complete and cut over on 2026-01-01 unless told otherwise. Its settings are placeholders (never validated when built this way). */
     protected function connectionFor(Tenant $tenant, array $override = []): IntegrationConnection
     {
         return $this->inTenant($tenant, function () use ($override) {
@@ -27,6 +27,7 @@ trait IntegrationFixtures
                 'name' => 'OptiFleet', 'source_system' => 'optifleet', 'source_tenant_reference' => 'fleet-co-1', 'status' => IntegrationConnection::ACTIVE,
                 'base_url' => 'https://fleet.example.test', 'credential' => 'feed-secret-123', 'cutover_policy' => IntegrationConnection::OPENING_BALANCE_ONLY,
                 'cutover_date' => '2026-01-01', 'pull_interval_minutes' => 5,
+                'settings' => ['payables_cash_bank_account_id' => (string) Str::uuid(), 'expense_category_id' => (string) Str::uuid()], // placeholders: the OptiFleet adapter needs both
             ])->save();
 
             return $connection;
@@ -37,7 +38,7 @@ trait IntegrationFixtures
     protected function envelope(array $override = []): array
     {
         return $override + [
-            'event_id' => 'evt-'.Str::uuid(), 'event_type' => 'workshop_invoice.recorded', 'schema_version' => '1.0', 'source_system' => 'optifleet',
+            'event_id' => 'evt-'.Str::uuid(), 'event_type' => 'optifleet.workshop_invoice.recorded', 'schema_version' => '1.0', 'source_system' => 'optifleet',
             'source_tenant_reference' => 'fleet-co-1', 'occurred_at' => '2026-03-10T08:00:00+07:00', 'correlation_id' => 'corr-1',
             'source' => ['type' => 'workshop_invoice', 'id' => 'wi-1', 'number' => 'WI-001'], 'dimensions' => ['vehicle' => 'veh-1'],
             'payload' => ['total_amount' => '1110000.00', 'tax' => '110000.00', 'currency' => 'IDR'],

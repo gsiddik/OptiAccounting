@@ -50,7 +50,7 @@ class IntegrationConnection extends Model
     {
         return [
             'credential' => 'encrypted', 'cutover_date' => 'date:Y-m-d', 'last_pulled_at' => 'datetime',
-            'pull_interval_minutes' => 'integer', 'consecutive_failures' => 'integer',
+            'pull_interval_minutes' => 'integer', 'consecutive_failures' => 'integer', 'settings' => 'array',
         ];
     }
 

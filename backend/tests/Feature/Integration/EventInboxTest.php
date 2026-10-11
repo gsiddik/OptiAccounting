@@ -117,7 +117,7 @@ class EventInboxTest extends TestCase
     {
         $tenant = $this->tenant();
         $connection = $this->connectionFor($tenant);
-        $this->fakeAdapter(supports: fn (string $type, int $major) => $type === 'workshop_invoice.recorded' && $major === 1);
+        $this->fakeAdapter(supports: fn (string $type, int $major) => $type === 'optifleet.workshop_invoice.recorded' && $major === 1);
 
         $v2 = $this->storedEvent($tenant, $connection, ['schema_version' => '2.0']);
         $other = $this->storedEvent($tenant, $connection, ['event_type' => 'tire.fitted']);

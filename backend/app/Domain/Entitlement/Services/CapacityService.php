@@ -53,8 +53,10 @@ class CapacityService
     public function used(string $tenantId, string $limitCode): int
     {
         return match ($limitCode) {
+            // A service identity of an integration (address `*.optientry.invalid`, no sign-in) is not a person and takes no seat.
             self::USER_LIMIT => DB::table('tenant_users')->where('tenant_id', $tenantId)
-                ->where('status', '<>', TenantUser::INACTIVE)->count(),
+                ->where('status', '<>', TenantUser::INACTIVE)
+                ->whereNotIn('user_id', fn ($users) => $users->select('id')->from('users')->where('email', 'like', '%.optientry.invalid'))->count(),
             self::BRANCH_LIMIT => DB::table('branches')->where('tenant_id', $tenantId)->where('status', 'ACTIVE')->count(),
             self::BUSINESS_UNIT_LIMIT => DB::table('business_units')->where('tenant_id', $tenantId)->where('status', 'ACTIVE')->count(),
             default => 0,

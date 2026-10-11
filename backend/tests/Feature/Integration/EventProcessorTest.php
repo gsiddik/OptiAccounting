@@ -5,6 +5,7 @@ namespace Tests\Feature\Integration;
 use App\Domain\AccessControl\Services\AccessCache;
 use App\Domain\Integration\Models\ExternalEvent;
 use App\Domain\Integration\Models\IntegrationConnection;
+use App\Domain\Integration\Services\AdapterRegistry;
 use App\Domain\Integration\Services\EventProcessor;
 use App\Domain\Integration\Services\IntegrationRunner;
 use App\Domain\Integration\Services\ProcessOutcome;
@@ -116,6 +117,7 @@ class EventProcessorTest extends TestCase
         $connection = $this->connectionFor($tenant);
         $event = $this->storedEvent($tenant, $connection);
 
+        $this->app->instance(AdapterRegistry::class, new AdapterRegistry([]));
         $noAdapter = $this->process($event);
         $this->assertSame(['NEEDS_REVIEW', 'NO_ADAPTER'], [$noAdapter->status, $noAdapter->last_error_code]);
 

@@ -95,6 +95,9 @@ class ConnectionController extends AppController
             'cutover_date' => [...$sometimes, 'nullable', 'date_format:Y-m-d'],
             'gap_policy' => [...$sometimes, Rule::in(IntegrationConnection::GAP_POLICIES)],
             'pull_interval_minutes' => [...$sometimes, 'integer', 'between:1,1440'],
+            // Read by the source's adapter (ids of the tenant's own records); a key sent as null is removed.
+            'settings' => [...$sometimes, 'nullable', 'array'],
+            'settings.*' => ['nullable', 'string', 'max:100'],
         ];
     }
 }
