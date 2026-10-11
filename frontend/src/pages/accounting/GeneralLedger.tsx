@@ -101,9 +101,9 @@ export default function GeneralLedger() {
                     { header: 'Tanggal', primary: true, cell: (l) => formatDate(l.posting_date) },
                     { header: 'Jurnal', cell: (l) => <Link to={`/app/akuntansi/jurnal/${l.journal_id}`} className="mono">{l.journal_number}</Link> },
                     ...(withAccount ? [] : [{ header: 'Akun', cell: (l: LedgerLineX) => <><span className="mono">{l.account.code}</span> · {l.account.name}</> }]),
-                    { header: 'Keterangan', cell: (l) => <>{l.description ?? l.journal_description}{l.journal_type !== 'MANUAL' && <div className="muted">{journalTypeLabels[l.journal_type] ?? l.journal_type}</div>}<SourceNote line={l} /></> },
-                    { header: 'Debit', align: 'right', cell: (l) => <><Side value={l.debit} /><ForeignNote line={l} side="debit" functional={functional} /></> },
-                    { header: 'Kredit', align: 'right', cell: (l) => <><Side value={l.credit} /><ForeignNote line={l} side="credit" functional={functional} /></> },
+                    { header: 'Keterangan', cell: (l) => <div className="cell-block">{l.description ?? l.journal_description}{l.journal_type !== 'MANUAL' && <div className="muted">{journalTypeLabels[l.journal_type] ?? l.journal_type}</div>}<SourceNote line={l} /></div> },
+                    { header: 'Debit', align: 'right', cell: (l) => <div className="cell-block"><Side value={l.debit} /><ForeignNote line={l} side="debit" functional={functional} /></div> },
+                    { header: 'Kredit', align: 'right', cell: (l) => <div className="cell-block"><Side value={l.credit} /><ForeignNote line={l} side="credit" functional={functional} /></div> },
                     ...(withAccount ? [{ header: 'Saldo', align: 'right' as const, cell: (l: LedgerLineX) => <Money value={l.running_balance} strong /> }] : []),
                   ]}
                 />

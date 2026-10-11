@@ -34,7 +34,7 @@ export function ReadinessPanel({ readiness }: { readiness: Resource<Readiness> }
           { header: 'Pemeriksaan', primary: true, cell: (c) => <><strong>{c.title}</strong> <span className="muted">({c.code})</span><div className="muted preview-note">{checkHints[c.code]}</div></> },
           { header: 'Sifat', cell: (c) => <SeverityBadge severity={c.severity} /> },
           { header: 'Hasil', cell: (c) => <CheckBadge result={c.result} /> },
-          { header: 'Rincian', cell: (c) => <><div>{c.message}</div><CheckDetails check={c} /></> },
+          { header: 'Rincian', cell: (c) => <div className="cell-block"><div>{c.message}</div><CheckDetails check={c} /></div> },
         ]}
       />
     </>
