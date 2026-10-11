@@ -15,7 +15,7 @@ class ClosingChecklistTemplate extends Model
 
     public const INACTIVE = 'INACTIVE';
 
-    protected $fillable = ['code', 'title', 'description', 'required', 'sort_order', 'status'];
+    protected $fillable = ['code', 'title', 'description', 'required', 'sort_order'];
 
     protected function casts(): array
     {

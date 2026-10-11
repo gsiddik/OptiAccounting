@@ -9,6 +9,7 @@ use App\Domain\Closing\Models\ClosingChecklistTemplate;
 use App\Domain\Shared\DomainException;
 use App\Support\TenantContext;
 use Illuminate\Database\QueryException;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -51,7 +52,8 @@ class ChecklistService
 
         try {
             return DB::transaction(function () use ($data, $code) {
-                $template = new ClosingChecklistTemplate(['code' => $code] + $data);
+                $template = new ClosingChecklistTemplate(['code' => $code] + Arr::except($data, ['status']));
+                $template->status = $data['status'] ?? ClosingChecklistTemplate::ACTIVE; // the lifecycle column is never mass-assigned
                 $template->save();
                 $this->audit->record('accounting.closing.policy.updated', 'closing_checklist_template', $template->id, null, ['action' => 'template_created'] + $template->only(['code', 'title', 'required', 'sort_order', 'status']));
 
@@ -71,7 +73,11 @@ class ChecklistService
         return DB::transaction(function () use ($template, $data) {
             $template = ClosingChecklistTemplate::query()->lockForUpdate()->findOrFail($template->id);
             $before = $template->only(['title', 'description', 'required', 'sort_order', 'status']);
-            $template->fill(array_diff_key($data, ['code' => 1]))->save();
+            $template->fill(array_diff_key($data, ['code' => 1, 'status' => 1]));
+            if (isset($data['status'])) {
+                $template->status = $data['status'];
+            }
+            $template->save();
             $after = $template->only(['title', 'description', 'required', 'sort_order', 'status']);
             if ($before !== $after) {
                 $this->audit->record('accounting.closing.policy.updated', 'closing_checklist_template', $template->id, ['action' => 'template_updated'] + $before, ['action' => 'template_updated', 'code' => $template->code] + $after);
