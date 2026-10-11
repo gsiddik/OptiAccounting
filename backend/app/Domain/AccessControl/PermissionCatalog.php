@@ -235,6 +235,11 @@ final class PermissionCatalog
                     'accounting.year_end.view' => 'View the year-end closing',
                     'accounting.year_end.run' => 'Run and reverse the year-end closing',
                 ],
+                'Integration' => [
+                    'accounting.integration.view' => 'View integration connections, received events, references and source links',
+                    'accounting.integration.manage' => 'Create, configure, activate, pause and disconnect integration connections and pull them now',
+                    'accounting.integration.retry' => 'Retry failed or unreviewed integration events',
+                ],
                 'Audit' => [
                     'audit.view' => 'View the tenant audit log',
                 ],

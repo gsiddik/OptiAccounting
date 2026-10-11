@@ -514,5 +514,8 @@ Route::prefix('v1')->middleware('request.id')->group(function () {
             require __DIR__.'/oa5_reconciliation.php';
             require __DIR__.'/oa5_closing.php';
         });
+
+        // ---------------------------------------------------- Integration platform (OA6): connections, inbox events, references, source links.
+        require __DIR__.'/oa6_integration.php';
     });
 });

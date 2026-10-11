@@ -2,12 +2,14 @@
 
 /**
  * Child process of the concurrency tests: boots the real application, waits for a shared start instant, then runs one
- * request (or one event posting) and prints a JSON result. Not a test itself (no Test suffix, never autoloaded).
+ * request (one event posting, or one inbox receive) and prints a JSON result. Not a test itself (no Test suffix, never autoloaded).
  *
  * usage: php race_worker.php <base64(json job)>
  */
 
 use App\Domain\Accounting\Services\PostingEngine;
+use App\Domain\Integration\Models\IntegrationConnection;
+use App\Domain\Integration\Services\EventInbox;
 use App\Domain\Shared\DomainException;
 use App\Support\TenantContext;
 use Illuminate\Contracts\Http\Kernel;
@@ -32,6 +34,11 @@ try {
         $app->make(TenantContext::class)->setTenant($job['tenant_id']);
         $event = $app->make(PostingEngine::class)->postEvent(...$job['event']);
         $result = ['status' => 200, 'body' => ['event_id' => $event->id, 'event_status' => $event->status, 'journal_entry_id' => $event->journal_entry_id]];
+    } elseif (($job['mode'] ?? 'http') === 'inbox') {
+        $app->instance('request', Request::create('/'));
+        $app->make(TenantContext::class)->setTenant($job['tenant_id']);
+        $received = $app->make(EventInbox::class)->receive(IntegrationConnection::query()->findOrFail($job['connection_id']), $job['envelope']);
+        $result = ['status' => 200, 'body' => ['outcome' => $received->outcome, 'id' => $received->event->id]];
     } else {
         $body = $job['body'] !== null ? json_encode($job['body']) : null;
         $request = Request::create($job['uri'], $job['method'], [], [], [], [

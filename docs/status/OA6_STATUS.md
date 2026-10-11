@@ -11,10 +11,10 @@ Owner started OA6 on 2026-10-11 (option C: work in checkpoints, may stop midway 
 - D Lean UI (connections, event inbox with retry), targeted tests, gate, status
 
 ## Completed
-- Nothing yet (this file is the first checkpoint).
+- **A Core** (committed): migration `2026_10_17_100001` (connections, idempotent external_events with append-only envelope trigger, dimensions, source links), 3 permissions `accounting.integration.view|manage|retry`, ConnectionService, EventInbox (idempotent, conflict detection, cutover, tenant from connection), adapter contract + registry, EventProcessor (isolated failures, backoff, dead letter after 5), RetryService, FeedClient/PullService (cursor advances only after the page is stored), `integration:pull` and `integration:process` scheduled every 5 minutes, API under `/api/v1/app/integration`. Tests: 42 feature + 2 concurrency passed; impacted older suites passed; full regression NOT RUN yet.
 
 ## Not done / next step
-Everything above. Next step: batch A.
+B OptiFleet adapter (needs the feed contract from C), C OptiFleet-v2 feed (in progress, local branch only), D UI, gate, PR. Not in the lean slice: push endpoint, webhooks, CSV adapter, outbox relay, MISSING reconciliation, historical backfill, gap-policy behaviour. Next step: batch B once C reports.
 
 ## Important decisions
 None yet beyond `INTEGRATION_ARCHITECTURE.md` §7.1. Memo-vs-invoice recognition (ROADMAP open decision 3): default = recognise only at the workshop invoice; memo events are stored but not posted.

@@ -138,3 +138,36 @@ tenant policy (default: post, reconcile in bank reconciliation).
   service, migration with its own timestamp, tests), with at most one registration line in a shared
   file; (4) branch from the latest `main`, small draft PR; (5) report the check result to the owner
   before opening the PR; never merge. Nothing in OptiFleet-v2 is changed during OA0.
+
+## 8. OA6 implementation notes (batch A: integration core)
+
+Code: `backend/app/Domain/Integration/{Models,Services,Contracts}`, API `/api/v1/app/integration/*` (`routes/oa6_integration.php`),
+tables from `2026_10_17_100001_create_integration_core.php`. Module `ACCOUNTING_INTEGRATION`, feature `INTEGRATION_CONNECTION`,
+permissions `accounting.integration.view|manage|retry`, audit actions `accounting.integration.*`.
+
+- **Connection lifecycle.** DRAFT / CONFIGURING / READY follow the configuration (credential, base URL, source tenant reference and
+  cutover date all set = READY); a person then activates, pauses, resumes or disconnects; five failed pulls in a row set ERROR and
+  `resume` leaves it. Activation also requires the cutover date (a null cutover would let the first pull back-post history). Source
+  tenant reference and cutover cannot change once an event was received. The credential is write-only (encrypted cast, hidden,
+  never audited). HISTORICAL_BACKFILL is refused; gap policy is stored, not applied. Reconfiguring a DISCONNECTED connection reconnects
+  it to CONFIGURING/READY (one row per source tenant: `UNIQUE(tenant, source_system, source_tenant_reference)`).
+- **Inbox (`EventInbox::receive`, the only writer of `external_events`).** Tenant and source come from the connection. An envelope
+  that cannot be identified (event_id, event_type, schema_version `major.minor`, ISO-8601 `occurred_at`, object payload) or that
+  belongs to another source is a `DomainException` and nothing is stored, so a pulled page containing it fails whole and its cursor
+  stays. An identified event is always stored: REJECTED (`BEFORE_CUTOVER` in the tenant's local date; `MONEY_NOT_DECIMAL_STRING` for a
+  JSON number under a key ending `amount|total|tax`), NEEDS_REVIEW (`UNSUPPORTED_EVENT`: the source's adapter does not support the
+  type at that schema major), else RECEIVED. Same id and same canonical hash (`sequence` excluded) = duplicate (counted); same id with
+  other content = `conflict` flag + audit, stored content untouched. `ON CONFLICT DO NOTHING` on the unique key makes parallel
+  deliveries one row; a trigger forbids changing the envelope or deleting a row.
+- **Processing.** `IntegrationAdapter` (`sourceSystem`, `supports(type, major)`, `process(event): ProcessOutcome`), tagged
+  `AdapterRegistry::TAG` in the container. `EventProcessor` locks the event, runs the adapter plus source links plus the POSTED mark in
+  one nested transaction. DomainException = NEEDS_REVIEW (business code kept); any other throwable = FAILED with backoff 1, 5, 15, 60
+  minutes; the 5th failed attempt = DEAD_LETTER (audited). No adapter = NEEDS_REVIEW `NO_ADAPTER`. `RetryService` (permission
+  `accounting.integration.retry`, reason required, audited) resets attempts and processes at once; REJECTED is final.
+- **Pull.** `FeedClient` reads `GET {base_url}/api/v1/integration/accounting-feed?after=&limit=100` (bearer, 15 s, no redirects, `after`
+  omitted on the first pull). `PullService`: HTTP outside any transaction, one transaction per page (ingest + cursor), at most 20
+  pages per run, advisory lock per connection, new events then processed one by one. `integration:pull` and `integration:process`
+  run every five minutes for ACTIVE tenants whose module and feature are writable; processing covers ACTIVE connections only.
+- **Not implemented (deliberately):** push endpoint (`POST /api/v1/integration/events`), webhooks, CSV import adapter, outbox relay to
+  sources, MISSING reconciliation (needs source totals; the summary shows received vs processed only), historical backfill, gap-policy
+  behaviour, the `OPTIFLEET_CONNECTOR` feature check (belongs to the OptiFleet adapter batch).
