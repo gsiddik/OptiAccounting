@@ -81,7 +81,7 @@ class BudgetVsActualService
         }
 
         // Actual side: POSTED journal lines per account, period and dimensions.
-        $actual = $this->balances->base($dims)
+        $actual = $this->balances->withoutClosing($this->balances->base($dims))   // year-end closing journals are not period activity
             ->join('accounting_periods as ap', fn ($join) => $join->on('ap.tenant_id', '=', 'jl.tenant_id')->on('je.posting_date', '>=', 'ap.start_date')->on('je.posting_date', '<=', 'ap.end_date'))
             ->where('ap.fiscal_year_id', $budget->fiscal_year_id)->whereIn('ap.id', $inRange)
             ->where('je.journal_type', '<>', 'OPENING')
