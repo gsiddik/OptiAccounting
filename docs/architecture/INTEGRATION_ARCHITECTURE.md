@@ -138,3 +138,79 @@ tenant policy (default: post, reconcile in bank reconciliation).
   service, migration with its own timestamp, tests), with at most one registration line in a shared
   file; (4) branch from the latest `main`, small draft PR; (5) report the check result to the owner
   before opening the PR; never merge. Nothing in OptiFleet-v2 is changed during OA0.
+
+## 8. OA6 implementation notes (batch A: integration core)
+
+Code: `backend/app/Domain/Integration/{Models,Services,Contracts}`, API `/api/v1/app/integration/*` (`routes/oa6_integration.php`),
+tables from `2026_10_17_100001_create_integration_core.php`. Module `ACCOUNTING_INTEGRATION`, feature `INTEGRATION_CONNECTION`,
+permissions `accounting.integration.view|manage|retry`, audit actions `accounting.integration.*`.
+
+- **Connection lifecycle.** DRAFT / CONFIGURING / READY follow the configuration (credential, base URL, source tenant reference and
+  cutover date all set = READY); a person then activates, pauses, resumes or disconnects; five failed pulls in a row set ERROR and
+  `resume` leaves it. Activation also requires the cutover date (a null cutover would let the first pull back-post history). Source
+  tenant reference and cutover cannot change once an event was received. The credential is write-only (encrypted cast, hidden,
+  never audited). HISTORICAL_BACKFILL is refused; gap policy is stored, not applied. Reconfiguring a DISCONNECTED connection reconnects
+  it to CONFIGURING/READY (one row per source tenant: `UNIQUE(tenant, source_system, source_tenant_reference)`).
+- **Inbox (`EventInbox::receive`, the only writer of `external_events`).** Tenant and source come from the connection. An envelope
+  that cannot be identified (event_id, event_type, schema_version `major.minor`, ISO-8601 `occurred_at`, object payload) or that
+  belongs to another source is a `DomainException` and nothing is stored, so a pulled page containing it fails whole and its cursor
+  stays. An identified event is always stored: REJECTED (`BEFORE_CUTOVER` in the tenant's local date; `MONEY_NOT_DECIMAL_STRING` for a
+  JSON number under a key ending `amount|total|tax`), NEEDS_REVIEW (`UNSUPPORTED_EVENT`: the source's adapter does not support the
+  type at that schema major), else RECEIVED. Same id and same canonical hash (`sequence` excluded) = duplicate (counted); same id with
+  other content = `conflict` flag + audit, stored content untouched. `ON CONFLICT DO NOTHING` on the unique key makes parallel
+  deliveries one row; a trigger forbids changing the envelope or deleting a row.
+- **Processing.** `IntegrationAdapter` (`sourceSystem`, `supports(type, major)`, `process(event): ProcessOutcome`), tagged
+  `AdapterRegistry::TAG` in the container. `EventProcessor` locks the event, runs the adapter plus source links plus the POSTED mark in
+  one nested transaction. DomainException = NEEDS_REVIEW (business code kept); any other throwable = FAILED with backoff 1, 5, 15, 60
+  minutes; the 5th failed attempt = DEAD_LETTER (audited). No adapter = NEEDS_REVIEW `NO_ADAPTER`. `RetryService` (permission
+  `accounting.integration.retry`, reason required, audited) resets attempts and processes at once; REJECTED is final.
+- **Pull.** `FeedClient` reads `GET {base_url}/api/v1/integration/accounting-feed?after=&limit=100` (bearer, 15 s, no redirects, `after`
+  omitted on the first pull). `PullService`: HTTP outside any transaction, one transaction per page (ingest + cursor), at most 20
+  pages per run, advisory lock per connection, new events then processed one by one. `integration:pull` and `integration:process`
+  run every five minutes for ACTIVE tenants whose module and feature are writable; processing covers ACTIVE connections only.
+- **Not implemented (deliberately):** push endpoint (`POST /api/v1/integration/events`), webhooks, CSV import adapter, outbox relay to
+  sources, MISSING reconciliation (needs source totals; the summary shows received vs processed only), historical backfill, gap-policy
+  behaviour, the `OPTIFLEET_CONNECTOR` feature check (belongs to the OptiFleet adapter batch).
+
+## 9. OptiFleet adapter notes (OA6 batch B)
+
+Code: `backend/app/Domain/Integration/Adapters/OptiFleet` (`OptiFleetAdapter`, `WorkshopInvoiceBooking`, `OptiFleetVendors`,
+`OptiFleetActor`), tagged in `AppServiceProvider`. The adapter translates business facts into calls to the existing AP services; it
+names no account and writes no journal (the Posting Engine does, `AP_INVOICE_RECOGNIZED` / `VENDOR_PAYMENT`). It holds no state: the
+registry is a singleton and the tenant context is scoped, so every collaborator is resolved from the container per event.
+
+- **Events (schema major 1).** `workshop_invoice.recorded` creates an AP invoice (document and posting date = `invoice_date`, due date =
+  `due_date`, the payment term is not applied; lines from the payload, tax = `tax_total`; `line_total` is kept as the line amount,
+  quantity and unit price go to the line metadata; `total_amount` that disagrees with the lines = `TOTAL_MISMATCH`). `corrected`
+  retires the previous document of the same source invoice and books the corrected one; `cancelled` only retires it; `payment_recorded`
+  creates a vendor payment allocated to the linked invoice. Retiring = reversal of a POSTED invoice (reversal date = the later of its
+  posting date and the event's local date, so it is never dated before the invoice and a closed period still refuses it), cancellation of an unposted one. An invoice with a
+  payment applied in OptiEntry is not touched: `PAYMENT_ALREADY_APPLIED`. A payment for an unknown invoice is `INVOICE_NOT_FOUND`,
+  for an unposted one `INVOICE_NOT_POSTED` (both retry-able once the invoice exists). `maintenance_memo.billed|paid` is accepted POSTED
+  with no journal and no link: the cost is recognised once, at the workshop invoice (a memo is information, never a second expense).
+- **Currency.** Functional currency only; another currency is `CURRENCY_NOT_SUPPORTED` (NEEDS_REVIEW). Amounts are decimal strings.
+- **Settings.** `integration_connections.settings` (jsonb, additive migration `2026_10_17_200001`): `payables_cash_bank_account_id`
+  (credited by payments) and `expense_category_id` (classifies every line; its account decides the debit side). Both are validated on
+  update (UUID, owned by the tenant, category ACTIVE, cash/bank usable), are required to activate, and an ACTIVE connection cannot lose
+  them. Generic core stays product-free through the optional `Contracts\ConnectorRequirements` (`cleanSettings`, `missingSettings`,
+  `entitlementProblems`); a source whose adapter lacks it accepts no settings (`CONNECTION_SETTINGS_UNSUPPORTED`).
+- **Entitlement.** Feature `OPTIFLEET_CONNECTOR` of `ACCOUNTING_INTEGRATION` plus `ACCOUNTING_AP` writable, checked at activate and
+  resume (`CONNECTOR_NOT_ENTITLED`, 403, `details.reasons`) and by `EventProcessor`: while not entitled an event stays RECEIVED, untouched
+  and not flagged, and is processed when the entitlement returns.
+- **Vendor.** Resolved through `external_dimensions` (entity `VENDOR`, metadata `vendor_id`), then by normalised tax id (several matches =
+  `VENDOR_AMBIGUOUS`, never guessed), then by code unless the tax ids differ; otherwise created once (`external_source` = optifleet).
+  An INACTIVE vendor is not replaced (`VENDOR_INACTIVE`).
+- **Actor and segregation of duties.** No system actor existed and every AP service needs a user. Decision: one credential-less service user
+  per tenant (`optifleet.integration@<tenant code>.optientry.invalid`, no password so it cannot sign in, ACTIVE membership, no role, no
+  permission, TENANT data scope; creation is audited). It is set as the context user only while the adapter runs and prepares documents
+  (`created_by`). It is never an approver and holds no soft-closed exception. With approval required the invoice is SUBMITTED and a person
+  approves and posts; otherwise it posts when the SoD policy allows the preparer to post, else it stays DRAFT for a person. SoD is
+  therefore never weakened; the payment follows the same path, and its event is NEEDS_REVIEW `INVOICE_NOT_POSTED` until the invoice is
+  posted. A person can switch the user off by suspending its membership (`INTEGRATION_ACTOR_DISABLED`). Known caveat: the membership counts as
+  a seat in `CapacityService`.
+- **Traceability.** Every document gets an `external_source_links` row: source type `workshop_invoice` -> `ap_invoice`, and
+  `workshop_invoice_payment` -> `vendor_payment` (document, journal and event ids). A correction adds a row for the new document; the
+  latest row is the current document of that source invoice.
+- **Not covered.** Vendor (procurement) invoices and payments, goods receipt, stock issue and spare part sale (not in the feed yet),
+  foreign currency, branch/dimension mapping to journal lines. An event that cannot be booked as stated is held for a person
+  (NEEDS_REVIEW), never booked approximately.

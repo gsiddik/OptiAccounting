@@ -36,7 +36,7 @@ class DemoSeeder extends Seeder
     private const BUNDLES = [
         'STARTER' => ['Starter', ['ACCOUNTING_CORE', 'ACCOUNTING_CASH_BANK', 'ACCOUNTING_REPORTING'], ['USER_LIMIT' => 5, 'BRANCH_LIMIT' => 1, 'BUSINESS_UNIT_LIMIT' => 3]],
         'BUSINESS' => ['Business', ['ACCOUNTING_CORE', 'ACCOUNTING_CASH_BANK', 'ACCOUNTING_REPORTING', 'ACCOUNTING_AP', 'ACCOUNTING_AR', 'ACCOUNTING_EXPENSE', 'ACCOUNTING_TAX',
-            'ACCOUNTING_BUDGET', 'ACCOUNTING_FIXED_ASSET', 'ACCOUNTING_MULTI_CURRENCY'], ['USER_LIMIT' => 10, 'BRANCH_LIMIT' => 3, 'BUSINESS_UNIT_LIMIT' => 10]],
+            'ACCOUNTING_BUDGET', 'ACCOUNTING_FIXED_ASSET', 'ACCOUNTING_MULTI_CURRENCY', 'ACCOUNTING_INTEGRATION'], ['USER_LIMIT' => 10, 'BRANCH_LIMIT' => 3, 'BUSINESS_UNIT_LIMIT' => 10]],
         'ENTERPRISE' => ['Enterprise', null, []], // null = every module in the catalog, no capacity limits
     ];
 
@@ -87,9 +87,11 @@ class DemoSeeder extends Seeder
             'roles' => [
                 'Staf Keuangan' => ['organization.view', 'account.subscription.view', 'audit.view'],
                 'Admin Cabang' => ['organization.view', 'organization.manage', 'access.user.view'],
-                'Akuntan' => [...self::ACCOUNTANT_PERMISSIONS, ...self::ACCOUNTANT_OPERATIONAL_PERMISSIONS, ...DemoOa4Seeder::ACCOUNTANT_PERMISSIONS, ...DemoOa5Seeder::ACCOUNTANT_PERMISSIONS],
+                'Akuntan' => [...self::ACCOUNTANT_PERMISSIONS, ...self::ACCOUNTANT_OPERATIONAL_PERMISSIONS, ...DemoOa4Seeder::ACCOUNTANT_PERMISSIONS, ...DemoOa5Seeder::ACCOUNTANT_PERMISSIONS,
+                    ...DemoOa6Seeder::ACCOUNTANT_PERMISSIONS],
                 'Manajer Keuangan' => [...self::ACCOUNTANT_PERMISSIONS, ...self::ACCOUNTANT_OPERATIONAL_PERMISSIONS, ...self::MANAGER_OPERATIONAL_PERMISSIONS,
                     ...DemoOa4Seeder::ACCOUNTANT_PERMISSIONS, ...DemoOa4Seeder::MANAGER_PERMISSIONS, ...DemoOa5Seeder::ACCOUNTANT_PERMISSIONS, ...DemoOa5Seeder::MANAGER_PERMISSIONS,
+                    ...DemoOa6Seeder::ACCOUNTANT_PERMISSIONS, ...DemoOa6Seeder::MANAGER_PERMISSIONS,
                     'accounting.journal.approve', 'accounting.journal.post', 'accounting.journal.reverse', 'accounting.period.manage',
                     'accounting.period.close', 'accounting.opening_balance.manage', 'accounting.opening_balance.post', 'accounting.report.export', 'accounting.coa.manage',
                     'accounting.posting_rule.manage', 'accounting.account_mapping.manage', 'accounting.dimension.manage', 'accounting.profile.manage'],
@@ -144,6 +146,7 @@ class DemoSeeder extends Seeder
             }
             $this->oa4();
             $this->oa5();
+            $this->oa6();
             $this->multiTenantUser();
         });
     }
@@ -262,6 +265,24 @@ class DemoSeeder extends Seeder
             $tenant = Tenant::query()->where('code', $d['code'])->first();
             if ($tenant !== null && isset($d['accounting'])) {
                 $oa5->seed($tenant, $user($d['admin'][1]), $user($d['accounting'][0]), $user($d['accounting'][1]));
+            }
+        }
+    }
+
+    /**
+     * OA6 for the tenant with demo books, after its OA5 data: the integration permissions of the finance roles and one active OptiFleet connection
+     * with events that went through the real pipeline. The module itself comes with the Business bundle (see oa4(), which entitles every demo
+     * tenant). Each step skips what exists.
+     */
+    private function oa6(): void
+    {
+        $oa6 = app(DemoOa6Seeder::class);
+        $user = fn (string $email) => User::query()->whereRaw('lower(email) = ?', [strtolower($email)])->firstOrFail();
+
+        foreach (self::TENANTS as $d) {
+            $tenant = Tenant::query()->where('code', $d['code'])->first();
+            if ($tenant !== null && isset($d['accounting'])) {
+                $oa6->seed($tenant, $user($d['admin'][1]), $user($d['accounting'][1]));
             }
         }
     }

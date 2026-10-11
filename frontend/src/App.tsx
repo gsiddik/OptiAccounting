@@ -102,6 +102,10 @@ import ClosingHistory from './pages/closing/ClosingHistory'
 import ClosingPolicy from './pages/closing/ClosingPolicy'
 import YearEnd from './pages/closing/YearEnd'
 import YearEndDetail from './pages/closing/YearEndDetail'
+import IntegrationConnections from './pages/integration/IntegrationConnections'
+import ConnectionDetail from './pages/integration/ConnectionDetail'
+import IntegrationEvents from './pages/integration/IntegrationEvents'
+import EventDetail from './pages/integration/EventDetail'
 
 // Navigation is declarative: an item shows only when the user holds its permission (cosmetic; the API enforces).
 const PLATFORM_NAV: NavItem[] = [
@@ -175,6 +179,9 @@ const TENANT_NAV: NavItem[] = [
   { to: '/app/akuntansi/aturan-posting', label: 'Aturan posting', icon: 'tag', permission: 'accounting.posting_rule.view', module: 'ACCOUNTING_CORE', group: 'Konfigurasi akuntansi' },
   { to: '/app/akuntansi/pemetaan-akun', label: 'Pemetaan akun', icon: 'key', permission: 'accounting.account_mapping.view', module: 'ACCOUNTING_CORE', group: 'Konfigurasi akuntansi' },
   { to: '/app/akuntansi/pemetaan-laporan', label: 'Pemetaan laporan keuangan', icon: 'key', permission: 'accounting.report_definition.view', module: 'ACCOUNTING_REPORTING', feature: 'FINANCIAL_STATEMENTS', group: 'Konfigurasi akuntansi' },
+  // OA6: integration platform (connections to source systems and the event inbox). Cosmetic; the API enforces module, feature and permission.
+  { to: '/app/integrasi', label: 'Koneksi', icon: 'plug', permission: 'accounting.integration.view', module: 'ACCOUNTING_INTEGRATION', feature: 'INTEGRATION_CONNECTION', group: 'Integrasi', end: true },
+  { to: '/app/integrasi/kejadian', label: 'Kotak masuk kejadian', icon: 'list', permission: 'accounting.integration.view', module: 'ACCOUNTING_INTEGRATION', feature: 'INTEGRATION_CONNECTION', group: 'Integrasi' },
   { to: '/app/langganan', label: 'Langganan', icon: 'card', permission: 'account.subscription.view', group: 'Akun' },
   { to: '/app/penggunaan', label: 'Penggunaan & batas', icon: 'chart', permission: 'account.subscription.view', group: 'Akun' },
   { to: '/app/audit', label: 'Audit', icon: 'log', permission: 'audit.view', group: 'Akun' },
@@ -349,6 +356,10 @@ export default function App() {
             <Route path="penutupan/akhir-tahun" element={<Guard permission="accounting.year_end.view" module="ACCOUNTING_REPORTING" feature="PERIOD_CLOSING"><YearEnd /></Guard>} />
             <Route path="penutupan/akhir-tahun/:id" element={<Guard permission="accounting.year_end.view" module="ACCOUNTING_REPORTING" feature="PERIOD_CLOSING"><YearEndDetail /></Guard>} />
           </Route>
+          <Route path="integrasi" element={<Guard permission="accounting.integration.view" module="ACCOUNTING_INTEGRATION" feature="INTEGRATION_CONNECTION"><IntegrationConnections /></Guard>} />
+          <Route path="integrasi/koneksi/:id" element={<Guard permission="accounting.integration.view" module="ACCOUNTING_INTEGRATION" feature="INTEGRATION_CONNECTION"><ConnectionDetail /></Guard>} />
+          <Route path="integrasi/kejadian" element={<Guard permission="accounting.integration.view" module="ACCOUNTING_INTEGRATION" feature="INTEGRATION_CONNECTION"><IntegrationEvents /></Guard>} />
+          <Route path="integrasi/kejadian/:id" element={<Guard permission="accounting.integration.view" module="ACCOUNTING_INTEGRATION" feature="INTEGRATION_CONNECTION"><EventDetail /></Guard>} />
           <Route path="langganan" element={<Guard permission="account.subscription.view"><Subscription /></Guard>} />
           <Route path="penggunaan" element={<Guard permission="account.subscription.view"><Usage /></Guard>} />
           <Route path="audit" element={<Guard permission="audit.view"><TenantAudit /></Guard>} />
