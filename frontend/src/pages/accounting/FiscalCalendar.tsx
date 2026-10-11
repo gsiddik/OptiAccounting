@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { DataTable } from '../../components/DataTable'
 import { ConfirmDialog, FormModal } from '../../components/Modal'
 import { useToast } from '../../components/Toast'
@@ -26,8 +27,11 @@ export default function FiscalCalendar() {
   const [creating, setCreating] = useState(false)
   const [pending, setPending] = useState<Pending>(null)
   const [openAll, setOpenAll] = useState(true)
+  const { can, moduleMode } = useCapabilities()
   const canManage = canChange('accounting.period.manage')
   const canClose = canChange('accounting.period.close')
+  // A tenant with the reporting module closes, reopens and year-end-closes on the closing pages (readiness, checklist, history); these buttons stay as the plain path.
+  const closing = moduleMode('ACCOUNTING_REPORTING') !== 'NONE' && can('accounting.period.view')
 
   if (years.loading && !years.data) return <Loading />
   if (years.error || !years.data) return <ErrorNotice error={years.error} onRetry={years.reload} />
@@ -47,7 +51,9 @@ export default function FiscalCalendar() {
     <>
       <PageHeader
         title="Tahun fiskal & periode"
-        description="Jurnal hanya dapat diposting ke periode yang terbuka. Periode yang ditutup bersifat final pada fase ini; pembukaan kembali yang terkendali tersedia di fase penutupan."
+        description={closing
+          ? 'Jurnal hanya dapat diposting ke periode yang terbuka. Kesiapan penutupan, penutupan permanen, pembukaan kembali yang terkendali dan tutup tahun dikelola di halaman Penutupan periode.'
+          : 'Jurnal hanya dapat diposting ke periode yang terbuka. Periode yang ditutup tidak dapat dibuka kembali; pembukaan kembali yang terkendali tersedia dengan modul pelaporan keuangan.'}
         actions={canManage && <Button variant="primary" onClick={() => setCreating(true)}>Tahun fiskal baru</Button>}
       />
       {act.error != null && !pending && <Banner tone="bad">{describeError(act.error)}</Banner>}
@@ -84,6 +90,7 @@ export default function FiscalCalendar() {
                     {canManage && y.status === 'OPEN' && (p.status === 'FUTURE' || p.status === 'SOFT_CLOSED') && <Button size="sm" onClick={() => transition(p, 'open')}>Buka</Button>}
                     {canManage && p.status === 'OPEN' && <Button size="sm" onClick={() => transition(p, 'soft-close')}>Tutup sementara</Button>}
                     {canClose && (p.status === 'OPEN' || p.status === 'SOFT_CLOSED') && <Button size="sm" variant="danger" onClick={() => setPending({ kind: 'close-period', period: p })}>Tutup</Button>}
+                    {closing && p.status !== 'FUTURE' && <Link className="btn btn-sm" to={`/app/akuntansi/penutupan/periode/${p.id}`}>Penutupan</Link>}
                   </div>
                 ),
               },
@@ -101,7 +108,7 @@ export default function FiscalCalendar() {
       )}
       {pending?.kind === 'close-year' && (
         <ConfirmDialog title={`Tutup tahun fiskal ${pending.year.code}`} confirmLabel="Tutup tahun" danger busy={act.busy} error={act.error} onClose={() => setPending(null)}
-          message="Semua periode harus sudah ditutup. Penutupan tahun bersifat final pada fase ini." onConfirm={() => void perform(`/app/accounting/fiscal-years/${pending.year.id}/close`, 'post', undefined, `Tahun fiskal ${pending.year.code} ditutup.`)} />
+          message="Semua periode harus sudah ditutup." onConfirm={() => void perform(`/app/accounting/fiscal-years/${pending.year.id}/close`, 'post', undefined, `Tahun fiskal ${pending.year.code} ditutup.`)} />
       )}
       {pending?.kind === 'delete-year' && (
         <ConfirmDialog title={`Hapus tahun fiskal ${pending.year.code}`} confirmLabel="Hapus" danger busy={act.busy} error={act.error} onClose={() => setPending(null)}
@@ -109,7 +116,9 @@ export default function FiscalCalendar() {
       )}
       {pending?.kind === 'close-period' && (
         <ConfirmDialog title={`Tutup periode ${pending.period.code}`} confirmLabel="Tutup periode" danger busy={act.busy} error={act.error} onClose={() => setPending(null)}
-          message="Periode yang ditutup tidak dapat dibuka kembali pada fase ini dan tidak menerima posting apa pun. Semua jurnal yang menunggu persetujuan atau posting harus diselesaikan lebih dulu."
+          message={closing
+            ? 'Periode yang ditutup tidak menerima posting apa pun. Penutupan diperiksa terhadap kesiapan periode (jurnal tertunda, rekonsiliasi, daftar periksa); periode hanya dapat dibuka kembali dengan alasan di halaman Penutupan periode.'
+            : 'Periode yang ditutup tidak dapat dibuka kembali dan tidak menerima posting apa pun. Semua jurnal yang menunggu persetujuan atau posting harus diselesaikan lebih dulu.'}
           onConfirm={() => void perform(`/app/accounting/periods/${pending.period.id}/close`, 'post', undefined, `Periode ${pending.period.code} ditutup.`)} />
       )}
     </>
