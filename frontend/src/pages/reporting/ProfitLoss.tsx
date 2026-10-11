@@ -1,10 +1,6 @@
-import { EmptyState, PageHeader } from '../../components/ui'
+import { StatementPage } from './statements/StatementPage'
 
+/** Laba rugi: mutasi pendapatan dan beban selama periode (GET reports/profit-loss), dengan bukti terhadap buku besar, rincian akun dan ekspor. */
 export default function ProfitLoss() {
-  return (
-    <>
-      <PageHeader title="Laba rugi" description="Laporan laba rugi untuk satu periode, disusun dari jurnal yang sudah diposting dan pemetaan laporan." />
-      <EmptyState title="Segera hadir">Halaman ini sedang disiapkan.</EmptyState>
-    </>
-  )
+  return <StatementPage kind="PROFIT_LOSS" />
 }

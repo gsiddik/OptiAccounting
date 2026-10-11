@@ -1,10 +1,6 @@
-import { EmptyState, PageHeader } from '../../components/ui'
+import { StatementPage } from './statements/StatementPage'
 
+/** Arus kas metode tidak langsung (GET reports/cash-flow), dengan rekonsiliasi ke kas/bank, pergerakan yang belum diklasifikasi, rincian akun dan ekspor. */
 export default function CashFlow() {
-  return (
-    <>
-      <PageHeader title="Arus kas" description="Laporan arus kas metode tidak langsung untuk satu periode." />
-      <EmptyState title="Segera hadir">Halaman ini sedang disiapkan.</EmptyState>
-    </>
-  )
+  return <StatementPage kind="CASH_FLOW" />
 }

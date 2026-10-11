@@ -1,10 +1,6 @@
-import { EmptyState, PageHeader } from '../../components/ui'
+import { StatementPage } from './statements/StatementPage'
 
+/** Neraca: posisi keuangan per tanggal (GET reports/balance-sheet), dengan bukti keseimbangan, rincian akun dan ekspor. */
 export default function BalanceSheet() {
-  return (
-    <>
-      <PageHeader title="Neraca" description="Laporan posisi keuangan per tanggal tertentu, disusun dari jurnal yang sudah diposting dan pemetaan laporan." />
-      <EmptyState title="Segera hadir">Halaman ini sedang disiapkan.</EmptyState>
-    </>
-  )
+  return <StatementPage kind="BALANCE_SHEET" />
 }
