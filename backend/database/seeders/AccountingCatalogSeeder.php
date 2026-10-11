@@ -48,6 +48,7 @@ class AccountingCatalogSeeder extends Seeder
         'ASSET_DISPOSED' => ['Aset tetap dilepas', 'Komponen: cost, accumulated, proceeds, gain, loss. Diaktifkan oleh OA4.', ['cost', 'accumulated', 'proceeds', 'gain', 'loss']],
         'VENDOR_PAYMENT_FX' => ['Pembayaran vendor mata uang asing', 'Komponen: carrying, settlement, fx_gain, fx_loss. Diaktifkan oleh OA4.', ['carrying', 'settlement', 'fx_gain', 'fx_loss']],
         'CUSTOMER_RECEIPT_FX' => ['Penerimaan pelanggan mata uang asing', 'Komponen: carrying, settlement, fx_gain, fx_loss. Diaktifkan oleh OA4.', ['carrying', 'settlement', 'fx_gain', 'fx_loss']],
+        'YEAR_END_CLOSING' => ['Penutupan akhir tahun', 'Komponen: debit_close, credit_close, profit, loss. Diaktifkan oleh OA5; baris pada akun sementara disebut oleh dokumen (distribusi).', ['debit_close', 'credit_close', 'profit', 'loss']],
     ];
 
     /** code, name, parent, type, postable, control, role */
