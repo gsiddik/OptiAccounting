@@ -3,11 +3,19 @@
 namespace App\Domain\Accounting\Services;
 
 use App\Domain\Accounting\Models\Account;
+use App\Domain\Accounting\Models\AccountingProfile;
 use App\Domain\Accounting\Support\Money;
 use App\Domain\Shared\DomainException;
 use Brick\Math\BigDecimal;
 
-/** The general ledger: posted journal lines per account with a running balance, derived live from POSTED lines only. */
+/**
+ * The general ledger: posted journal lines per account with a running balance, derived live from POSTED lines only.
+ *
+ * Every filter (account, account range or type, dimensions, source type, journal type, transaction currency) is applied in SQL to the opening
+ * balance, the summary, the running balance and the rows alike, so a filtered ledger is internally consistent; a filter other than a single
+ * account makes `complete` false. Each row also carries the transaction-currency snapshot stored on the line (currency, foreign amount, rate)
+ * and the dates of the journal: nothing is converted at today's rate.
+ */
 class GeneralLedgerService
 {
     public const EXPORT_LIMIT = 50000;
@@ -15,7 +23,7 @@ class GeneralLedgerService
     public function __construct(private readonly BalanceCalculator $balances) {}
 
     /**
-     * @param  array<string,mixed>  $filters  period_id|from|to, account_id, branch_id, business_unit_id, cost_center_id, q
+     * @param  array<string,mixed>  $filters  period_id|fiscal_year_id|from|to, account_id, account_ids, account_type, account_code_from, account_code_to, branch_id, business_unit_id, cost_center_id, currency, source_type, journal_type, q
      * @return array<string,mixed>
      */
     public function report(array $filters, int $page = 1, int $perPage = 50): array
@@ -36,17 +44,24 @@ class GeneralLedgerService
 
             return [
                 'line_id' => $row->id, 'posting_date' => $row->posting_date, 'journal_id' => $row->journal_id, 'journal_number' => $row->journal_number,
+                'document_date' => $row->document_date, 'transaction_date' => $row->transaction_date,
                 'journal_type' => $row->journal_type, 'source_type' => $row->source_type, 'source_id' => $row->source_id,
                 'journal_description' => $row->journal_description, 'journal_reference' => $row->journal_reference,
                 'description' => $row->description, 'reference' => $row->reference,
                 'account' => ['id' => $row->account_id, 'code' => $row->code, 'name' => $row->name, 'normal_balance' => $row->normal_balance],
                 'branch_id' => $row->branch_id, 'business_unit_id' => $row->business_unit_id, 'cost_center_id' => $row->cost_center_id,
                 'debit' => Money::str($row->debit), 'credit' => Money::str($row->credit), 'running_balance' => $running,
+                'currency' => $row->transaction_currency, 'foreign_debit' => Money::str($row->transaction_debit), 'foreign_credit' => Money::str($row->transaction_credit),
+                'exchange_rate' => $row->exchange_rate, 'is_fx_difference' => (bool) $row->is_fx_difference,
             ];
         })->all();
 
         return [
             'range' => $range,
+            'functional_currency' => AccountingProfile::query()->value('functional_currency'),
+            'filters' => array_filter(array_intersect_key($filters, array_flip([
+                'account_id', 'account_ids', 'account_type', 'account_code_from', 'account_code_to', 'branch_id', 'business_unit_id', 'cost_center_id', 'currency', 'source_type', 'journal_type', 'q',
+            ])), fn ($v) => $v !== null && $v !== []),
             'account' => $account?->only(['id', 'code', 'name', 'account_type', 'normal_balance']),
             'summary' => $this->summary($account, $totals),
             'data' => $data,
@@ -90,7 +105,8 @@ class GeneralLedgerService
             ->whereBetween('je.posting_date', [$range['from'], $range['to']])
             ->select([
                 'jl.id', 'jl.account_id', 'jl.description', 'jl.reference', 'jl.debit', 'jl.credit', 'jl.branch_id', 'jl.business_unit_id', 'jl.cost_center_id',
-                'je.posting_date', 'je.id as journal_id', 'je.journal_number', 'je.journal_type', 'je.source_type', 'je.source_id',
+                'jl.transaction_currency', 'jl.transaction_debit', 'jl.transaction_credit', 'jl.exchange_rate', 'jl.is_fx_difference',
+                'je.posting_date', 'je.document_date', 'je.transaction_date', 'je.id as journal_id', 'je.journal_number', 'je.journal_type', 'je.source_type', 'je.source_id',
                 'je.description as journal_description', 'je.reference as journal_reference', 'a.code', 'a.name', 'a.normal_balance',
             ]);
 
