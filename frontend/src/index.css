@@ -228,6 +228,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
   .table td { overflow-wrap: anywhere; }
   .table td.cell-primary { display: block; text-align: left; padding-bottom: 6px; }
   .table td.cell-primary::before { content: none; }
+  .table td .cell-block { flex: 1; min-width: 0; }
   .table td.cell-actions { justify-content: flex-end; padding-top: 8px; }
   .table td.cell-actions::before { content: none; }
 }

@@ -213,6 +213,28 @@ final class PermissionCatalog
                     'accounting.exchange_rate.view' => 'View exchange rates',
                     'accounting.exchange_rate.manage' => 'Enter, withdraw and delete exchange rates',
                 ],
+                'Reporting' => [
+                    'accounting.reporting.balance_sheet.view' => 'View the balance sheet (statement of financial position)',
+                    'accounting.reporting.pnl.view' => 'View the profit and loss statement',
+                    'accounting.reporting.cash_flow.view' => 'View the cash flow statement',
+                    'accounting.report_definition.view' => 'View financial report definitions and their account mapping',
+                    'accounting.report_definition.manage' => 'Manage financial report definitions, versions and account mapping',
+                ],
+                'Reconciliation' => [
+                    'accounting.reconciliation.view' => 'View the reconciliation overview and the reconciliations of the active modules',
+                    'accounting.reconciliation.run' => 'Run a reconciliation and keep its result',
+                    'accounting.reconciliation.exception.manage' => 'Assign, explain and resolve reconciliation exceptions',
+                ],
+                'Closing' => [
+                    'accounting.closing.checklist.manage' => 'Complete, waive and reset manual closing checklist items',
+                    'accounting.closing.policy.manage' => 'Manage the closing policy and the checklist templates',
+                    'accounting.period.preclose' => 'Run the pre-close readiness check of a period',
+                    'accounting.period.soft_close' => 'Soft-close an accounting period',
+                    'accounting.period.hard_close' => 'Hard-close an accounting period',
+                    'accounting.period.reopen' => 'Reopen a closed accounting period with a reason',
+                    'accounting.year_end.view' => 'View the year-end closing',
+                    'accounting.year_end.run' => 'Run and reverse the year-end closing',
+                ],
                 'Audit' => [
                     'audit.view' => 'View the tenant audit log',
                 ],

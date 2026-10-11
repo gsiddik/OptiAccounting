@@ -508,6 +508,11 @@ Route::prefix('v1')->middleware('request.id')->group(function () {
             Route::delete('exchange-rates/{rate}', [Currency\ExchangeRateController::class, 'destroy'])->middleware($fx('accounting.exchange_rate.manage'));
             Route::get('fx-rules', [Currency\CurrencyController::class, 'setupStatus'])->middleware($fx('accounting.exchange_rate.view'));
             Route::post('fx-rules/defaults', [Currency\CurrencyController::class, 'applyDefaults'])->middleware($fx('accounting.posting_rule.manage'));
+
+            // ------------------------------------------------ OA5: financial reporting, reconciliation, closing (ACCOUNTING_REPORTING). One route file per area.
+            require __DIR__.'/oa5_reporting.php';
+            require __DIR__.'/oa5_reconciliation.php';
+            require __DIR__.'/oa5_closing.php';
         });
     });
 });

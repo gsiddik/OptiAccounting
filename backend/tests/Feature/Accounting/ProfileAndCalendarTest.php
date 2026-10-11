@@ -142,7 +142,8 @@ class ProfileAndCalendarTest extends TestCase
     {
         $tenant = $this->accountingTenant();
         $period = $this->period($tenant, '2026-01');
-        $manager = $this->asMember($tenant, ['accounting.period.manage']);
+        // A tenant with ACCOUNTING_REPORTING is under the OA5 closing workflow: the legacy soft-close route also needs the dedicated permission.
+        $manager = $this->asMember($tenant, ['accounting.period.manage', 'accounting.period.soft_close']);
         $manager->postJson("/api/v1/app/accounting/periods/{$period->id}/soft-close")->assertOk();
         $manager->postJson("/api/v1/app/accounting/periods/{$period->id}/close")->assertStatus(403);
 

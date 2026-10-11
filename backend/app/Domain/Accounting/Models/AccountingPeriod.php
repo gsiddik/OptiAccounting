@@ -19,7 +19,7 @@ class AccountingPeriod extends Model
 
     public const CLOSED = 'CLOSED';
 
-    /** Status moves allowed in OA1. CLOSED is final until OA5 adds the controlled reopen. */
+    /** Status moves of the plain transition. CLOSED is left only through the controlled reopen of the OA5 closing workflow (Closing\Services\PeriodClosingService). */
     public const TRANSITIONS = [
         self::FUTURE => [self::OPEN],
         self::OPEN => [self::SOFT_CLOSED, self::CLOSED],

@@ -87,9 +87,10 @@ class DemoSeeder extends Seeder
             'roles' => [
                 'Staf Keuangan' => ['organization.view', 'account.subscription.view', 'audit.view'],
                 'Admin Cabang' => ['organization.view', 'organization.manage', 'access.user.view'],
-                'Akuntan' => [...self::ACCOUNTANT_PERMISSIONS, ...self::ACCOUNTANT_OPERATIONAL_PERMISSIONS, ...DemoOa4Seeder::ACCOUNTANT_PERMISSIONS],
+                'Akuntan' => [...self::ACCOUNTANT_PERMISSIONS, ...self::ACCOUNTANT_OPERATIONAL_PERMISSIONS, ...DemoOa4Seeder::ACCOUNTANT_PERMISSIONS, ...DemoOa5Seeder::ACCOUNTANT_PERMISSIONS],
                 'Manajer Keuangan' => [...self::ACCOUNTANT_PERMISSIONS, ...self::ACCOUNTANT_OPERATIONAL_PERMISSIONS, ...self::MANAGER_OPERATIONAL_PERMISSIONS,
-                    ...DemoOa4Seeder::ACCOUNTANT_PERMISSIONS, ...DemoOa4Seeder::MANAGER_PERMISSIONS, 'accounting.journal.approve', 'accounting.journal.post', 'accounting.journal.reverse', 'accounting.period.manage',
+                    ...DemoOa4Seeder::ACCOUNTANT_PERMISSIONS, ...DemoOa4Seeder::MANAGER_PERMISSIONS, ...DemoOa5Seeder::ACCOUNTANT_PERMISSIONS, ...DemoOa5Seeder::MANAGER_PERMISSIONS,
+                    'accounting.journal.approve', 'accounting.journal.post', 'accounting.journal.reverse', 'accounting.period.manage',
                     'accounting.period.close', 'accounting.opening_balance.manage', 'accounting.opening_balance.post', 'accounting.report.export', 'accounting.coa.manage',
                     'accounting.posting_rule.manage', 'accounting.account_mapping.manage', 'accounting.dimension.manage', 'accounting.profile.manage'],
             ],
@@ -142,6 +143,7 @@ class DemoSeeder extends Seeder
                 $this->tenant($definition);
             }
             $this->oa4();
+            $this->oa5();
             $this->multiTenantUser();
         });
     }
@@ -243,6 +245,23 @@ class DemoSeeder extends Seeder
             $oa4->entitle($tenant);
             if (isset($d['accounting'])) {
                 $oa4->seed($tenant, $user($d['admin'][1]), $user($d['accounting'][0]), $user($d['accounting'][1]));
+            }
+        }
+    }
+
+    /**
+     * OA5 for the tenant with demo books, after its OA4 data: the OA5 role permissions, the published default report definitions, the year-end rule,
+     * a checklist, stored reconciliations and a hard-closed February with its history. Each step skips what exists.
+     */
+    private function oa5(): void
+    {
+        $oa5 = app(DemoOa5Seeder::class);
+        $user = fn (string $email) => User::query()->whereRaw('lower(email) = ?', [strtolower($email)])->firstOrFail();
+
+        foreach (self::TENANTS as $d) {
+            $tenant = Tenant::query()->where('code', $d['code'])->first();
+            if ($tenant !== null && isset($d['accounting'])) {
+                $oa5->seed($tenant, $user($d['admin'][1]), $user($d['accounting'][0]), $user($d['accounting'][1]));
             }
         }
     }

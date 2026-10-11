@@ -10,14 +10,18 @@ use App\Domain\Accounting\Support\CsvExporter;
 use App\Domain\Accounting\Support\Money;
 use App\Domain\Audit\Services\AuditService;
 use App\Http\Controllers\Api\App\AppController;
+use App\Http\Controllers\Api\App\Reporting\ValidatesReportFilters;
 use App\Support\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /** General ledger, trial balance and their CSV exports. Same service, same scope and same filters on screen and in the file. */
 class LedgerReportController extends AppController
 {
+    use ValidatesReportFilters;
+
     public function __construct(
         TenantContext $context,
         private readonly GeneralLedgerService $ledger,
@@ -48,11 +52,14 @@ class LedgerReportController extends AppController
         $this->audit->record('accounting.report.exported', 'report', 'general_ledger', null, ['filters' => $filters, 'range' => $range]);
 
         return CsvExporter::stream("buku-besar_{$range['from']}_{$range['to']}.csv",
-            ['Tanggal', 'No. jurnal', 'Tipe', 'Kode akun', 'Nama akun', 'Keterangan jurnal', 'Keterangan baris', 'Referensi', 'Debit', 'Kredit', 'Saldo berjalan'],
+            ['Tanggal', 'No. jurnal', 'Tipe', 'Kode akun', 'Nama akun', 'Keterangan jurnal', 'Keterangan baris', 'Referensi', 'Debit', 'Kredit', 'Saldo berjalan',
+                'Mata uang transaksi', 'Debit mata uang transaksi', 'Kredit mata uang transaksi', 'Kurs', 'Sumber', 'ID sumber'],
             (function () use ($rows) {
                 foreach ($rows as ['row' => $r, 'running' => $running]) {
                     yield [$r->posting_date, $r->journal_number, $r->journal_type, $r->code, $r->name, $r->journal_description, $r->description, $r->reference ?? $r->journal_reference,
-                        CsvExporter::number(Money::str($r->debit)), CsvExporter::number(Money::str($r->credit)), CsvExporter::number($running)];
+                        CsvExporter::number(Money::str($r->debit)), CsvExporter::number(Money::str($r->credit)), CsvExporter::number($running),
+                        $r->transaction_currency, CsvExporter::number(Money::str($r->transaction_debit)), CsvExporter::number(Money::str($r->transaction_credit)),
+                        CsvExporter::number((string) $r->exchange_rate), $r->source_type, $r->source_id];
                 }
             })());
     }
@@ -88,20 +95,23 @@ class LedgerReportController extends AppController
 
     private function ledgerFilters(Request $request): array
     {
-        return $request->validate([
-            'period_id' => ['nullable', 'uuid'], 'from' => ['nullable', 'date_format:Y-m-d'], 'to' => ['nullable', 'date_format:Y-m-d'],
-            'account_id' => ['nullable', 'uuid'], 'branch_id' => ['nullable', 'uuid'], 'business_unit_id' => ['nullable', 'uuid'], 'cost_center_id' => ['nullable', 'uuid'],
+        $filters = $request->validate($this->rangeRules() + $this->dimensionRules() + $this->accountRules() + $this->currencyRules() + [
+            'account_id' => ['nullable', 'uuid'], 'source_type' => ['nullable', 'string', 'max:40'], 'journal_type' => ['nullable', Rule::in(['MANUAL', 'OPENING', 'REVERSAL', 'SYSTEM'])],
             'q' => ['nullable', 'string', 'max:100'],
         ]);
+        $this->guardAccountRange($filters);
+        $this->guardCurrencyFilter($filters);
+
+        return $filters;
     }
 
     private function trialBalanceFilters(Request $request): array
     {
-        $filters = $request->validate([
-            'period_id' => ['nullable', 'uuid'], 'from' => ['nullable', 'date_format:Y-m-d'], 'to' => ['nullable', 'date_format:Y-m-d'],
-            'branch_id' => ['nullable', 'uuid'], 'business_unit_id' => ['nullable', 'uuid'], 'cost_center_id' => ['nullable', 'uuid'],
+        $filters = $request->validate($this->rangeRules() + $this->dimensionRules() + $this->accountRules() + $this->currencyRules() + [
             'hierarchy' => ['nullable', 'boolean'], 'include_zero' => ['nullable', 'boolean'],
         ]);
+        $this->guardAccountRange($filters);
+        $this->guardCurrencyFilter($filters);
         $filters['hierarchy'] = $request->boolean('hierarchy');
         $filters['include_zero'] = $request->boolean('include_zero');
 

@@ -3,6 +3,7 @@
 namespace App\Domain\Accounting\Services;
 
 use App\Domain\Accounting\Models\AccountingEvent;
+use App\Domain\Accounting\Models\AccountingPeriod;
 use App\Domain\Accounting\Models\FiscalYear;
 use App\Domain\Accounting\Models\JournalEntry;
 use App\Domain\Accounting\Models\JournalLine;
@@ -225,6 +226,11 @@ class PostingEngine
                 $this->audit->record('accounting.journal.posted', 'journal_entry', $journal->id, ['status' => $from], $journal->only([
                     'journal_number', 'journal_type', 'status', 'posting_date', 'total_debit', 'total_credit', 'accounting_period_id',
                 ]));
+                if ($period->status === AccountingPeriod::SOFT_CLOSED) { // only reachable with the exceptional permission: leave a trail of its own
+                    $this->audit->record('accounting.journal.posted_in_soft_closed_period', 'journal_entry', $journal->id, null, [
+                        'journal_number' => $journal->journal_number, 'period' => $period->code, 'posting_date' => $postingDate, 'actor_id' => $actor?->id,
+                    ]);
+                }
                 $this->outbox->event('journal.posted', $journal->tenant_id, [
                     'journal_id' => $journal->id, 'journal_number' => $journal->journal_number, 'journal_type' => $journal->journal_type,
                     'posting_date' => $postingDate, 'total' => $journal->total_debit, 'currency' => $journal->currency,

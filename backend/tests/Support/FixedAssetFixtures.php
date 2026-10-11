@@ -2,6 +2,8 @@
 
 namespace Tests\Support;
 
+use App\Domain\Accounting\Models\AccountingPeriod;
+use App\Domain\Accounting\Services\FiscalCalendarService;
 use App\Domain\FixedAsset\Services\AssetSetupService;
 use App\Domain\Identity\Models\Tenant;
 use Illuminate\Support\Facades\DB;
@@ -87,9 +89,12 @@ trait FixedAssetFixtures
             ->get(['a.code', 'l.debit', 'l.credit'])->map(fn ($r) => [$r->code, $r->debit, $r->credit])->all();
     }
 
-    /** Close a period through the API, as the already-authenticated client. */
+    /**
+     * Close a period the way the OA1 service does (FiscalCalendarService::transitionPeriod), without the OA5 close-readiness workflow: the tests that
+     * use it are about what a CLOSED period does to depreciation and disposals, not about whether a period with depreciation still due may close.
+     */
     protected function closePeriod(Tenant $tenant, string $month): void
     {
-        $this->postJson(self::FA.'/periods/'.$this->period($tenant, $month)->id.'/close')->assertOk();
+        $this->inTenant($tenant, fn () => app(FiscalCalendarService::class)->transitionPeriod(AccountingPeriod::query()->where('code', $month)->firstOrFail(), AccountingPeriod::CLOSED));
     }
 }

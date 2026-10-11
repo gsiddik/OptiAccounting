@@ -10,13 +10,18 @@ use Brick\Math\BigDecimal;
  * Trial balance for a date range from POSTED journal lines: opening, period debit and credit, ending, per account and
  * (optionally) rolled up the account hierarchy. Totals count posting accounts only; for a complete ledger scope each
  * pair of totals must be equal, and the report says so explicitly.
+ *
+ * OA5 filters: the range can come from a fiscal year, the accounts can be narrowed by type, ids or a code range, and the lines by their
+ * transaction currency. Any such filter (like a dimension filter or a narrower data scope) makes the report a partial view: `complete` is
+ * false and `reconciliation.reconciled` is null, because debits and credits of a subset need not be equal. An imbalance in a complete
+ * scope is reported as it is (`reconciled` false), never absorbed.
  */
 class TrialBalanceService
 {
     public function __construct(private readonly BalanceCalculator $balances) {}
 
     /**
-     * @param  array<string,mixed>  $filters  period_id|from|to, branch_id, business_unit_id, cost_center_id, hierarchy, include_zero
+     * @param  array<string,mixed>  $filters  period_id|fiscal_year_id|from|to, branch_id, business_unit_id, cost_center_id, account_type, account_ids, account_code_from, account_code_to, currency, hierarchy, include_zero
      * @return array<string,mixed>
      */
     public function report(array $filters): array
@@ -29,6 +34,7 @@ class TrialBalanceService
 
         $accounts = Account::query()->orderBy('code')->get(['id', 'code', 'name', 'account_type', 'normal_balance', 'is_postable', 'parent_id', 'status']);
         $byId = $accounts->keyBy('id');
+        $accounts = $this->selected($accounts, $byId, $filters); // zero rows (include_zero) honour the account filters too
 
         // Own figures, then roll children into parents (deepest first) so a header shows the sum of everything below it.
         $own = [];
@@ -88,11 +94,32 @@ class TrialBalanceService
 
         return [
             'range' => $range,
+            'filters' => array_filter(array_intersect_key($filters, array_flip([
+                'fiscal_year_id', 'branch_id', 'business_unit_id', 'cost_center_id', 'account_type', 'account_ids', 'account_code_from', 'account_code_to', 'currency',
+            ])), fn ($v) => $v !== null && $v !== []),
             'data' => $rows,
             'totals' => array_map(fn ($v) => Money::str($v), $sum),
             'reconciliation' => $reconciliation + ['reconciled' => $complete ? ($reconciliation['opening']['equal'] && $reconciliation['movement']['equal'] && $reconciliation['ending']['equal']) : null],
             'complete' => $complete,
         ];
+    }
+
+    /** The accounts the account filters leave in: matching posting accounts, and headers that still have a matching posting account below them. */
+    private function selected($accounts, $byId, array $filters)
+    {
+        if (! BalanceCalculator::narrowsAccounts($filters)) {
+            return $accounts;
+        }
+
+        $keep = [];
+        foreach ($accounts->filter(fn (Account $a) => BalanceCalculator::selectsAccount($a, $filters)) as $account) {
+            for ($node = $account, $guard = 0; $node !== null && $guard < 20; $guard++) { // the account and its ancestors
+                $keep[$node->id] = true;
+                $node = $node->parent_id !== null ? ($byId[$node->parent_id] ?? null) : null;
+            }
+        }
+
+        return $accounts->filter(fn (Account $a) => isset($keep[$a->id]))->values();
     }
 
     private function depth(Account $account, $byId): int

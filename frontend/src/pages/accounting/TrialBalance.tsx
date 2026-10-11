@@ -5,24 +5,29 @@ import { downloadCsv, useAccountingAccess, type TrialBalanceReport } from '../..
 import { api } from '../../lib/api'
 import { useResource } from '../../lib/hooks'
 import { describeError } from '../../lib/labels'
-import { DimensionFilters, Filters, Money, RangeFilter, Side } from './shared'
-import { rangeParams, useCalendar, useDefaultRange, useDimensions } from './data'
+import { DimensionFilters, Filters, Money, Side } from './shared'
+import { useCalendar, useDefaultRange, useDimensions } from './data'
+import { AccountFilters, LedgerWindow } from './ledger-filters'
+import { ledgerError } from './ledger-labels'
+import { NO_ACCOUNT_FILTER, accountFilterParams, windowParams } from './ledger-params'
 
 export default function TrialBalance() {
   const { can } = useAccountingAccess()
-  const { periods } = useCalendar()
+  const { periods, years } = useCalendar()
   const { catalog } = useDimensions()
   const initial = useDefaultRange()
   const [range, setRange] = useState(initial)
+  const [year, setYear] = useState('')
+  const [acc, setAcc] = useState(NO_ACCOUNT_FILTER)
   const [f, setF] = useState({ branch_id: '', business_unit_id: '', cost_center_id: '', hierarchy: true, include_zero: false })
   const [exportError, setExportError] = useState<unknown>(null)
 
   const params = () => {
-    const out: Record<string, string | number> = { ...rangeParams(range), hierarchy: f.hierarchy ? 1 : 0, include_zero: f.include_zero ? 1 : 0 }
+    const out: Record<string, string | number> = { ...windowParams(range, year), ...accountFilterParams(acc), hierarchy: f.hierarchy ? 1 : 0, include_zero: f.include_zero ? 1 : 0 }
     for (const k of ['branch_id', 'business_unit_id', 'cost_center_id'] as const) if (f[k]) out[k] = f[k]
     return out
   }
-  const report = useResource(async () => (await api.get<TrialBalanceReport>('/app/accounting/trial-balance', { params: params() })).data, [range, f])
+  const report = useResource(async () => (await api.get<TrialBalanceReport>('/app/accounting/trial-balance', { params: params() })).data, [range, year, acc, f])
   const r = report.data
 
   return (
@@ -37,8 +42,9 @@ export default function TrialBalance() {
       <Card flush>
         <div className="card-body">
           <Filters>
-            <RangeFilter value={range} onChange={setRange} periods={periods} />
+            <LedgerWindow range={range} year={year} years={years} periods={periods} defaultRange={initial} onChange={(next) => { setRange(next.range); setYear(next.year) }} />
             <DimensionFilters catalog={catalog} value={f} onChange={(patch) => setF((s) => ({ ...s, ...patch }))} />
+            <AccountFilters value={acc} onChange={(patch) => setAcc((s) => ({ ...s, ...patch }))} />
             <label className="check"><input type="checkbox" checked={f.hierarchy} onChange={(e) => setF((s) => ({ ...s, hierarchy: e.target.checked }))} /> Tampilkan akun induk</label>
             <label className="check"><input type="checkbox" checked={f.include_zero} onChange={(e) => setF((s) => ({ ...s, include_zero: e.target.checked }))} /> Sertakan saldo nol</label>
           </Filters>
@@ -48,7 +54,7 @@ export default function TrialBalance() {
       {report.loading && !r ? (
         <Loading />
       ) : report.error || !r ? (
-        <ErrorNotice error={report.error} onRetry={report.reload} />
+        <ErrorNotice error={ledgerError(report.error)} onRetry={report.reload} />
       ) : (
         <>
           {r.reconciliation.reconciled === true && <Banner tone="ok">Seimbang: total debit sama dengan total kredit pada saldo awal, mutasi, dan saldo akhir.</Banner>}
@@ -57,7 +63,7 @@ export default function TrialBalance() {
               Neraca saldo tidak seimbang. Selisih saldo awal <Money value={r.reconciliation.opening.difference} />, mutasi <Money value={r.reconciliation.movement.difference} />, saldo akhir <Money value={r.reconciliation.ending.difference} />. Hubungi administrator; pembukuan tidak boleh menghasilkan keadaan ini.
             </Banner>
           )}
-          {r.reconciliation.reconciled === null && <Banner tone="info">Laporan ini hanya memuat data dalam cakupan data Anda atau filter dimensi, jadi keseimbangannya tidak dapat diuji.</Banner>}
+          {r.reconciliation.reconciled === null && <Banner tone="info">Laporan ini hanya memuat sebagian data (cakupan data Anda, filter dimensi, akun, atau mata uang), jadi keseimbangannya tidak dapat diuji.</Banner>}
 
           <Card flush>
             {r.data.length === 0 ? (
@@ -85,6 +91,7 @@ export default function TrialBalance() {
                   <span>Mutasi <Money value={r.totals.debit} strong /> / <Money value={r.totals.credit} strong /></span>
                   <span>Akhir <Money value={r.totals.ending_debit} strong /> / <Money value={r.totals.ending_credit} strong /></span>
                 </div>
+                <p className="card-body muted preview-note">Jurnal penutup akhir tahun (sumber YEAR_END_CLOSING) ikut dihitung; saldo akun pendapatan dan beban setelah penutupan tahun terbaca nol.</p>
               </>
             )}
           </Card>
