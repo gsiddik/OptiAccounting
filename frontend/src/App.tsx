@@ -86,6 +86,22 @@ import VendorPaymentDetail from './pages/operational/VendorPaymentDetail'
 import VendorPaymentEditor from './pages/operational/VendorPaymentEditor'
 import VendorPayments from './pages/operational/VendorPayments'
 import Vendors from './pages/operational/Vendors'
+import AccountBalance from './pages/reporting/AccountBalance'
+import BalanceSheet from './pages/reporting/BalanceSheet'
+import ProfitLoss from './pages/reporting/ProfitLoss'
+import CashFlow from './pages/reporting/CashFlow'
+import ComparativeReport from './pages/reporting/ComparativeReport'
+import ReportDefinitions from './pages/reporting/ReportDefinitions'
+import ReportDefinitionDetail from './pages/reporting/ReportDefinitionDetail'
+import ReconciliationOverview from './pages/reconciliation/ReconciliationOverview'
+import ReconciliationDetail from './pages/reconciliation/ReconciliationDetail'
+import ReconciliationExceptions from './pages/reconciliation/ReconciliationExceptions'
+import ClosingOverview from './pages/closing/ClosingOverview'
+import PeriodClosing from './pages/closing/PeriodClosing'
+import ClosingHistory from './pages/closing/ClosingHistory'
+import ClosingPolicy from './pages/closing/ClosingPolicy'
+import YearEnd from './pages/closing/YearEnd'
+import YearEndDetail from './pages/closing/YearEndDetail'
 
 // Navigation is declarative: an item shows only when the user holds its permission (cosmetic; the API enforces).
 const PLATFORM_NAV: NavItem[] = [
@@ -105,9 +121,15 @@ const TENANT_NAV: NavItem[] = [
   // Accounting Core: shown only while ACCOUNTING_CORE is entitled and the user holds the permission (cosmetic; the API enforces both).
   { to: '/app/akuntansi', label: 'Ringkasan', icon: 'chart', permission: 'accounting.journal.view', module: 'ACCOUNTING_CORE', group: 'Akuntansi', end: true },
   { to: '/app/akuntansi/jurnal', label: 'Jurnal', icon: 'list', permission: 'accounting.journal.view', module: 'ACCOUNTING_CORE', group: 'Akuntansi' },
-  { to: '/app/akuntansi/buku-besar', label: 'Buku besar', icon: 'book', permission: 'accounting.gl.view', module: 'ACCOUNTING_CORE', group: 'Akuntansi' },
-  { to: '/app/akuntansi/neraca-saldo', label: 'Neraca saldo', icon: 'scale', permission: 'accounting.trial_balance.view', module: 'ACCOUNTING_CORE', group: 'Akuntansi' },
   { to: '/app/akuntansi/saldo-awal', label: 'Saldo awal', icon: 'box', permission: 'accounting.opening_balance.view', module: 'ACCOUNTING_CORE', group: 'Akuntansi' },
+  // OA5: financial reports (the trial balance and the general ledger stay on ACCOUNTING_CORE), reconciliation, closing. Cosmetic; the API enforces module, feature and permission.
+  { to: '/app/akuntansi/neraca-saldo', label: 'Neraca saldo', icon: 'scale', permission: 'accounting.trial_balance.view', module: 'ACCOUNTING_CORE', group: 'Laporan keuangan' },
+  { to: '/app/akuntansi/buku-besar', label: 'Buku besar', icon: 'book', permission: 'accounting.gl.view', module: 'ACCOUNTING_CORE', group: 'Laporan keuangan' },
+  { to: '/app/akuntansi/laporan/saldo-akun', label: 'Saldo akun', icon: 'list', permission: 'accounting.gl.view', module: 'ACCOUNTING_REPORTING', feature: 'FINANCIAL_STATEMENTS', group: 'Laporan keuangan' },
+  { to: '/app/akuntansi/laporan/neraca', label: 'Neraca', icon: 'scale', permission: 'accounting.reporting.balance_sheet.view', module: 'ACCOUNTING_REPORTING', feature: 'FINANCIAL_STATEMENTS', group: 'Laporan keuangan' },
+  { to: '/app/akuntansi/laporan/laba-rugi', label: 'Laba rugi', icon: 'chart', permission: 'accounting.reporting.pnl.view', module: 'ACCOUNTING_REPORTING', feature: 'FINANCIAL_STATEMENTS', group: 'Laporan keuangan' },
+  { to: '/app/akuntansi/laporan/arus-kas', label: 'Arus kas', icon: 'card', permission: 'accounting.reporting.cash_flow.view', module: 'ACCOUNTING_REPORTING', feature: 'FINANCIAL_STATEMENTS', group: 'Laporan keuangan' },
+  { to: '/app/akuntansi/laporan/komparatif', label: 'Laporan komparatif', icon: 'calendar', permission: 'accounting.reporting.pnl.view', module: 'ACCOUNTING_REPORTING', feature: 'FINANCIAL_STATEMENTS', group: 'Laporan keuangan' },
   // OA2 modules. Each section needs its own module (and, for the cash/bank documents, its feature) and the user's permission (cosmetic; the API enforces).
   { to: '/app/akuntansi/vendor', label: 'Vendor', icon: 'users', permission: 'accounting.vendor.view', module: 'ACCOUNTING_AP', feature: 'VENDOR', group: 'Utang usaha' },
   { to: '/app/akuntansi/faktur-vendor', label: 'Faktur vendor', icon: 'list', permission: 'accounting.ap_invoice.view', module: 'ACCOUNTING_AP', feature: 'VENDOR_INVOICE', group: 'Utang usaha' },
@@ -137,15 +159,22 @@ const TENANT_NAV: NavItem[] = [
   { to: '/app/akuntansi/laporan-pajak', label: 'Laporan pajak', icon: 'chart', permission: 'accounting.tax.report.view', module: 'ACCOUNTING_TAX', feature: 'TAX_REPORT', group: 'Pajak' },
   { to: '/app/akuntansi/mata-uang', label: 'Mata uang', icon: 'card', permission: 'accounting.currency.view', module: 'ACCOUNTING_MULTI_CURRENCY', feature: 'EXCHANGE_RATE', group: 'Mata uang' },
   { to: '/app/akuntansi/kurs', label: 'Kurs', icon: 'scale', permission: 'accounting.exchange_rate.view', module: 'ACCOUNTING_MULTI_CURRENCY', feature: 'EXCHANGE_RATE', group: 'Mata uang' },
+  { to: '/app/akuntansi/rekonsiliasi', label: 'Ringkasan rekonsiliasi', icon: 'scale', permission: 'accounting.reconciliation.view', module: 'ACCOUNTING_REPORTING', feature: 'RECONCILIATION', group: 'Rekonsiliasi', end: true },
+  { to: '/app/akuntansi/rekonsiliasi/pengecualian', label: 'Pengecualian', icon: 'list', permission: 'accounting.reconciliation.view', module: 'ACCOUNTING_REPORTING', feature: 'RECONCILIATION', group: 'Rekonsiliasi' },
   { to: '/app/akuntansi/rekonsiliasi/utang', label: 'Utang vs buku besar', icon: 'scale', permission: 'accounting.reconciliation.ap.view', module: 'ACCOUNTING_AP', feature: 'AP_AGING', group: 'Rekonsiliasi' },
   { to: '/app/akuntansi/rekonsiliasi/piutang', label: 'Piutang vs buku besar', icon: 'scale', permission: 'accounting.reconciliation.ar.view', module: 'ACCOUNTING_AR', feature: 'AR_AGING', group: 'Rekonsiliasi' },
   { to: '/app/akuntansi/rekonsiliasi/kas-bank', label: 'Kas/bank vs buku besar', icon: 'scale', permission: 'accounting.reconciliation.cash_bank.view', module: 'ACCOUNTING_CASH_BANK', feature: 'BANK_RECONCILIATION', group: 'Rekonsiliasi' },
   { to: '/app/akuntansi/rekonsiliasi/aset-tetap', label: 'Aset tetap vs buku besar', icon: 'scale', permission: 'accounting.asset.reconciliation.view', module: 'ACCOUNTING_FIXED_ASSET', feature: 'ASSET_REGISTER', group: 'Rekonsiliasi' },
+  { to: '/app/akuntansi/penutupan', label: 'Penutupan periode', icon: 'calendar', permission: 'accounting.period.view', module: 'ACCOUNTING_REPORTING', feature: 'PERIOD_CLOSING', group: 'Penutupan', end: true },
+  { to: '/app/akuntansi/penutupan/riwayat', label: 'Riwayat penutupan', icon: 'log', permission: 'accounting.period.view', module: 'ACCOUNTING_REPORTING', feature: 'PERIOD_CLOSING', group: 'Penutupan' },
+  { to: '/app/akuntansi/penutupan/akhir-tahun', label: 'Tutup tahun', icon: 'box', permission: 'accounting.year_end.view', module: 'ACCOUNTING_REPORTING', feature: 'PERIOD_CLOSING', group: 'Penutupan' },
+  { to: '/app/akuntansi/penutupan/kebijakan', label: 'Kebijakan penutupan', icon: 'shield', permission: 'accounting.period.view', module: 'ACCOUNTING_REPORTING', feature: 'PERIOD_CLOSING', group: 'Penutupan' },
   { to: '/app/akuntansi/profil', label: 'Profil akuntansi', icon: 'cog', permission: 'accounting.profile.view', module: 'ACCOUNTING_CORE', group: 'Konfigurasi akuntansi' },
   { to: '/app/akuntansi/periode', label: 'Tahun fiskal & periode', icon: 'calendar', permission: 'accounting.period.view', module: 'ACCOUNTING_CORE', group: 'Konfigurasi akuntansi' },
   { to: '/app/akuntansi/akun', label: 'Bagan akun', icon: 'grid', permission: 'accounting.coa.view', module: 'ACCOUNTING_CORE', group: 'Konfigurasi akuntansi' },
   { to: '/app/akuntansi/aturan-posting', label: 'Aturan posting', icon: 'tag', permission: 'accounting.posting_rule.view', module: 'ACCOUNTING_CORE', group: 'Konfigurasi akuntansi' },
   { to: '/app/akuntansi/pemetaan-akun', label: 'Pemetaan akun', icon: 'key', permission: 'accounting.account_mapping.view', module: 'ACCOUNTING_CORE', group: 'Konfigurasi akuntansi' },
+  { to: '/app/akuntansi/pemetaan-laporan', label: 'Pemetaan laporan keuangan', icon: 'key', permission: 'accounting.report_definition.view', module: 'ACCOUNTING_REPORTING', feature: 'FINANCIAL_STATEMENTS', group: 'Konfigurasi akuntansi' },
   { to: '/app/langganan', label: 'Langganan', icon: 'card', permission: 'account.subscription.view', group: 'Akun' },
   { to: '/app/penggunaan', label: 'Penggunaan & batas', icon: 'chart', permission: 'account.subscription.view', group: 'Akun' },
   { to: '/app/audit', label: 'Audit', icon: 'log', permission: 'audit.view', group: 'Akun' },
@@ -302,6 +331,23 @@ export default function App() {
             <Route path="laporan-pajak" element=<Guard permission="accounting.tax.report.view" module="ACCOUNTING_TAX" feature="TAX_REPORT"><TaxReport /></Guard> />
             <Route path="mata-uang" element=<Guard permission="accounting.currency.view" module="ACCOUNTING_MULTI_CURRENCY" feature="EXCHANGE_RATE"><Currencies /></Guard> />
             <Route path="kurs" element=<Guard permission="accounting.exchange_rate.view" module="ACCOUNTING_MULTI_CURRENCY" feature="EXCHANGE_RATE"><ExchangeRates /></Guard> />
+            {/* OA5 */}
+            <Route path="laporan/saldo-akun" element={<Guard permission="accounting.gl.view" module="ACCOUNTING_REPORTING" feature="FINANCIAL_STATEMENTS"><AccountBalance /></Guard>} />
+            <Route path="laporan/neraca" element={<Guard permission="accounting.reporting.balance_sheet.view" module="ACCOUNTING_REPORTING" feature="FINANCIAL_STATEMENTS"><BalanceSheet /></Guard>} />
+            <Route path="laporan/laba-rugi" element={<Guard permission="accounting.reporting.pnl.view" module="ACCOUNTING_REPORTING" feature="FINANCIAL_STATEMENTS"><ProfitLoss /></Guard>} />
+            <Route path="laporan/arus-kas" element={<Guard permission="accounting.reporting.cash_flow.view" module="ACCOUNTING_REPORTING" feature="FINANCIAL_STATEMENTS"><CashFlow /></Guard>} />
+            <Route path="laporan/komparatif" element={<Guard permission="accounting.reporting.pnl.view" module="ACCOUNTING_REPORTING" feature="FINANCIAL_STATEMENTS"><ComparativeReport /></Guard>} />
+            <Route path="pemetaan-laporan" element={<Guard permission="accounting.report_definition.view" module="ACCOUNTING_REPORTING" feature="FINANCIAL_STATEMENTS"><ReportDefinitions /></Guard>} />
+            <Route path="pemetaan-laporan/:id" element={<Guard permission="accounting.report_definition.view" module="ACCOUNTING_REPORTING" feature="FINANCIAL_STATEMENTS"><ReportDefinitionDetail /></Guard>} />
+            <Route path="rekonsiliasi" element={<Guard permission="accounting.reconciliation.view" module="ACCOUNTING_REPORTING" feature="RECONCILIATION"><ReconciliationOverview /></Guard>} />
+            <Route path="rekonsiliasi/jenis/:id" element={<Guard permission="accounting.reconciliation.view" module="ACCOUNTING_REPORTING" feature="RECONCILIATION"><ReconciliationDetail /></Guard>} />
+            <Route path="rekonsiliasi/pengecualian" element={<Guard permission="accounting.reconciliation.view" module="ACCOUNTING_REPORTING" feature="RECONCILIATION"><ReconciliationExceptions /></Guard>} />
+            <Route path="penutupan" element={<Guard permission="accounting.period.view" module="ACCOUNTING_REPORTING" feature="PERIOD_CLOSING"><ClosingOverview /></Guard>} />
+            <Route path="penutupan/periode/:id" element={<Guard permission="accounting.period.view" module="ACCOUNTING_REPORTING" feature="PERIOD_CLOSING"><PeriodClosing /></Guard>} />
+            <Route path="penutupan/riwayat" element={<Guard permission="accounting.period.view" module="ACCOUNTING_REPORTING" feature="PERIOD_CLOSING"><ClosingHistory /></Guard>} />
+            <Route path="penutupan/kebijakan" element={<Guard permission="accounting.period.view" module="ACCOUNTING_REPORTING" feature="PERIOD_CLOSING"><ClosingPolicy /></Guard>} />
+            <Route path="penutupan/akhir-tahun" element={<Guard permission="accounting.year_end.view" module="ACCOUNTING_REPORTING" feature="PERIOD_CLOSING"><YearEnd /></Guard>} />
+            <Route path="penutupan/akhir-tahun/:id" element={<Guard permission="accounting.year_end.view" module="ACCOUNTING_REPORTING" feature="PERIOD_CLOSING"><YearEndDetail /></Guard>} />
           </Route>
           <Route path="langganan" element={<Guard permission="account.subscription.view"><Subscription /></Guard>} />
           <Route path="penggunaan" element={<Guard permission="account.subscription.view"><Usage /></Guard>} />
