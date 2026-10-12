@@ -72,7 +72,8 @@ class WorkshopInvoiceBooking
     {
         $invoice = $this->retire($event, $actor, $this->currentInvoice($this->source($event)['id']), 'cancellation', 'Cancelled in OptiFleet');
 
-        return new ProcessOutcome($invoice->reversal_journal_id, [$this->link(self::INVOICE, $this->source($event), ApInvoice::DOCUMENT_TYPE, $invoice)]);
+        // a reversal journal means the books changed; an invoice that never posted is simply cancelled (no journal, nothing to undo in the GL)
+        return new ProcessOutcome($invoice->reversal_journal_id, [$this->link(self::INVOICE, $this->source($event), ApInvoice::DOCUMENT_TYPE, $invoice)], documentStatus: $invoice->status);
     }
 
     public function paid(ExternalEvent $event, User $actor): ProcessOutcome
@@ -105,7 +106,7 @@ class WorkshopInvoiceBooking
         ], $actor);
         $document = $this->advance($created, $actor, fn ($p) => $this->payments->submit($p, $actor), fn ($p) => $this->payments->post($p, $actor));
 
-        return new ProcessOutcome($document->journal_entry_id, [[
+        return $this->outcome($document, [[
             'source_type' => self::PAYMENT, 'source_id' => $payment['id'], 'source_document_number' => $reference, 'document_type' => VendorPayment::DOCUMENT_TYPE, 'document_id' => $document->id,
         ]]);
     }
@@ -123,7 +124,24 @@ class WorkshopInvoiceBooking
         $created = $this->invoices->create($this->invoiceData($event, $payload, $vendor, $settings), $actor);
         $invoice = $this->advance($created, $actor, fn ($i) => $this->invoices->submit($i, $actor), fn ($i) => $this->invoices->post($i, $actor));
 
-        return new ProcessOutcome($invoice->journal_entry_id, [$this->link(self::INVOICE, $source, ApInvoice::DOCUMENT_TYPE, $invoice, $invoice->vendor_invoice_number)]);
+        return $this->outcome($invoice, [$this->link(self::INVOICE, $source, ApInvoice::DOCUMENT_TYPE, $invoice, $invoice->vendor_invoice_number)]);
+    }
+
+    /**
+     * What reached the books (ecosystem audit A27): a posted document is a journal; a submitted one waits for an approver; a draft waits for
+     * somebody allowed to post it (approval and segregation of duties are never bypassed here). The event is "processed" in all three cases.
+     *
+     * @param  list<array<string,?string>>  $links
+     */
+    private function outcome(Model $document, array $links): ProcessOutcome
+    {
+        $outcome = match ($document->status) {
+            ApInvoice::POSTED => ProcessOutcome::JOURNAL_POSTED,
+            ApInvoice::SUBMITTED => ProcessOutcome::AWAITING_APPROVAL,
+            default => ProcessOutcome::DRAFT_DOCUMENT,
+        };
+
+        return new ProcessOutcome($document->journal_entry_id, $links, $outcome, $document->status);
     }
 
     /**

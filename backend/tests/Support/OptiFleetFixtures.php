@@ -5,6 +5,7 @@ namespace Tests\Support;
 use App\Domain\Identity\Models\Tenant;
 use App\Domain\Integration\Models\IntegrationConnection;
 use App\Domain\Integration\Services\PullService;
+use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
@@ -18,14 +19,30 @@ trait OptiFleetFixtures
 {
     private const FLEET_FEED = 'https://fleet.example.test/api/v1/integration/accounting-feed*';
 
-    /** @var array<string,mixed> the page the faked feed answers with */
-    protected array $fleetPage = ['data' => [], 'next_cursor' => '0', 'has_more' => false];
+    /** @var array<string,mixed> the page the faked feed answers with (its events are renumbered from the client's cursor, see fakeFleet) */
+    protected array $fleetPage = ['data' => [], 'has_more' => false];
 
     private int $fleetSequence = 0;
 
+    /**
+     * The faked feed serves `$fleetPage` the way a real source would: the events are numbered from the `after` the client asked for (the feed is
+     * gap-free, so a page always continues the cursor), `next_cursor` is the last number and `high_water` the newest committed sequence.
+     */
     protected function fakeFleet(): void
     {
-        Http::fake([self::FLEET_FEED => fn () => Http::response($this->fleetPage)]);
+        Http::fake([self::FLEET_FEED => function (Request $request) {
+            parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
+            $after = (int) ($query['after'] ?? 0);
+            $data = [];
+            foreach (array_values($this->fleetPage['data']) as $i => $envelope) {
+                $data[] = ['sequence' => $after + $i + 1] + $envelope;
+            }
+            $last = $after + count($data);
+
+            return Http::response([
+                'data' => $data, 'next_cursor' => $data === [] ? null : (string) $last, 'has_more' => false, 'high_water' => (string) max($last, (int) ($this->fleetPage['high_water'] ?? 0)),
+            ]);
+        }]);
     }
 
     /**
@@ -47,7 +64,7 @@ trait OptiFleetFixtures
     /** Put the pages' events on the faked feed and run one real pull (fetch, store, process) of the connection. @param list<array<string,mixed>> $envelopes */
     protected function pullFleet(Tenant $tenant, IntegrationConnection $connection, array $envelopes): array
     {
-        $this->fleetPage = ['data' => $envelopes, 'next_cursor' => (string) max([0, ...array_column($envelopes, 'sequence')]), 'has_more' => false];
+        $this->fleetPage = ['data' => $envelopes, 'has_more' => false];
 
         return $this->inTenant($tenant, fn () => app(PullService::class)->pull($connection->refresh()));
     }

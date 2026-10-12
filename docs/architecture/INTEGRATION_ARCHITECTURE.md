@@ -169,8 +169,8 @@ permissions `accounting.integration.view|manage|retry`, audit actions `accountin
   pages per run, advisory lock per connection, new events then processed one by one. `integration:pull` and `integration:process`
   run every five minutes for ACTIVE tenants whose module and feature are writable; processing covers ACTIVE connections only.
 - **Not implemented (deliberately):** push endpoint (`POST /api/v1/integration/events`), webhooks, CSV import adapter, outbox relay to
-  sources, MISSING reconciliation (needs source totals; the summary shows received vs processed only), historical backfill, gap-policy
-  behaviour, the `OPTIFLEET_CONNECTOR` feature check (belongs to the OptiFleet adapter batch).
+  sources, MISSING reconciliation (needs source totals; the summary shows received vs processed only), historical backfill. (Gap-policy
+  behaviour came with §10; the `OPTIFLEET_CONNECTOR` feature check with §9.)
 
 ## 9. OptiFleet adapter notes (OA6 batch B)
 
@@ -214,3 +214,44 @@ registry is a singleton and the tenant context is scoped, so every collaborator 
 - **Not covered.** Vendor (procurement) invoices and payments, goods receipt, stock issue and spare part sale (not in the feed yet),
   foreign currency, branch/dimension mapping to journal lines. An event that cannot be booked as stated is held for a person
   (NEEDS_REVIEW), never booked approximately.
+
+## 10. Ecosystem audit hardening (A17, A18, A20, A21, A22, A27, A28; migration `2026_10_18_100001`)
+
+The audit of 2026-10-12 found that the OA6 slice could book from data nobody had decided to book. These rules are additive to §8-§9;
+none changes a merged migration, and no existing row is rewritten.
+
+- **Feed contract (A22).** `FeedClient` validates every page before anything is stored: cursor and `sequence` are digit strings (or JSON
+  integers) that fit 64 bits, no leading zeros; at most `limit` events; sequences are exactly `after+1, after+2, ...` (gap-free, ascending);
+  `next_cursor` = last sequence; an empty page does not advance or say `has_more`; nothing beyond `high_water`. A page that breaks a rule
+  is a failed pull (cursor unchanged, counted toward ERROR). The source states `high_water` (newest committed sequence) on every page.
+- **Lifecycle boundary (A20).** `integration_connections.lifecycle_version` is bumped by every pause, resume, disconnect, activation, error and
+  reconfiguration. A pull remembers the version it started with; each page is stored in a transaction that locks the connection row FOR UPDATE
+  and stores nothing (`halted`) if status or version changed. `EventProcessor`, `RetryService` and `ConflictService` lock the connection FOR
+  SHARE (then the event FOR UPDATE; the order is always connection, then event), so a pause waits for processing in flight and nothing starts
+  after it commits. A retry of a NEEDS_REVIEW/FAILED/DEAD_LETTER event on a connection that is not ACTIVE is refused (`CONNECTION_NOT_ACTIVE`);
+  dismissing (`REJECTED`, `REVIEW_DISMISSED`) stays possible. A failure of a pull that a pause overtook is not counted.
+- **Gaps (A18).** `integration_gaps`: pausing or disconnecting an ACTIVE/ERROR/PAUSED connection opens a gap at the cursor (`sequence_at_open`);
+  switching it on again probes the source head (`high_water`, outside any transaction; `SOURCE_HEAD_UNAVAILABLE` when it cannot say) and
+  closes the gap at `ceiling_sequence` with the connection's policy at that moment. Events in (open, ceiling] carry `gap_id` and follow the
+  policy at the inbox gate: `REQUIRES_REVIEW` -> NEEDS_REVIEW `GAP_REVIEW`; `BACKFILL_GAP` -> NEEDS_REVIEW `GAP_BACKFILL_REVIEW`;
+  `IGNORE_GAP` -> REJECTED `GAP_IGNORED`; `START_NEW_CUTOVER` -> REJECTED `GAP_NEW_CUTOVER` and the cutover date moves to the day of
+  reconnection (tenant time). A person decides the held ones for the whole gap (`POST gaps/{id}/resolution`: PROCESS through the normal retry
+  path, so approval, SoD and closed periods still apply, or DISMISS), at most 100 per call. Nothing is auto-posted for a gap.
+- **Snapshot basis (A17).** An event whose `payload.snapshot_basis` is not `event_time` (e.g. rebuilt from current state) waits NEEDS_REVIEW
+  `SNAPSHOT_BASIS_REVIEW`; only a person releases it. The producer's repair/monitoring duties are in the OptiFleet-v2 feed document.
+- **Conflicts (A21).** A known event id with different content keeps the stored event, records the disputed payload in
+  `external_event_conflicts` (append-only evidence; a trigger forbids changing it, deleting it, or touching a resolved row), flags the event
+  and, if it was not posted, holds it NEEDS_REVIEW `PAYLOAD_CONFLICT`. A flagged event is never processed or retried until
+  `POST events/{id}/conflict-resolution` (`accounting.integration.manage`, reason required): USE_ORIGINAL (processed with the original) or
+  REJECT (REJECTED `CONFLICT_REJECTED`, impossible once posted: reverse the document). A posted event with a conflict stays posted and shows
+  the open incident. If the source really changes its mind it sends a new event id (a correction).
+- **Outcome (A27).** `external_events.status = POSTED` means processed, not "in the ledger". `accounting_outcome` says what reached the books:
+  `JOURNAL_POSTED`, `AWAITING_APPROVAL` (SUBMITTED), `DRAFT_DOCUMENT`, `INFORMATIONAL` (memos), `NO_EFFECT` (e.g. a never-posted invoice
+  cancelled); `document_status` is the document's status then. Events processed before this release have NULL: the API derives
+  `JOURNAL_POSTED` from `resulting_journal_id` and otherwise leaves it null (counted as `UNCLASSIFIED` in the summary), nothing is
+  guessed or rewritten. The summary adds `processed` (= `posted`, the older name), `outcomes`, `backlog` and `open_gap`.
+- **Scheduling (A28).** `integration:process` takes up to 200 due events per ACTIVE connection per run (oldest first) instead of 200 overall,
+  and skips a connection whose connector reports entitlement problems without touching its events (counted `held`). The connection
+  summary shows `backlog` (due, oldest age, `blocked_by` CONNECTION_NOT_ACTIVE | CONNECTOR_NOT_ENTITLED, `stalled` after 30 minutes).
+- **Contradiction recorded.** §6 says reactivation never back-posts history; the stored `gap_policy` was not applied until now. The safest
+  backward-compatible reading is used: the default `REQUIRES_REVIEW` holds, it never books.

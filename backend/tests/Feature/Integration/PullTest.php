@@ -27,9 +27,9 @@ class PullTest extends TestCase
     private const FEED = 'https://fleet.example.test/api/v1/integration/accounting-feed*';
 
     /** @return array<string,mixed> */
-    private function page(array $envelopes, ?string $next, bool $more = false): array
+    private function page(array $envelopes, ?string $next, bool $more = false, ?string $highWater = null): array
     {
-        return ['data' => $envelopes, 'next_cursor' => $next, 'has_more' => $more];
+        return ['data' => $envelopes, 'next_cursor' => $next, 'has_more' => $more] + ($highWater === null ? [] : ['high_water' => $highWater]);
     }
 
     private function pull(IntegrationConnection $connection, $tenant): array
@@ -49,7 +49,7 @@ class PullTest extends TestCase
 
         $summary = $this->pull($connection, $tenant);
 
-        $this->assertSame(['skipped' => false, 'pages' => 2, 'received' => 3, 'duplicates' => 0, 'conflicts' => 0, 'processed' => 3, 'posted' => 3, 'error' => null], $summary);
+        $this->assertSame(['skipped' => false, 'halted' => false, 'pages' => 2, 'received' => 3, 'duplicates' => 0, 'conflicts' => 0, 'processed' => 3, 'posted' => 3, 'journals' => 0, 'error' => null], $summary);
         $requests = Http::recorded()->map(fn (array $pair) => [$pair[0]->url(), $pair[0]->header('Authorization')[0] ?? null])->values()->all();
         $this->assertSame('https://fleet.example.test/api/v1/integration/accounting-feed?limit=100', $requests[0][0]);
         $this->assertSame('https://fleet.example.test/api/v1/integration/accounting-feed?after=2&limit=100', $requests[1][0]);
@@ -69,10 +69,11 @@ class PullTest extends TestCase
         $events = [$this->envelope(['event_id' => 'a', 'sequence' => 1]), $this->envelope(['event_id' => 'b', 'sequence' => 2])];
         $changed = $events[1];
         $changed['payload']['total_amount'] = '1.00';
-        Http::fake([self::FEED => Http::sequence()->push($this->page($events, '2'))->push($this->page([$events[0], $changed, $this->envelope(['event_id' => 'c', 'sequence' => 3])], '3'))]);
+        Http::fake([self::FEED => Http::sequence()->push($this->page($events, '2'))->push($this->page([$events[0], ['sequence' => 2] + $changed, $this->envelope(['event_id' => 'c', 'sequence' => 3])], '3'))]);
 
         $this->pull($connection, $tenant);
-        $second = $this->pull($connection, $tenant);
+        DB::table('integration_connections')->where('id', $connection->id)->update(['last_cursor' => null]); // the source replays its feed from the start
+        $second = $this->pull($connection->refresh(), $tenant);
 
         $this->assertSame([1, 1, 1], [$second['received'], $second['duplicates'], $second['conflicts']]);
         $this->assertSame(3, $adapter->calls);
@@ -124,7 +125,7 @@ class PullTest extends TestCase
         foreach ([['not a feed'], ['data' => 'x', 'has_more' => false], ['data' => [], 'has_more' => 'no'], ['data' => [], 'has_more' => false, 'next_cursor' => ['x']]] as $bad) {
             DB::table('integration_connections')->where('id', $connection->id)->update(['consecutive_failures' => 0]); // stay clear of the five-in-a-row ERROR
             $answer = fn () => Http::response($bad);
-            $this->assertSame('The source answered with an invalid feed page.', $this->pull($connection, $tenant)['error']);
+            $this->assertStringStartsWith('The source answered with an invalid feed page', $this->pull($connection, $tenant)['error']);
         }
         $this->assertSame('10', $connection->refresh()->last_cursor);
 
@@ -140,7 +141,7 @@ class PullTest extends TestCase
         $tenant = $this->tenant();
         $connection = $this->connectionFor($tenant, ['last_cursor' => '10']);
         $this->fakeAdapter();
-        Http::fake([self::FEED => Http::response($this->page([$this->envelope(['event_id' => 'good']), $this->envelope(['event_id' => ''])], '12'))]);
+        Http::fake([self::FEED => Http::response($this->page([$this->envelope(['event_id' => 'good', 'sequence' => 11]), $this->envelope(['event_id' => '', 'sequence' => 12])], '12'))]);
 
         $summary = $this->pull($connection, $tenant);
 
@@ -161,10 +162,10 @@ class PullTest extends TestCase
             return new ProcessOutcome;
         });
         Http::fake([self::FEED => Http::response($this->page([
-            $this->envelope(['event_id' => 'old', 'occurred_at' => '2020-01-01T00:00:00Z']),
-            $this->envelope(['event_id' => 'bad']),
-            $this->envelope(['event_id' => 'float', 'payload' => ['total_amount' => 10.5]]),
-            $this->envelope(['event_id' => 'ok']),
+            $this->envelope(['event_id' => 'old', 'occurred_at' => '2020-01-01T00:00:00Z', 'sequence' => 1]),
+            $this->envelope(['event_id' => 'bad', 'sequence' => 2]),
+            $this->envelope(['event_id' => 'float', 'payload' => ['total_amount' => 10.5], 'sequence' => 3]),
+            $this->envelope(['event_id' => 'ok', 'sequence' => 4]),
         ], '4'))]);
 
         $summary = $this->pull($connection, $tenant);
@@ -172,6 +173,7 @@ class PullTest extends TestCase
         $status = fn (string $id) => DB::table('external_events')->where('event_id', $id)->value('status');
         $this->assertSame(['REJECTED', 'FAILED', 'REJECTED', 'POSTED'], [$status('old'), $status('bad'), $status('float'), $status('ok')]);
         $this->assertSame([4, 2, 1, null], [$summary['received'], $summary['processed'], $summary['posted'], $summary['error']]);
+        $this->assertFalse($summary['halted']);
         $this->assertSame('4', $connection->refresh()->last_cursor);
     }
 
@@ -185,7 +187,7 @@ class PullTest extends TestCase
         Http::fake([self::FEED => function () use (&$levels) {
             $levels[] = DB::transactionLevel();
 
-            return Http::response($this->page([$this->envelope()], '1', count($levels) < 2));
+            return Http::response($this->page([$this->envelope(['sequence' => count($levels)])], (string) count($levels), count($levels) < 2));
         }]);
 
         $this->pull($connection, $tenant);

@@ -4,6 +4,7 @@ namespace App\Domain\Integration\Services;
 
 use App\Domain\Identity\Models\Tenant;
 use App\Domain\Integration\Models\ExternalEvent;
+use App\Domain\Integration\Models\ExternalEventConflict;
 use App\Domain\Integration\Models\ExternalSourceLink;
 use App\Domain\Shared\DomainException;
 use App\Support\TenantContext;
@@ -48,6 +49,7 @@ class EventReader
             'next_attempt_at' => $event->next_attempt_at?->toIso8601String(), 'last_error_code' => $event->last_error_code, 'last_error' => $event->last_error,
             'conflict' => $event->conflict, 'duplicate_count' => $event->duplicate_count, 'resulting_journal_id' => $event->resulting_journal_id,
             'received_at' => $event->received_at->toIso8601String(), 'processed_at' => $event->processed_at?->toIso8601String(),
+            'accounting_outcome' => $this->outcome($event), 'document_status' => $event->document_status, 'gap_id' => $event->gap_id,
         ];
         if (! $detail) {
             return $row;
@@ -55,9 +57,26 @@ class EventReader
 
         return $row + [
             'envelope' => $event->envelope,
+            'conflicts' => $event->conflicts()->orderBy('received_at')->get()->map(fn (ExternalEventConflict $c) => [
+                'id' => $c->id, 'received_hash' => $c->received_hash, 'received_at' => $c->received_at->toIso8601String(), 'envelope' => $c->envelope,
+                'resolution' => $c->resolution, 'resolution_reason' => $c->resolution_reason, 'resolved_at' => $c->resolved_at?->toIso8601String(),
+            ])->all(),
             'source_links' => ExternalSourceLink::query()->where('source_system', $event->source_system)->where('source_event_id', $event->event_id)->orderBy('source_type')->orderBy('source_id')->get()
                 ->map(fn (ExternalSourceLink $link) => $this->presentLink($link))->all(),
         ];
+    }
+
+    /**
+     * What processing did to the books. Events processed before outcomes were recorded have none stored: a journal means JOURNAL_POSTED, and
+     * without one it cannot be told (null) instead of being guessed. Events that were not processed have no outcome.
+     */
+    private function outcome(ExternalEvent $event): ?string
+    {
+        if ($event->accounting_outcome !== null || $event->status !== ExternalEvent::POSTED) {
+            return $event->accounting_outcome;
+        }
+
+        return $event->resulting_journal_id !== null ? ProcessOutcome::JOURNAL_POSTED : null;
     }
 
     public function presentLink(ExternalSourceLink $link): array

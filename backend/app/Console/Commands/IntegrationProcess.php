@@ -14,7 +14,7 @@ class IntegrationProcess extends Command
     public function handle(IntegrationRunner $runner): int
     {
         $totals = $runner->processDue();
-        $this->components->info("Processed {$totals['events']}, posted {$totals['posted']}.");
+        $this->components->info("Processed {$totals['events']}, completed {$totals['posted']}, journals posted {$totals['journals']}, connections held {$totals['held']}.");
 
         return self::SUCCESS;
     }

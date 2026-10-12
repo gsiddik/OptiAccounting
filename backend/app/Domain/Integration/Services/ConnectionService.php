@@ -6,9 +6,11 @@ use App\Domain\Audit\Services\AuditService;
 use App\Domain\Integration\Contracts\ConnectorRequirements;
 use App\Domain\Integration\Models\ExternalEvent;
 use App\Domain\Integration\Models\IntegrationConnection as Connection;
+use App\Domain\Integration\Models\IntegrationGap;
 use App\Domain\Shared\DomainException;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\UniqueConstraintViolationException;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -43,12 +45,15 @@ class ConnectionService
     /** Consecutive failed pulls after which an ACTIVE connection becomes ERROR. */
     public const MAX_PULL_FAILURES = 5;
 
+    /** Due events older than this on a connection that is able to process them mean the scheduler is not keeping up (it runs every five minutes). */
+    public const STALLED_AFTER_MINUTES = 30;
+
     private const EDITABLE = ['name', 'source_tenant_reference', 'base_url', 'credential', 'cutover_policy', 'cutover_date', 'gap_policy', 'pull_interval_minutes', 'settings'];
 
     /** Once an event was received these identify what was received and can no longer change. */
     private const LOCKED_BY_EVENTS = ['source_tenant_reference', 'cutover_policy', 'cutover_date'];
 
-    public function __construct(private readonly AuditService $audit, private readonly AdapterRegistry $adapters) {}
+    public function __construct(private readonly AuditService $audit, private readonly AdapterRegistry $adapters, private readonly FeedClient $feed) {}
 
     /** @param array{status?:?string,source_system?:?string} $filter */
     public function query(array $filter = []): Builder
@@ -100,6 +105,7 @@ class ConnectionService
                 $before = $this->snapshot($connection);
                 $this->assertNotLocked($connection, $data);
                 $this->apply($connection, $data);
+                $connection->lifecycle_version++; // a pull that is running right now notices that the connection changed under it
 
                 if (in_array($connection->status, [Connection::ACTIVE, Connection::PAUSED, Connection::ERROR], true)) {
                     $this->assertComplete($connection);
@@ -154,15 +160,23 @@ class ConnectionService
         ])->save();
     }
 
-    /** A pull attempt that stored nothing: keep the cursor, remember why, and give up (ERROR) after MAX_PULL_FAILURES in a row. */
-    public function pullFailed(string $id, string $reason): Connection
+    /**
+     * A pull attempt that stored nothing: keep the cursor, remember why, and give up (ERROR) after MAX_PULL_FAILURES in a row. A failure that
+     * belongs to a pull started under an earlier `lifecycle_version` (the connection was paused, reconnected or reconfigured meanwhile) says
+     * nothing about the connection as it is now and is dropped.
+     */
+    public function pullFailed(string $id, string $reason, ?int $lifecycleVersion = null): Connection
     {
-        return DB::transaction(function () use ($id, $reason) {
+        return DB::transaction(function () use ($id, $reason, $lifecycleVersion) {
             $connection = $this->find($id, lock: true);
+            if ($lifecycleVersion !== null && ($connection->lifecycle_version !== $lifecycleVersion || $connection->status !== Connection::ACTIVE)) {
+                return $connection;
+            }
             $failures = $connection->consecutive_failures + 1;
             $connection->forceFill(['last_pulled_at' => now(), 'last_error' => Str::limit($reason, 500, ''), 'consecutive_failures' => $failures]);
             if ($failures >= self::MAX_PULL_FAILURES && $connection->status === Connection::ACTIVE) {
                 $connection->status = Connection::ERROR;
+                $connection->lifecycle_version++;
                 $this->audit->record('accounting.integration.connection.errored', 'integration_connection', $connection->id, ['status' => Connection::ACTIVE], [
                     'status' => Connection::ERROR, 'consecutive_failures' => $failures, 'last_error' => $connection->last_error,
                 ], $connection->tenant_id);
@@ -183,14 +197,29 @@ class ConnectionService
             'cutover_date' => $connection->cutover_date?->toDateString(), 'gap_policy' => $connection->gap_policy,
             'pull_interval_minutes' => $connection->pull_interval_minutes, 'settings' => $connection->settings ?: new \stdClass, 'last_cursor' => $connection->last_cursor,
             'last_pulled_at' => $connection->last_pulled_at?->toIso8601String(), 'last_error' => $connection->last_error,
-            'consecutive_failures' => $connection->consecutive_failures,
+            'consecutive_failures' => $connection->consecutive_failures, 'open_gap' => $this->presentOpenGap($connection),
             'created_at' => $connection->created_at?->toIso8601String(), 'updated_at' => $connection->updated_at?->toIso8601String(),
+        ];
+    }
+
+    /** The pause or disconnection that is still running: where the source's feed stood when the connection stopped listening. */
+    private function presentOpenGap(Connection $connection): ?array
+    {
+        $gap = IntegrationGap::query()->where('connection_id', $connection->id)->where('status', IntegrationGap::OPEN)->first();
+
+        return $gap === null ? null : [
+            'id' => $gap->id, 'open_reason' => $gap->open_reason, 'policy' => $gap->policy, 'sequence_at_open' => $gap->sequence_at_open, 'opened_at' => $gap->opened_at->toIso8601String(),
         ];
     }
 
     /**
      * "Received vs processed" for one connection: events by status, how many were delivered again (duplicates) or with different content
-     * (conflicts), and where the pull stands. Source totals are not compared yet, so a MISSING event cannot be detected here.
+     * (conflicts), where the pull stands, and how the processed events reached the books. Source totals are not compared yet, so a MISSING
+     * event cannot be detected here.
+     *
+     * `processed` (= `posted`, the older name) counts events whose processing finished; it does not say a journal exists. `outcomes` does
+     * (ecosystem audit A27): JOURNAL_POSTED, AWAITING_APPROVAL, DRAFT_DOCUMENT, INFORMATIONAL, NO_EFFECT, and UNCLASSIFIED for events that were
+     * processed before outcomes were recorded and left no journal. `backlog` shows what is waiting and how long (audit A28).
      */
     public function summary(string $id): array
     {
@@ -200,12 +229,39 @@ class ConnectionService
         foreach ((clone $events)->selectRaw('status, count(*) as n')->groupBy('status')->pluck('n', 'status') as $status => $n) {
             $counts[$status] = (int) $n;
         }
+        $outcomes = array_fill_keys([...ProcessOutcome::OUTCOMES, 'UNCLASSIFIED'], 0);
+        $derived = "coalesce(accounting_outcome, case when resulting_journal_id is not null then 'JOURNAL_POSTED' else 'UNCLASSIFIED' end)";
+        foreach ((clone $events)->where('status', ExternalEvent::POSTED)->selectRaw("{$derived} as outcome, count(*) as n")->groupBy(DB::raw($derived))->pluck('n', 'outcome') as $outcome => $n) {
+            $outcomes[$outcome] = (int) $n;
+        }
 
         return [
-            'connection_id' => $connection->id, 'status' => $connection->status, 'received' => array_sum($counts), 'posted' => $counts[ExternalEvent::POSTED],
-            'counts' => $counts, 'duplicates' => (int) (clone $events)->sum('duplicate_count'), 'conflicts' => (clone $events)->where('conflict', true)->count(),
+            'connection_id' => $connection->id, 'status' => $connection->status, 'received' => array_sum($counts), 'processed' => $counts[ExternalEvent::POSTED],
+            'posted' => $counts[ExternalEvent::POSTED], 'counts' => $counts, 'outcomes' => $outcomes,
+            'duplicates' => (int) (clone $events)->sum('duplicate_count'), 'conflicts' => (clone $events)->where('conflict', true)->count(),
+            'backlog' => $this->backlog($connection), 'open_gap' => $this->presentOpenGap($connection),
             'last_cursor' => $connection->last_cursor, 'last_pulled_at' => $connection->last_pulled_at?->toIso8601String(),
             'last_error' => $connection->last_error, 'consecutive_failures' => $connection->consecutive_failures,
+        ];
+    }
+
+    /** @return array{due:int,oldest_due_at:?string,oldest_due_age_seconds:?int,blocked_by:?string,stalled:bool} */
+    private function backlog(Connection $connection): array
+    {
+        $due = ExternalEvent::query()->where('connection_id', $connection->id)->due();
+        $count = (clone $due)->count();
+        $oldest = $count === 0 ? null : Carbon::parse((clone $due)->min('received_at'));
+        $blockedBy = match (true) {
+            $count === 0 => null,
+            $connection->status !== Connection::ACTIVE => 'CONNECTION_NOT_ACTIVE',
+            ($this->requirements($connection->source_system)?->entitlementProblems() ?? []) !== [] => 'CONNECTOR_NOT_ENTITLED',
+            default => null,
+        };
+        $age = $oldest === null ? null : max(0, (int) $oldest->diffInSeconds(now(), absolute: true));
+
+        return [
+            'due' => $count, 'oldest_due_at' => $oldest?->toIso8601String(), 'oldest_due_age_seconds' => $age, 'blocked_by' => $blockedBy,
+            'stalled' => $blockedBy === null && $age !== null && $age > self::STALLED_AFTER_MINUTES * 60,
         ];
     }
 
@@ -272,22 +328,93 @@ class ConnectionService
 
     private function move(string $id, string $to, array $from, string $action, ?callable $guard = null): Connection
     {
-        return DB::transaction(function () use ($id, $to, $from, $action, $guard) {
+        // Switching a connection on again after a pause or a disconnect closes its gap, which needs the source's head: asked first, outside any transaction.
+        $head = $to === Connection::ACTIVE ? $this->headForOpenGap($id) : null;
+
+        return DB::transaction(function () use ($id, $to, $from, $action, $guard, $head) {
             $connection = $this->find($id, lock: true);
             $guard?->__invoke($connection);
             if (! in_array($connection->status, $from, true) || ! in_array($to, self::TRANSITIONS[$connection->status], true)) {
                 throw new DomainException("A {$connection->status} connection cannot be moved to {$to} this way.", 'CONNECTION_INVALID_TRANSITION', 409, ['status' => $connection->status, 'to' => $to]);
             }
             $before = ['status' => $connection->status];
-            $connection->forceFill(['status' => $to]);
+            $wasListening = in_array($connection->status, [Connection::ACTIVE, Connection::ERROR, Connection::PAUSED], true);
+            $connection->forceFill(['status' => $to, 'lifecycle_version' => $connection->lifecycle_version + 1]);
             if ($to === Connection::ACTIVE) {
                 $connection->forceFill(['consecutive_failures' => 0, 'last_error' => null]);
+                $this->closeGap($connection, $head);
+            }
+            if ($wasListening && in_array($to, [Connection::PAUSED, Connection::DISCONNECTED], true)) {
+                $this->openGap($connection, $to === Connection::PAUSED ? 'PAUSED' : 'DISCONNECTED');
             }
             $connection->save();
             $this->audit->record("accounting.integration.connection.{$action}", 'integration_connection', $connection->id, $before, ['status' => $to]);
 
             return $connection;
         });
+    }
+
+    /**
+     * The gap starts where the pull stopped: events of the source after this sequence are not seen by anybody until the connection is switched
+     * on again. Pause then disconnect keeps the one open gap (the first moment of silence counts).
+     */
+    private function openGap(Connection $connection, string $reason): void
+    {
+        if (IntegrationGap::query()->where('connection_id', $connection->id)->where('status', IntegrationGap::OPEN)->exists()) {
+            return;
+        }
+        $gap = new IntegrationGap;
+        $gap->forceFill([
+            'connection_id' => $connection->id, 'open_reason' => $reason, 'policy' => $connection->gap_policy, 'status' => IntegrationGap::OPEN,
+            'sequence_at_open' => (int) ($connection->last_cursor ?? 0), 'opened_at' => now(),
+        ])->save();
+        $this->audit->record('accounting.integration.gap.opened', 'integration_gap', $gap->id, null, [
+            'connection_id' => $connection->id, 'reason' => $reason, 'sequence_at_open' => $gap->sequence_at_open,
+        ]);
+    }
+
+    /** The source's head when a gap is open (the connection is about to listen again), null when there is no gap; refuses while the source cannot say. */
+    private function headForOpenGap(string $id): ?int
+    {
+        $connection = Str::isUuid($id) ? Connection::query()->find($id) : null;
+        if ($connection === null || $this->missingForActivation($connection) !== []
+            || ! IntegrationGap::query()->where('connection_id', $connection->id)->where('status', IntegrationGap::OPEN)->exists()) {
+            return null;
+        }
+
+        try {
+            return $this->feed->head($connection);
+        } catch (FeedException $e) {
+            throw new DomainException('The source could not tell where its feed stands, so the pause cannot be closed safely: '.$e->getMessage(), 'SOURCE_HEAD_UNAVAILABLE', 409);
+        }
+    }
+
+    /**
+     * Closes the open gap with the head asked a moment ago. From here the gap policy (the connection's, as it is now) decides about the source
+     * events in the window: EventInbox marks and holds or refuses them when they arrive. START_NEW_CUTOVER also moves the cutover date to today,
+     * so nothing before the reconnection is ever booked automatically.
+     */
+    private function closeGap(Connection $connection, ?int $head): void
+    {
+        $gap = IntegrationGap::query()->where('connection_id', $connection->id)->where('status', IntegrationGap::OPEN)->lockForUpdate()->first();
+        if ($gap === null) {
+            return;
+        }
+        if ($head === null) {
+            throw new DomainException('The connection changed while it was being switched on; try again.', 'CONNECTION_CHANGED', 409);
+        }
+        $cutover = $connection->gap_policy === 'START_NEW_CUTOVER' ? now()->setTimezone($connection->tenant->timezone)->toDateString() : null;
+        $gap->forceFill([
+            'status' => IntegrationGap::CLOSED, 'closed_at' => now(), 'ceiling_sequence' => max($head, $gap->sequence_at_open), 'policy' => $connection->gap_policy,
+            'new_cutover_date' => $cutover,
+        ])->save();
+        if ($cutover !== null && ($connection->cutover_date === null || $connection->cutover_date->toDateString() < $cutover)) {
+            $connection->forceFill(['cutover_date' => $cutover]);
+        }
+        $this->audit->record('accounting.integration.gap.closed', 'integration_gap', $gap->id, null, [
+            'connection_id' => $connection->id, 'policy' => $gap->policy, 'sequence_at_open' => $gap->sequence_at_open, 'ceiling_sequence' => $gap->ceiling_sequence,
+            'new_cutover_date' => $cutover,
+        ]);
     }
 
     private function apply(Connection $connection, array $data): void
