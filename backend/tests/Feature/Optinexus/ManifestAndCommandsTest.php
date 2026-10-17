@@ -60,7 +60,7 @@ class ManifestAndCommandsTest extends OptinexusTestCase
     public function test_the_check_command_passes_against_a_healthy_optinexus(): void
     {
         $this->artisan('optientry:nexus:check')->assertSuccessful()
-            ->expectsOutputToContain('Discovery document')->expectsOutputToContain('Service account token and scopes')->expectsOutputToContain('Delegation of users and roles');
+            ->expectsOutputToContain('Discovery document')->expectsOutputToContain('Service account token and scopes')->expectsOutputToContain('Delegation of users and roles')->expectsOutputToContain('Product switcher and session revalidation');
     }
 
     public function test_the_check_command_names_what_is_wrong(): void
@@ -78,6 +78,11 @@ class ManifestAndCommandsTest extends OptinexusTestCase
         $this->artisan('optientry:nexus:check')->assertFailed()->expectsOutputToContain('tenant.delegate');
         $this->nexus['delegation']['scope_revoked'] = false;
         $this->artisan('optientry:nexus:check')->assertSuccessful();
+
+        // An OptiNexus without the product-context API: the switcher cannot work, and the check says so.
+        $this->nexus['pc']['missing'] = true;
+        $this->artisan('optientry:nexus:check')->assertFailed()->expectsOutputToContain('lacks the product-context API');
+        $this->nexus['pc']['missing'] = false;
 
         config(['optientry.optinexus.service.client_secret' => 'svc-secret', 'optientry.optinexus.sso.client_id' => '']);
         $this->artisan('optientry:nexus:check')->assertFailed()->expectsOutputToContain('OPTINEXUS_SSO_CLIENT_ID');

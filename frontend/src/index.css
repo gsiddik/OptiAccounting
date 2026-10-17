@@ -370,3 +370,13 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .state h2 { margin: 0; font-size: 1.15rem; }
 .state p { margin: 0; color: var(--muted); }
 .state .actions { margin-top: 8px; justify-content: center; flex-wrap: wrap; }
+
+.switcher { position: relative; }
+.switcher-menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; min-width: 220px; max-width: min(320px, calc(100vw - 32px)); background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-lg); padding: 6px; display: flex; flex-direction: column; gap: 2px; }
+.switcher-item { display: flex; flex-direction: column; gap: 1px; padding: 8px 10px; border-radius: 6px; color: inherit; text-decoration: none; }
+a.switcher-item:hover, a.switcher-item:focus-visible { background: var(--brand-weak); }
+.switcher-item.current { background: var(--bg); }
+.switcher-item.disabled { opacity: 0.6; }
+.switcher-item small, .switcher-note span { color: var(--muted); font-size: 0.8rem; }
+.switcher-note { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; padding: 8px 10px; }
+@media (max-width: 640px) { .switcher { position: static; } .switcher-menu { position: fixed; left: 16px; right: 16px; top: 60px; max-width: none; } }

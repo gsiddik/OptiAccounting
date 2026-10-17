@@ -18,6 +18,7 @@ use Illuminate\Testing\TestResponse;
 trait FakesOptinexus
 {
     use FakesNexusDelegation;
+    use FakesNexusProductContext;
 
     protected const NEXUS_URL = 'https://nexus.test';
 
@@ -66,6 +67,7 @@ trait FakesOptinexus
             'token_scopes' => [], // service token => the scope string it was issued with
         ];
         $this->nexusDelegationReset();
+        $this->nexusProductContextReset();
 
         Http::preventStrayRequests();
         Http::fake(fn (Request $request) => $this->nexusRespond($request));
@@ -260,6 +262,10 @@ trait FakesOptinexus
                 'applications_enabled' => $tenant['applications'],
                 'effective_entitlements' => $tenant['entitlements'],
             ]]);
+        }
+
+        if ($path === '/api/v1/authorization/product-context') {
+            return $this->nexusProductContext($body);
         }
 
         if (str_starts_with($path, '/api/v1/delegation/')) {

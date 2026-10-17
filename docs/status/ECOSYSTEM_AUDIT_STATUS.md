@@ -40,6 +40,10 @@ changed in OptiEntry. Merge only on owner request.
   editor grouped by module, non-delegable/not-entitled permissions shown unavailable, catalog tab) in `pages/tenant/delegation/`; legacy pages
   stay for `standalone` and as read-only fallback while delegation is not set up. States: loading, empty, forbidden, provider-unavailable,
   not-set-up, error, each with the `X-Request-Id` reference (`ApiError.requestId`, `lib/errors.ts` shared with the error boundaries).
+- E2 (A29): `GET /app/product-context` + `ProductContext` (cache <= 300 s per tenant+user, fail closed beyond TTL, refusals never cached, answers
+  about another user/tenant/application rejected), `allowed=false` ends the session with a reason (audit `auth.session_ended_by_optinexus`),
+  `tenant_hint` validated (uuid/code) on SSO start, product switcher in the top bar (only returned products, revalidated on open and before
+  every switch, no list from an expired answer), sign-in auto-start with a valid hint, `optientry:nexus:check` step. Design: ADAPTER section 11.
 
 ## Tests (executed in this session)
 - A03: `tests/Feature/Optinexus` 121 passed (21 in `NexusPermissionTest`: >120 permissions in one request, wildcard/unknown-key/mismatched-answer
@@ -57,6 +61,9 @@ changed in OptiEntry. Merge only on owner request.
   8 in `i18n.test.ts`, 19 in `errors.test.ts`); `npx tsc -b` clean; `oxlint` only fast-refresh warnings. Backend
   `DelegationMessagesTest` (every error code the delegation layer emits has an id+en message; needs `frontend/` mounted at `/frontend`).
   Browser (Playwright/Chromium against the Vite dev server with the API mocked): Users/Roles/dialogs/states at 1440, 820, 390: no horizontal overflow.
+- E2: `tests/Feature/Optinexus` 218 passed + 1 skipped (`ProductContextTest` 16: shape/links/session-only question/cache/expiry/ttl cap/per-user/outage/
+  malformed answers/refusal ends session/not supported; `TenantHintTest` 13; `ProductContextContractTest` 5 over a real socket: wire request, refusal,
+  503 + one repeat, slow server inside the timeout, server gone); frontend `ProductSwitcher.test.tsx` 20. Frontend total 54 files, 1167 passed.
 - Pint clean.
 - Container package (sandbox, Ubuntu php-fpm image instead of the Alpine one, which cannot be built here): `docker compose config` OK;
   bootstrap -> api/worker/scheduler/web/ui healthy; bootstrap re-run "Nothing to migrate"; runtime role refuses an unmigrated database after

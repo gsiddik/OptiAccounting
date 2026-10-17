@@ -211,7 +211,32 @@ Rules the code keeps:
 - **Not reachable from OptiEntry, by design:** Admin Tenant accounts (`TENANT_ADMIN_PROTECTED`), other tenants and applications, ecosystem
   roles, plans, entitlements, subscriptions, tenant-wide membership. `optientry:nexus:check` verifies the scope and the endpoint.
 
-## 11. Not in scope (owner decisions if wanted)
+## 11. Product switcher and session revalidation (audit A29)
+
+`GET /api/v1/app/product-context` (every signed-in user, ungated; the question is about the session's own user and tenant, never a request
+value) asks OptiNexus `POST /authorization/product-context {user_id, tenant_id}` (scope `authorization.check`, schema 1.x) and returns the
+products the tenant subscribes to AND the person was assigned, each with a `switch_url` the API builds (`launch_url` + `tenant_hint=<tenant
+id>`, existing query kept; only absolute http(s) addresses without credentials; the governance portal `cgo` is dropped even if returned).
+
+- **Cache.** One entry per tenant + user, for at most `ttl_seconds` and never more than 300 s; one worker asks while others wait (lock). A
+  cached answer is never used after it expires: when OptiNexus cannot be asked then, the call is `IDENTITY_PROVIDER_UNAVAILABLE` (503) and the
+  switcher shows no list (fail closed). A malformed answer, one about another user/tenant/application or another schema major is not an
+  answer (same 503, nothing cached). A refusal is never cached.
+- **Revalidation.** `allowed=false` ends the session at once: the API deletes the person's tenant tokens, audits
+  `auth.session_ended_by_optinexus` with the `deny_reason`, and answers `session_ended: true`; the console drops its token and the sign-in
+  page explains the reason (`session.ended.*`, both languages). An outage never ends a session (the permission cache already fails closed
+  for data); an OptiNexus without the endpoint, or a service account without the scope, answers `available:false` (switcher hidden, nothing
+  ended). The console asks on load, when the tab becomes visible, every `ttl_seconds`, whenever the menu opens and once more right before it
+  navigates to another product (no navigation on a failed or negative answer).
+- **Sign-in start.** `GET /auth/sso/redirect?tenant_hint=` forwards the hint to `/oidc/authorize` only when it is a tenant id (uuid) or a
+  tenant code (`[A-Za-z0-9][A-Za-z0-9._-]{0,63}`); anything else is dropped and sign-in still starts. The console's sign-in page starts SSO by
+  itself when it is opened with a valid hint (at most once a minute, never after an `sso_error`), so arriving from another product's
+  switcher needs no second click. A direct visit to a product the person does not hold is refused by OptiNexus at `/oidc/authorize` and by
+  `AccountLinker` (`tenant_not_entitled`, `membership_inactive`), exactly as before.
+- **Contract test.** `ProductContextContractTest` runs the HTTP client against `tests/Support/fake-nexus/router.php`, a stand-alone server
+  that answers only the documented JSON (real socket, no `Http::fake`); `optientry:nexus:check` has a product-context step.
+
+## 12. Not in scope (owner decisions if wanted)
 
 Batch permission endpoint in OptiNexus; OptiNexus-authenticated platform
 operators; mixed local/OptiNexus tenants in one installation (SAAS §1); a

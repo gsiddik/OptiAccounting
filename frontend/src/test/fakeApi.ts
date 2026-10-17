@@ -9,7 +9,9 @@ type Handler = Reply | ((request: Request) => Reply)
  * Replace the HTTP transport with an in-memory table of "METHOD /path" → reply.
  * An unmocked request fails the test loudly instead of silently returning nothing.
  */
-export function mockApi(routes: Record<string, Handler>) {
+export function mockApi(given: Record<string, Handler>) {
+  // Every tenant shell asks for the product switcher; unless a test cares, this installation has none (not in OptiNexus mode).
+  const routes: Record<string, Handler> = { 'GET /app/product-context': { data: { available: false, reason: 'NOT_OPTINEXUS', session_ended: false } }, ...given }
   const calls: Request[] = []
   api.defaults.adapter = async (config) => {
     const method = (config.method ?? 'get').toUpperCase()

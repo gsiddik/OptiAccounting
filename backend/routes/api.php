@@ -111,6 +111,8 @@ Route::prefix('v1')->middleware('request.id')->group(function () {
     // ------------------------------------------------------------------ tenant
     Route::prefix('app')->middleware(['auth:sanctum', 'context:tenant'])->group(function () {
         Route::get('capabilities', App\CapabilityController::class);
+        // The products this person may open from here and the revalidation of the session (audit A29). Ungated: every signed-in user asks for their own.
+        Route::get('product-context', [App\ProductContextController::class, 'show']);
 
         Route::get('branches', [App\OrganizationController::class, 'branches'])->middleware('access:organization.view');
         Route::post('branches', [App\OrganizationController::class, 'storeBranch'])->middleware('access:organization.manage');

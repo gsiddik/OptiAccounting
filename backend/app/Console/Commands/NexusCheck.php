@@ -100,6 +100,23 @@ class NexusCheck extends Command
             throw new \RuntimeException('unexpected answer HTTP '.$response->status());
         });
 
+        $step('Product switcher and session revalidation (POST /authorization/product-context)', function () use ($api) {
+            // Unknown user and tenant: a supporting OptiNexus answers 200 with allowed=false (user_not_found); one without the endpoint answers 404.
+            $nil = '00000000-0000-0000-0000-000000000000';
+            $response = $api->send('POST', '/authorization/product-context', ['user_id' => $nil, 'tenant_id' => $nil], repeatable: true);
+            if ($response->status() === 404) {
+                throw new \RuntimeException('OptiNexus lacks the product-context API (upgrade it); the switcher stays hidden and sessions are not revalidated');
+            }
+            if (in_array($response->status(), [401, 403], true)) {
+                throw new \RuntimeException(($response->json('error.code') ?: 'refused').': the service account needs the scope authorization.check and a binding to this application');
+            }
+            if ($response->status() !== 200 || ! str_starts_with((string) $response->json('data.schema_version'), '1.')) {
+                throw new \RuntimeException('unexpected answer HTTP '.$response->status());
+            }
+
+            return 'ready (schema '.$response->json('data.schema_version').')';
+        });
+
         return $ok ? self::SUCCESS : self::FAILURE;
     }
 }
