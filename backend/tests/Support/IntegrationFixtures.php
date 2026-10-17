@@ -2,7 +2,10 @@
 
 namespace Tests\Support;
 
+use App\Domain\Identity\Models\ServicePrincipal;
 use App\Domain\Identity\Models\Tenant;
+use App\Domain\Identity\Services\ServicePrincipalKinds;
+use App\Domain\Identity\Services\ServicePrincipalRegistry;
 use App\Domain\Integration\Contracts\IntegrationAdapter;
 use App\Domain\Integration\Models\ExternalEvent;
 use App\Domain\Integration\Models\IntegrationConnection;
@@ -29,9 +32,18 @@ trait IntegrationFixtures
                 'cutover_date' => '2026-01-01', 'pull_interval_minutes' => 5,
                 'settings' => ['payables_cash_bank_account_id' => (string) Str::uuid(), 'expense_category_id' => (string) Str::uuid()], // placeholders: the OptiFleet adapter needs both
             ])->save();
+            if ($connection->source_system === 'optifleet') {
+                $this->issueFleetIdentity(Tenant::query()->findOrFail($connection->tenant_id)); // the operator's one-time step; the OptiFleet connector cannot run without it
+            }
 
             return $connection;
         });
+    }
+
+    /** What the platform operator does once per tenant before the connector can book: issue the integration service identity (registry, audit A23). */
+    protected function issueFleetIdentity(Tenant $tenant): ServicePrincipal
+    {
+        return app(ServicePrincipalRegistry::class)->issue($tenant, ServicePrincipalKinds::OPTIFLEET_INTEGRATION, 'test fixture', 'CLI', null, 'phpunit')['principal'];
     }
 
     /** @return array<string,mixed> a canonical envelope of the default connection (money as decimal strings) */

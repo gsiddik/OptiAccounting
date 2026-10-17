@@ -200,14 +200,24 @@ registry is a singleton and the tenant context is scoped, so every collaborator 
 - **Vendor.** Resolved through `external_dimensions` (entity `VENDOR`, metadata `vendor_id`), then by normalised tax id (several matches =
   `VENDOR_AMBIGUOUS`, never guessed), then by code unless the tax ids differ; otherwise created once (`external_source` = optifleet).
   An INACTIVE vendor is not replaced (`VENDOR_INACTIVE`).
-- **Actor and segregation of duties.** No system actor existed and every AP service needs a user. Decision: one credential-less service user
-  per tenant (`optifleet.integration@<tenant code>.optientry.invalid`, no password so it cannot sign in, ACTIVE membership, no role, no
-  permission, TENANT data scope; creation is audited). It is set as the context user only while the adapter runs and prepares documents
-  (`created_by`). It is never an approver and holds no soft-closed exception. With approval required the invoice is SUBMITTED and a person
-  approves and posts; otherwise it posts when the SoD policy allows the preparer to post, else it stays DRAFT for a person. SoD is
-  therefore never weakened; the payment follows the same path, and its event is NEEDS_REVIEW `INVOICE_NOT_POSTED` until the invoice is
-  posted. A person can switch the user off by suspending its membership (`INTEGRATION_ACTOR_DISABLED`). Known caveat: the membership counts as
-  a seat in `CapacityService`.
+- **Actor and segregation of duties.** No system actor existed and every AP service needs a user. Decision: one credential-less service
+  principal per tenant (kind `OPTIFLEET_INTEGRATION`, user `optifleet.integration@<tenant code>.optientry.invalid`: no password so it cannot
+  sign in, ACTIVE membership, no role, no permission, TENANT data scope). Since the ecosystem audit (A23) *what is a machine* is decided by the
+  immutable registry `service_principals`, not by the address: only the platform operator issues a row (`optientry:service-principal:issue`
+  or `POST /api/v1/platform/tenants/{tenant}/service-principals`, permission `platform.service_principal.manage`; the migration mapped the
+  users of earlier releases once, idempotently), a tenant has no way to create or flag one, a row never changes except for its final
+  revocation (service layer and trigger), and the principal's user can never get a password, an OptiNexus identity, a role, another address
+  or a membership of another tenant (triggers). A person can never hold an address of the range `optientry.invalid` (`EMAIL_RESERVED`): users
+  are refused on save, in the invite / platform-user / OptiNexus sign-in paths and by a commit-time database check. Only a live registry row
+  exempts a user from the seat count (`CapacityService`); a person on the range counts like anyone. The adapter never creates the user: without
+  a live principal the connector is *not available* to the tenant (activation and resume `CONNECTOR_NOT_ENTITLED`, events stay RECEIVED and
+  unflagged until the operator issues it). It is set as the context user only while the adapter runs and prepares documents (`created_by`).
+  It is never an approver and holds no soft-closed exception. With approval required the invoice is SUBMITTED and a person approves and posts;
+  otherwise it posts when the SoD policy allows the preparer to post, else it stays DRAFT for a person. SoD is therefore never weakened; the
+  payment follows the same path, and its event is NEEDS_REVIEW `INVOICE_NOT_POSTED` until the invoice is posted. A tenant can switch the user
+  off by suspending its membership (`INTEGRATION_ACTOR_DISABLED`); the operator revokes it for good (membership and user INACTIVE, a replacement
+  is a new user `optifleet.integration.2@...`, posted history keeps naming the old one). Issue/revoke are audited (`service_principal.issued`,
+  `service_principal.revoked`).
 - **Traceability.** Every document gets an `external_source_links` row: source type `workshop_invoice` -> `ap_invoice`, and
   `workshop_invoice_payment` -> `vendor_payment` (document, journal and event ids). A correction adds a row for the new document; the
   latest row is the current document of that source invoice.

@@ -117,7 +117,7 @@ class OptiFleetAdapterTest extends TestCase
         $this->assertSame(0, DB::table('tenant_user_roles')->where('tenant_user_id', $membership[0]->id)->count());
         $this->assertSame(['TENANT'], DB::table('data_scopes')->where('tenant_user_id', $membership[0]->id)->pluck('scope_type')->all());
         $this->assertSame($user->id, DB::table('audit_logs')->where('action', 'payables.ap_invoice.posted')->value('actor_user_id'));
-        $this->assertSame(1, DB::table('audit_logs')->where('action', 'accounting.integration.actor.created')->count());
+        $this->assertSame(1, DB::table('audit_logs')->where('action', 'service_principal.issued')->where('tenant_id', $tenant->id)->count());
         $this->assertSame(DB::table('tenant_users')->where('tenant_id', $tenant->id)->count() - 1, app(CapacityService::class)->used($tenant->id, CapacityService::USER_LIMIT));
 
         $this->assertNull(app(AuthService::class)->attempt($email, self::PASSWORD));
@@ -478,7 +478,11 @@ class OptiFleetAdapterTest extends TestCase
         $this->pullFleet($alpha, $alphaConnection, [$this->recordedEvent(), $this->paymentEvent()]);
 
         $this->assertSame($bravoBefore, $ownedBy($bravo));
-        $this->assertSame(0, DB::table('users')->where('email', 'optifleet.integration@bravo.optientry.invalid')->count());
+        // Bravo's own integration identity was issued with its tenant and stayed idle: it prepared nothing and appears in no audit trail.
+        $bravoUser = DB::table('users')->where('email', 'optifleet.integration@bravo.optientry.invalid')->value('id');
+        $this->assertNotNull($bravoUser);
+        $this->assertSame(0, DB::table('audit_logs')->where('actor_user_id', $bravoUser)->count());
+        $this->assertSame(0, DB::table('ap_invoices')->where('created_by', $bravoUser)->count());
         $this->assertSame(1, DB::table('ap_invoices')->count());
 
         // Another tenant's cash account is "not found": by the API when it is configured, and by the adapter if it got into the settings anyway.

@@ -21,7 +21,7 @@ class MemberController extends AppController
     public function index(Request $request): JsonResponse
     {
         $filters = $request->validate(['status' => ['nullable', 'string', 'max:20'], 'search' => ['nullable', 'string', 'max:100']]);
-        $query = TenantUser::query()->with(['user:id,name,email,status', 'roles:id,name', 'dataScopes'])->orderByDesc('created_at');
+        $query = TenantUser::query()->with(['user:id,name,email,status', 'roles:id,name', 'dataScopes', 'servicePrincipal'])->orderByDesc('created_at');
         if ($status = $filters['status'] ?? null) {
             $query->where('status', $status);
         }

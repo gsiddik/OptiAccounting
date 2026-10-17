@@ -105,6 +105,11 @@ Route::prefix('v1')->middleware('request.id')->group(function () {
         Route::delete('roles/{role}', [Platform\PlatformAccessController::class, 'destroyRole'])->middleware('access:platform.role.manage');
         Route::get('permissions', [Platform\PlatformAccessController::class, 'permissions'])->middleware('access:platform.permission.view');
 
+        // Service identities (machine accounts) of tenants: issued by the platform operator only, immutable except for their revocation (audit A23).
+        Route::get('service-principals', [Platform\ServicePrincipalController::class, 'index'])->middleware('access:platform.service_principal.view');
+        Route::post('tenants/{tenant}/service-principals', [Platform\ServicePrincipalController::class, 'store'])->middleware('access:platform.service_principal.manage');
+        Route::post('service-principals/{principal}/revoke', [Platform\ServicePrincipalController::class, 'revoke'])->middleware('access:platform.service_principal.manage');
+
         Route::get('audit-logs', [Platform\PlatformAuditController::class, 'index'])->middleware('access:platform.audit.view');
     });
 

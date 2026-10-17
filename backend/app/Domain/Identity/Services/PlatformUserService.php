@@ -22,6 +22,8 @@ class PlatformUserService
     /** @param list<string> $roleIds */
     public function create(User $actor, array $person, array $roleIds): User
     {
+        ReservedAddress::assertHuman($person['email']);
+
         return DB::transaction(function () use ($actor, $person, $roleIds) {
             $user = User::query()->whereRaw('lower(email) = ?', [strtolower($person['email'])])->first();
             if ($user) {

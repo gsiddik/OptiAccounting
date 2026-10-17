@@ -10,6 +10,7 @@ use App\Domain\Entitlement\Services\CapacityService;
 use App\Domain\Identity\Models\Tenant;
 use App\Domain\Identity\Models\TenantUser;
 use App\Domain\Identity\Models\User;
+use App\Domain\Identity\Services\ReservedAddress;
 use App\Domain\Identity\Services\TenantService;
 use App\Domain\Integration\Services\OutboxPublisher;
 use App\Support\TenantContext;
@@ -147,6 +148,9 @@ class AccountLinker
             $email = strtolower(trim((string) ($claims['email'] ?? '')));
             if ($email === '') {
                 throw new SsoException('email_required');
+            }
+            if (ReservedAddress::matches($email)) {
+                throw new SsoException('email_reserved'); // the range belongs to service principals: never linked to a person's identity
             }
 
             $existing = User::query()->whereRaw('lower(email) = ?', [$email])->first();

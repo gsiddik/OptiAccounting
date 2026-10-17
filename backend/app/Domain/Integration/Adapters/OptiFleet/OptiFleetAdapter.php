@@ -123,6 +123,7 @@ class OptiFleetAdapter implements ConnectorRequirements, IntegrationAdapter
             $modules->featureEnabled(self::FEATURE) ? null : 'feature '.self::FEATURE.' is not enabled',
             $modules->writable('ACCOUNTING_INTEGRATION') ? null : 'module ACCOUNTING_INTEGRATION is not available for writing',
             $modules->writable('ACCOUNTING_AP') ? null : 'module ACCOUNTING_AP is not available for writing',
+            app(OptiFleetActor::class)->issued((string) app(TenantContext::class)->tenantId()) ? null : 'the platform operator has not issued the integration service identity of this organization',
         ]));
     }
 }

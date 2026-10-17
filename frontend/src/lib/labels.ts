@@ -153,6 +153,7 @@ const SSO_ERRORS: Record<string, string> = {
   capacity_exceeded: 'Batas jumlah pengguna organisasi ini tercapai. Hubungi administrator.',
   email_not_verified: 'E-mail akun OptiNexus Anda belum diverifikasi.',
   email_required: 'Akun OptiNexus Anda tidak memiliki e-mail.',
+  email_reserved: 'Alamat e-mail ini dicadangkan untuk identitas layanan sistem dan tidak dapat dipakai untuk masuk.',
   account_conflict: 'E-mail ini sudah terhubung ke identitas OptiNexus lain. Hubungi administrator.',
   user_inactive: 'Akun ini tidak aktif.',
   membership_inactive: 'Keanggotaan Anda di organisasi ini tidak aktif.',

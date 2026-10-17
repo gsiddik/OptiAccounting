@@ -44,6 +44,13 @@ changed in OptiEntry. Merge only on owner request.
   about another user/tenant/application rejected), `allowed=false` ends the session with a reason (audit `auth.session_ended_by_optinexus`),
   `tenant_hint` validated (uuid/code) on SSO start, product switcher in the top bar (only returned products, revalidated on open and before
   every switch, no list from an expired answer), sign-in auto-start with a valid hint, `optientry:nexus:check` step. Design: ADAPTER section 11.
+- E3 (A23): immutable registry `service_principals` replaces the `*.optientry.invalid` seat exemption. Rows only from the operator command
+  `optientry:service-principal:issue|list|revoke` and the platform API (`platform.service_principal.view|manage`; tenants have no route and no flag),
+  never edited (service layer + triggers), revocation final. Principal user: no password/OptiNexus id/role/other tenant (triggers); persons can never
+  hold the reserved range (`EMAIL_RESERVED`: model, invite, platform user, tenant admin, delegation, SSO `email_reserved`, commit-time DB check). Seats
+  count a person on the range and skip live registry rows. `OptiFleetActor` only looks up (never creates); no live principal = connector not available
+  (`CONNECTOR_NOT_ENTITLED`, events wait). Migration `2026_10_19_100001` maps the old per-tenant users idempotently, lists the rest in the audit log.
+  Member list flags `service_principal` (badge in Settings > Users, bilingual). Design: `INTEGRATION_ARCHITECTURE.md` (actor paragraph).
 
 ## Tests (executed in this session)
 - A03: `tests/Feature/Optinexus` 121 passed (21 in `NexusPermissionTest`: >120 permissions in one request, wildcard/unknown-key/mismatched-answer
@@ -64,6 +71,8 @@ changed in OptiEntry. Merge only on owner request.
 - E2: `tests/Feature/Optinexus` 218 passed + 1 skipped (`ProductContextTest` 16: shape/links/session-only question/cache/expiry/ttl cap/per-user/outage/
   malformed answers/refusal ends session/not supported; `TenantHintTest` 13; `ProductContextContractTest` 5 over a real socket: wire request, refusal,
   503 + one repeat, slow server inside the timeout, server gone); frontend `ProductSwitcher.test.tsx` 20. Frontend total 54 files, 1167 passed.
+- E3: `ServicePrincipalTest` 29 (immutability, triggers, reserved range, seats, CLI/API, backfill, tenant isolation), `SsoSignInTest` 41 (reserved
+  e-mail refused), frontend `Sso.test.tsx` 19; OptiFleet adapter/inbox/runner fixtures now issue the identity first. Full-suite total in the E4 entry.
 - Pint clean.
 - Container package (sandbox, Ubuntu php-fpm image instead of the Alpine one, which cannot be built here): `docker compose config` OK;
   bootstrap -> api/worker/scheduler/web/ui healthy; bootstrap re-run "Nothing to migrate"; runtime role refuses an unmigrated database after

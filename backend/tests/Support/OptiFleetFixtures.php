@@ -57,6 +57,7 @@ trait OptiFleetFixtures
         $bank = $this->cashAccount($tenant, 'BCA');
         $category = $this->expenseCategory($tenant, 'WORKSHOP', ['account_id' => $this->account($tenant, '6400')->id]);
         $connection = $this->connectionFor($tenant, ['settings' => ['payables_cash_bank_account_id' => $bank->id, 'expense_category_id' => $category->id]]);
+        $this->issueFleetIdentity($tenant);
 
         return [$tenant, $connection];
     }

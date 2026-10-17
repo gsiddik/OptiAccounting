@@ -187,6 +187,32 @@ describe('what OptiNexus manages is not offered for editing', () => {
     expect(screen.queryByText(/dikelola di OptiNexus/)).not.toBeInTheDocument()
   })
 
+  it('marks a service identity of the platform operator: no role or scope action, only the organization\'s off switch', async () => {
+    const withMachine = page([
+      ...members.data,
+      { id: 'm-3', status: 'ACTIVE', joined_at: null, user: { id: 'u-3', name: 'Integrasi OptiFleet', email: 'optifleet.integration@majujaya.optientry.invalid', status: 'ACTIVE' }, roles: [], data_scopes: [],
+        service_principal: { id: 'sp-1', kind: 'OPTIFLEET_INTEGRATION', revoked_at: null } },
+      { id: 'm-4', status: 'INACTIVE', joined_at: null, user: { id: 'u-4', name: 'Integrasi OptiFleet', email: 'optifleet.integration@old.optientry.invalid', status: 'INACTIVE' }, roles: [], data_scopes: [],
+        service_principal: { id: 'sp-0', kind: 'OPTIFLEET_INTEGRATION', revoked_at: '2026-10-01T00:00:00Z' } },
+    ])
+    mockApi({ ...tenantRoutes('standalone'), 'GET /app/users': { data: withMachine } })
+    setToken('t')
+    renderApp('/app/pengguna')
+
+    const table = await screen.findByRole('table', { name: 'Daftar pengguna' })
+    const live = within(table).getByText('optifleet.integration@majujaya.optientry.invalid').closest('tr')!
+    expect(within(live).getByText('Identitas layanan')).toBeInTheDocument()
+    expect(within(live).queryByRole('button', { name: 'Peran' })).not.toBeInTheDocument()
+    expect(within(live).queryByRole('button', { name: 'Cakupan' })).not.toBeInTheDocument()
+    expect(within(live).getByRole('button', { name: 'Tangguhkan' })).toBeInTheDocument()
+    expect(within(live).queryByRole('button', { name: 'Nonaktifkan' })).not.toBeInTheDocument()
+    const revoked = within(table).getByText('optifleet.integration@old.optientry.invalid').closest('tr')!
+    expect(within(revoked).getByText('Identitas layanan (dicabut)')).toBeInTheDocument()
+    expect(within(revoked).queryByRole('button')).not.toBeInTheDocument()
+    // a person keeps every action
+    expect(within(within(table).getByText('Sari Keuangan').closest('tr')!).getByRole('button', { name: 'Peran' })).toBeInTheDocument()
+  })
+
   it('falls back to read-only members, with data scope editable, while delegation is not set up', async () => {
     mockApi(tenantRoutes('optinexus'))
     setToken('t')

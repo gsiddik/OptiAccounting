@@ -13,6 +13,7 @@ import { fieldError } from '../../lib/forms'
 import { useAction, useDebounced, useResource } from '../../lib/hooks'
 import { scopeLabels } from '../../lib/labels'
 import { toDraft, toPayload, type ScopeDraft } from '../../lib/scopes'
+import { useI18n } from '../../i18n'
 import type { Branch, BusinessUnit, DataScopeRow, Member, Paginated, Role } from '../../lib/types'
 import { DelegatedUsers } from './delegation/DelegatedUsers'
 
@@ -38,6 +39,7 @@ export default function Users() {
 
 function LegacyUsers() {
   const { can, canEdit } = useCapabilities()
+  const { t } = useI18n()
   const { state } = useAuth()
   const myId = state.status === 'ready' ? state.me.user.id : null
   const toast = useToast()
@@ -96,7 +98,7 @@ function LegacyUsers() {
               rows={members.data.data}
               rowKey={(m) => m.id}
               columns={[
-                { header: 'Pengguna', primary: true, cell: (m) => <><strong>{m.user.name}</strong><div className="muted">{m.user.email}</div></> },
+                { header: 'Pengguna', primary: true, cell: (m) => <><strong>{m.user.name}</strong>{m.service_principal && <> <span title={t('identity.service.hint')}><Badge tone={m.service_principal.revoked_at ? 'neutral' : 'info'}>{t(m.service_principal.revoked_at ? 'identity.service.revoked' : 'identity.service.badge')}</Badge></span></>}<div className="muted">{m.user.email}</div></> },
                 { header: 'Peran', cell: (m) => <div className="chips">{m.roles.length === 0 ? <span className="muted">Tanpa peran</span> : m.roles.map((r) => <Badge key={r.id} tone="info">{r.name}</Badge>)}</div> },
                 { header: 'Cakupan data', cell: (m) => (
                   <div className="chips">
@@ -105,6 +107,10 @@ function LegacyUsers() {
                 ) },
                 { header: 'Status', cell: (m) => <StatusBadge status={m.status} /> },
                 { header: 'Aksi', actions: true, cell: (m) => m.user.id !== myId && (canManage || canScope) && (
+                  m.service_principal ? (
+                    // A machine identity takes no role and its lifetime belongs to the platform operator; the organization keeps the off switch.
+                    canManage && !m.service_principal.revoked_at && <div className="actions">{m.status === 'ACTIVE' ? <Button size="sm" onClick={() => setChange({ member: m, status: 'SUSPENDED' })}>Tangguhkan</Button> : <Button size="sm" onClick={() => setChange({ member: m, status: 'ACTIVE' })}>Aktifkan</Button>}</div>
+                  ) :
                   <div className="actions">
                     {canManage && <Button size="sm" onClick={() => setRolesFor(m)}>Peran</Button>}
                     {canScope && <Button size="sm" onClick={() => setScopeFor(m)}>Cakupan</Button>}

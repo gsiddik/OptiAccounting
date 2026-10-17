@@ -12,6 +12,7 @@ use App\Domain\Identity\Models\Tenant;
 use App\Domain\Identity\Models\TenantUser;
 use App\Domain\Identity\Models\User;
 use App\Domain\Identity\Services\MembershipService;
+use App\Domain\Identity\Services\ReservedAddress;
 use App\Domain\Integration\Optinexus\DelegableSet;
 use App\Domain\Integration\Optinexus\OptinexusSettings;
 use App\Domain\Integration\Services\OutboxPublisher;
@@ -91,6 +92,7 @@ class TenantDelegation
      */
     public function addUser(string $tenantId, User $actor, array $input): array
     {
+        ReservedAddress::assertHuman($input['email']); // before OptiNexus is asked to create anybody
         [$nexusTenant, $subject] = $this->link($tenantId, $actor, write: true);
 
         // Cheap refusal before anything is created anywhere. The authoritative check is repeated when the projection is written.
