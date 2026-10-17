@@ -2,85 +2,61 @@
 
 Branch `claude/project-thread-0cf20u` (from `main` 20ee792). Owner brief 2026-10-12: fix A01-A29 / R01-R08 of the ecosystem audit across the five
 repositories. The central traceability matrix and checkpoint live in the OptiNexus repository (`docs/ecosystem/`); this file covers only what
-changed in OptiEntry. Merge only on owner request.
+changed in OptiEntry. Merge only on owner request. Scope update 2026-10-17: the active batch is the Fleet->Entry financial feed (A01, A17-A22, A27,
+A28) and its OA6 UI (A26); A12/A15 (error boundaries, lazy loading, bundle) are BACKLOG and not started.
 
 ## Done in this repository
 - A17 snapshot-basis hold, A18 gap lifecycle and policies, A20 pause/disconnect boundary (lifecycle version, lock order), A21 payload-conflict
   evidence and resolution, A22 strict feed page validation, A27 accounting outcome separate from processing status, A28 per-connection
-  scheduling and backlog figures. Design: `docs/architecture/INTEGRATION_ARCHITECTURE.md` section 10.
-- Migration `2026_10_18_100001_harden_integration_lifecycle` (additive; nothing existing is rewritten).
-- API additions (no new permission, so the OptiNexus manifest is unchanged): `POST events/{id}/dismiss` (retry), `POST events/{id}/conflict-resolution`
-  (manage), `GET gaps`, `GET gaps/{id}`, `POST gaps/{id}/resolution` (view / manage). Summary and event detail gain `outcomes`, `backlog`,
-  `open_gap`, `accounting_outcome`, `document_status`, `gap_id`, `conflicts`.
-
-- A03 consumer: `NexusPermissionSource` makes one `POST /authorization/effective-permissions` per user (was 136 `/authorization/check`),
-  keeps `code => scope` per permission (`OWN` narrows a resource check; a new membership's data scope starts from the narrowest grant),
-  accepts only exact catalog codes and a matching subject/tenant/application/schema; `NexusApi::send` renews a revoked token once
-  (single-flight), honours `Retry-After` within a cap, repeats a read once on 502/503/504; no per-permission fallback. `optientry:nexus:check`
-  reports an unbound account and an OptiNexus without the endpoint. Design: `OPTINEXUS_ADAPTER.md` section 4.
-
-- A04/A05/A07/A13 container package: `.dockerignore` (no env files, vendor, caches, logs, tests or docs in the image), image without a baked-in
-  environment, one `bootstrap` job (bounded database/Redis wait, migrate, production-safe seed) and runtime roles that wait for a current
-  schema and never migrate, identical `environment:` block for api/worker/scheduler/bootstrap, no bind-mounted source (the nginx image gets
-  only a template; the SPA image proxies `/api` on its own origin so it carries no URL), ports 8200 (API) / 5190 (console) published on
-  127.0.0.1, listening on the same port inside the container so one `alias:port` URL works for browsers and other containers, required
-  `APP_KEY`/`DB_PASSWORD`, project name and volume keys unchanged. `VITE_ALLOWED_HOSTS` for the dev server.
-
-- E1 backend (R08/A25/A02): in `optinexus` mode an Admin Tenant creates/links users, sets role assignment, removes access and manages custom roles
-  from Entry through the OptiNexus delegation API (`/app/delegation/*`, acting user = signed-in user's `optinexus_subject`). No second authority:
-  lists are live Nexus answers, local rows are a projection (INVITED membership, default data scope OWN), permissions still come from the bulk
-  effective-permissions call. Seat precheck + compensation on a lost race, every documented Nexus delegation error code translated (+ `details.reference`),
-  `outcome_unknown` on write timeouts, per-role-name create lock, Entry audit entries `delegation.*`. Manifest v2 (`manifest_version`, content
-  `revision`, per-permission `capability_code` + `delegable`, `tenant.delegate` scope) and the explicit delegable set (101/136; governance,
-  credentials, period close, integration connections excluded; rationale in `OPTINEXUS_ONBOARDING.md` section 5). Standalone is labelled legacy;
-  migration plan `docs/architecture/LEGACY_IDENTITY_MIGRATION.md` (no auto-migration). Design: `OPTINEXUS_ADAPTER.md` sections 9-10.
-- E1 frontend: i18n layer (`frontend/src/i18n`: one `{id, en}` entry per key, typed keys, language switch in the top bar, default `id`, choice
-  kept in `localStorage`); `describeError`, `statusLabel`, modals, pagination, scope editor already use it. Settings > Users (list from OptiNexus,
-  add/link with optional initial password, role multiselect, data scope, remove access, seat banner) and Settings > Roles (templates + custom,
-  editor grouped by module, non-delegable/not-entitled permissions shown unavailable, catalog tab) in `pages/tenant/delegation/`; legacy pages
-  stay for `standalone` and as read-only fallback while delegation is not set up. States: loading, empty, forbidden, provider-unavailable,
-  not-set-up, error, each with the `X-Request-Id` reference (`ApiError.requestId`, `lib/errors.ts` shared with the error boundaries).
-- E2 (A29): `GET /app/product-context` + `ProductContext` (cache <= 300 s per tenant+user, fail closed beyond TTL, refusals never cached, answers
-  about another user/tenant/application rejected), `allowed=false` ends the session with a reason (audit `auth.session_ended_by_optinexus`),
-  `tenant_hint` validated (uuid/code) on SSO start, product switcher in the top bar (only returned products, revalidated on open and before
-  every switch, no list from an expired answer), sign-in auto-start with a valid hint, `optientry:nexus:check` step. Design: ADAPTER section 11.
-- E3 (A23): immutable registry `service_principals` replaces the `*.optientry.invalid` seat exemption. Rows only from the operator command
-  `optientry:service-principal:issue|list|revoke` and the platform API (`platform.service_principal.view|manage`; tenants have no route and no flag),
-  never edited (service layer + triggers), revocation final. Principal user: no password/OptiNexus id/role/other tenant (triggers); persons can never
-  hold the reserved range (`EMAIL_RESERVED`: model, invite, platform user, tenant admin, delegation, SSO `email_reserved`, commit-time DB check). Seats
-  count a person on the range and skip live registry rows. `OptiFleetActor` only looks up (never creates); no live principal = connector not available
-  (`CONNECTOR_NOT_ENTITLED`, events wait). Migration `2026_10_19_100001` maps the old per-tenant users idempotently, lists the rest in the audit log.
-  Member list flags `service_principal` (badge in Settings > Users, bilingual). Design: `INTEGRATION_ARCHITECTURE.md` (actor paragraph).
+  scheduling and backlog figures. Design: `docs/architecture/INTEGRATION_ARCHITECTURE.md` section 10. Migration `2026_10_18_100001` (additive).
+  API additions without a new permission (manifest unchanged): `POST events/{id}/dismiss`, `POST events/{id}/conflict-resolution`, `GET gaps`,
+  `GET gaps/{id}`, `POST gaps/{id}/resolution`; summary/event detail gain `outcomes`, `backlog`, `open_gap`, `accounting_outcome`, `conflicts`.
+- A03 consumer: one `POST /authorization/effective-permissions` per user (was 136 checks), `code => scope` kept, exact catalog codes and matching
+  subject/tenant/application/schema only; `NexusApi::send` renews a revoked token once, honours `Retry-After` within a cap, repeats a read once on
+  502/503/504; no per-permission fallback. `optientry:nexus:check` reports an unbound account. Design: `OPTINEXUS_ADAPTER.md` section 4. Baseline
+  before the fix on a real OptiNexus: 136 calls -> 119 x 200 + 17 x 429, `pull()` failed even from a cold start; after: 136 permissions in 1 request, 60-110 ms.
+- A04/A05/A07/A13 container package: `.dockerignore`, no baked-in environment, one `bootstrap` job and waiting runtime roles, identical
+  `environment:` block, no bind-mounted source, ports 8200/5190 on 127.0.0.1, required `APP_KEY`/`DB_PASSWORD`, `VITE_ALLOWED_HOSTS`.
+- E1 (R08/A25/A02): in `optinexus` mode an Admin Tenant manages users and custom roles from Entry through the OptiNexus delegation API
+  (`/app/delegation/*`); no second authority (live Nexus lists, local rows are a projection), seat precheck + compensation, every Nexus error code
+  translated, manifest v2 with the explicit delegable set (101/136). Standalone is labelled legacy; plan `LEGACY_IDENTITY_MIGRATION.md`.
+  Frontend: i18n layer (`frontend/src/i18n`, `{id, en}` per key, default `id`, switch in the top bar), Settings > Users / Roles in `pages/tenant/delegation/`.
+- E2 (A29): `GET /app/product-context` (cache <= 300 s, fail closed, refusals never cached, foreign answers rejected), `allowed=false` ends the session,
+  `tenant_hint` validated on SSO start, product switcher. Design: ADAPTER section 11.
+- E3 (A23): immutable registry `service_principals` replaces the `*.optientry.invalid` seat exemption; rows only from `optientry:service-principal:issue|list|
+  revoke` and the platform API; persons can never hold the reserved range; `OptiFleetActor` only looks up (no live principal = `CONNECTOR_NOT_ENTITLED`,
+  events wait). Migration `2026_10_19_100001`. New tenants need the operator issue step.
+- E4 backend, consumer side of the Fleet contract (A19, A17, A27; migration `2026_10_19_200001`; design `INTEGRATION_ARCHITECTURE.md` section 11):
+  `pairing.nexus_tenant_id` of every page vs the organization's `optinexus_tenant_id` (`OPTIENTRY_FEED_PAIRING=auto|required|off`; auto = required in
+  `optinexus` mode); REFUSED (not counted toward ERROR, 15 min back-off) vs UNAVAILABLE (counted, `Retry-After` <= 1 h) vs INVALID (incl.
+  `FEED_CURSOR_AHEAD`) vs OptiEntry holding the connection (`access.entry`); activation probe; `high_water`/lag; `review.required` -> NEEDS_REVIEW
+  `SOURCE_REVIEW_REQUIRED` (not in a gap's batch decision); live `books` state (`IN_LEDGER` only is in the GL); `ConnectionHealth` alerts and
+  `integration:health [--json]` (hourly, critical log + exit 1 on ALERT, read-only). Event/summary/connection APIs gain `books_state`, `books`, `access`, `source`, `health`.
+- E4 frontend (A26/A27): connection and event screens, gap decision, nav labels in English and Indonesian (`i18n/messages/integration.ts`, `nav.ts`);
+  access/pairing/health/source/books cards, gaps card with PROCESS/DISMISS, content-conflict diff, "Selesai diproses" instead of "Diposting".
 
 ## Tests (executed in this session)
-- A03: `tests/Feature/Optinexus` 121 passed (21 in `NexusPermissionTest`: >120 permissions in one request, wildcard/unknown-key/mismatched-answer
-  refusal, per-permission scope, 429 + Retry-After bounded, 502 repeat, revoked token, rotated secret, many users/tenants, unbound account,
-  older OptiNexus, TTL expiry, outage fail-closed). Baseline reproduced on a real OptiNexus before the fix: 136 calls -> 119 x 200 + 17 x 429
-  (no `Retry-After`), `pull()` = IdentityProviderUnavailable even from a cold start; after the fix 136 permissions in 1 request, 60-110 ms.
-- `tests/Feature/Integration`: 94 passed (35 in `IntegrationHardeningTest`: 18-case malformed-page matrix, four gap policies, resolution
-  PROCESS/DISMISS, source-head refusal, pause during a page, conflicts, snapshot basis, backlog fairness). Concurrency
-  `IntegrationConcurrencyTest`: 4 passed (pause waits for processing in flight; retry during a committing pause is refused).
-- E1 backend: `tests/Feature/Optinexus/TenantDelegationTest` (~50, incl. 21 error-code translations), `ManifestV2Test` (6), `ManifestAndCommandsTest`.
-  Full backend suite, `OPTIENTRY_IDENTITY_MODE=standalone` (the sandbox `.env` forces `optinexus`, which makes the standalone-mode Auth/Rbac/
-  Security/Capacity tests fail with 403 independent of any change): 1373 passed, 1 skipped (frontend sources not in the container), 1 failed
-  (`SeederAndBootstrapTest` reads `../docs/DEMO.md`, which the backend-only container mount lacks; 16 passed with `docs/` mounted at `/docs`).
-- E1 frontend (`cd frontend && npx vitest run`): 53 files, 1148 passed (24 in `Delegation.test.tsx`: list/create/outcomes/refusals/roles/states/English,
-  8 in `i18n.test.ts`, 19 in `errors.test.ts`); `npx tsc -b` clean; `oxlint` only fast-refresh warnings. Backend
-  `DelegationMessagesTest` (every error code the delegation layer emits has an id+en message; needs `frontend/` mounted at `/frontend`).
-  Browser (Playwright/Chromium against the Vite dev server with the API mocked): Users/Roles/dialogs/states at 1440, 820, 390: no horizontal overflow.
-- E2: `tests/Feature/Optinexus` 218 passed + 1 skipped (`ProductContextTest` 16: shape/links/session-only question/cache/expiry/ttl cap/per-user/outage/
-  malformed answers/refusal ends session/not supported; `TenantHintTest` 13; `ProductContextContractTest` 5 over a real socket: wire request, refusal,
-  503 + one repeat, slow server inside the timeout, server gone); frontend `ProductSwitcher.test.tsx` 20. Frontend total 54 files, 1167 passed.
-- E3: `ServicePrincipalTest` 29 (immutability, triggers, reserved range, seats, CLI/API, backfill, tenant isolation), `SsoSignInTest` 41 (reserved
-  e-mail refused), frontend `Sso.test.tsx` 19; OptiFleet adapter/inbox/runner fixtures now issue the identity first. Full-suite total in the E4 entry.
-- Pint clean.
-- Container package (sandbox, Ubuntu php-fpm image instead of the Alpine one, which cannot be built here): `docker compose config` OK;
-  bootstrap -> api/worker/scheduler/web/ui healthy; bootstrap re-run "Nothing to migrate"; runtime role refuses an unmigrated database after
-  the bounded wait; bootstrap refuses `optinexus` mode without `OPTINEXUS_BASE_URL` and an unreachable database after the bounded wait;
-  SPA built on the host and served through the real nginx template (`/`, `/login`, assets immutable, `index.html` no-store, `/api` proxied).
-  Console bundle before A15: `index-*.js` 1,285,035 B (319.5 kB gzip), CSS 19,233 B.
+- Full backend (`docker run ... php artisan test`, `OPTIENTRY_IDENTITY_MODE=standalone`, Postgres 16, `docs/` and `frontend/` mounted, includes
+  `tests/Concurrency`): **1485 passed, 0 failed, 0 skipped** (121,473 assertions, 1762 s) at `a80f1d2`. `vendor/bin/pint --test`: PASS (624 files).
+  The sandbox `.env` forces `optinexus`; run in that mode the standalone-mode Auth/Rbac/Integration tests fail with 403/pairing independent of any change.
+- Frontend at `a80f1d2` (`cd frontend && npx vitest run`): 55 files, **1206 passed**; `npx tsc -b` clean; `npx oxlint` clean (the one
+  `productContext.ts` ref warning of E2 is fixed).
+- E4 targeted: `FeedPairingTest` 32 (pairing match/missing/other tenant/other applications, not linked, off/auto matrix, ten source answers apart,
+  back-off and scheduler, since stays, cursor ahead, activation probe/refusal, resume, quarantine hold/retry/dismiss, gap interplay, DB checks),
+  `IntegrationHealthTest` 13 (books states, one query set per page, every alert, command exit code + critical log, read-only, schedule); all
+  `tests/Feature/Integration` + `IntegrationConcurrencyTest` 143 passed. Frontend `integration.feed.test.tsx` 38, `integration.test.tsx` 36.
+- E3 `ServicePrincipalTest` 29, `SsoSignInTest` 41, `Sso.test.tsx` 19; concurrency suites 82 passed after dropping the TRUNCATE trigger (the suites reset with
+  `truncate tenants cascade`). E2 `ProductContextTest` 16, `ProductContextContractTest` 5 (real socket), `TenantHintTest` 13, `ProductSwitcher.test.tsx` 20.
+  E1 `TenantDelegationTest` ~50, `ManifestV2Test` 6, `Delegation.test.tsx` 24, `i18n.test.ts` (catalog parity of every key). A03 `NexusPermissionTest` 21.
+- Browser (Playwright/Chromium vs the Vite dev server, API answered from fixtures): connection list, connection detail (refused/held, Indonesian and
+  English), gap decision dialog, event inbox, event detail (quarantine, draft vs ledger, content conflict + decision dialog) at 1440, 820, 390:
+  no horizontal page overflow (wide tables scroll inside their card); screenshots kept outside the repository.
+- Container package (sandbox): `docker compose config` OK; bootstrap -> api/worker/scheduler/web/ui healthy; bootstrap re-run "Nothing to migrate";
+  runtime role refuses an unmigrated database; SPA served through the real nginx template.
 
 ## Not done yet / NOT RUN
-- Production image build (`docker build` with Alpine) and a Windows Podman run: NOT RUN here (Alpine mirror blocked, no Podman).
-- UI for gaps, conflicts, outcomes, dismiss and English/Indonesian labels (A26); OptiFleet-v2 must publish `high_water` before a paused connection
-  can be switched on against it; full regression, frontend tests, screenshots and a live two-backend pull are pending (see central checkpoint).
+- Production image build (Alpine) and a Windows Podman run: NOT RUN here (Alpine mirror blocked, no Podman).
+- Live two-backend Fleet->Entry pull against a real OptiNexus: NOT RUN (no OptiNexus/OptiFleet stack reachable for the Entry worker); wire and contract
+  covered by the faked-HTTP tests above. Entry-side commands for it: `INTEGRATION_ARCHITECTURE.md` section 11.
+- A12/A15 (error boundaries, lazy-loaded routes, bundle size; console bundle before: `index-*.js` 1,285,035 B): BACKLOG.
+- OptiNexus contract gaps: `MANIFEST_IMPORT` importer and the service-account scopes `tenant.delegate` + `authorization.check` must exist before R08 works live.
