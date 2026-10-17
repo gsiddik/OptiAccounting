@@ -27,7 +27,8 @@ use Throwable;
  *               or carries a money value as a JSON number (MONEY_NOT_DECIMAL_STRING); NEEDS_REVIEW when the connection's adapter does not
  *               support the event type at this schema major (UNSUPPORTED_EVENT); otherwise RECEIVED, waiting for EventProcessor.
  *   holds       (audit A17/A18/A21) an event whose payload is not an event-time snapshot (`snapshot_basis` other than `event_time`, e.g. rebuilt
- *               later from current state) waits NEEDS_REVIEW (SNAPSHOT_BASIS_REVIEW); an event inside a gap (the connection was paused or
+ *               later from current state) waits NEEDS_REVIEW (SNAPSHOT_BASIS_REVIEW), and so does an event the source itself marked
+ *               `review.required` (SOURCE_REVIEW_REQUIRED: a quarantined repair result); an event inside a gap (the connection was paused or
  *               disconnected when it happened) follows the gap policy: held for review, or refused; a payload that disagrees with the stored
  *               event holds the event NEEDS_REVIEW (PAYLOAD_CONFLICT) until a person decides, with the disputed payload kept as evidence.
  */
@@ -179,13 +180,27 @@ class EventInbox
             return [ExternalEvent::NEEDS_REVIEW, 'UNSUPPORTED_EVENT', "The {$connection->source_system} adapter does not support {$envelope['event_type']} at schema major {$major}."];
         }
 
+        // Refusals of the gap policy come first: whatever the source marked, an event the policy refuses is never booked.
+        if ($gap !== null && $gap->policy === 'IGNORE_GAP') {
+            return [ExternalEvent::REJECTED, 'GAP_IGNORED', 'Happened while the connection was paused or disconnected; the gap policy is to ignore it.'];
+        }
+        if ($gap !== null && $gap->policy === 'START_NEW_CUTOVER') {
+            return [ExternalEvent::REJECTED, 'GAP_NEW_CUTOVER', 'Happened before the new cutover date set when the connection was switched on again.'];
+        }
+
+        // The source quarantined this event itself (ecosystem audit A17: it was rebuilt later from current state by the source's bounded repair).
+        // It waits for a person, event by event; it is not part of a gap's batch decision either, because its reason is not the gap's.
+        $review = $envelope['review'] ?? null;
+        if (is_array($review) && ($review['required'] ?? null) === true) {
+            $reason = is_string($review['reason'] ?? null) ? Str::limit($review['reason'], 80, '') : 'no reason given';
+
+            return [ExternalEvent::NEEDS_REVIEW, 'SOURCE_REVIEW_REQUIRED', "The source marked this event for review before booking ({$reason}); a person has to decide, it is never booked automatically."];
+        }
+
         if ($gap !== null) {
-            return match ($gap->policy) {
-                'IGNORE_GAP' => [ExternalEvent::REJECTED, 'GAP_IGNORED', 'Happened while the connection was paused or disconnected; the gap policy is to ignore it.'],
-                'START_NEW_CUTOVER' => [ExternalEvent::REJECTED, 'GAP_NEW_CUTOVER', 'Happened before the new cutover date set when the connection was switched on again.'],
-                'BACKFILL_GAP' => [ExternalEvent::NEEDS_REVIEW, 'GAP_BACKFILL_REVIEW', 'Happened while the connection was paused or disconnected; review it, then process it as a backfill.'],
-                default => [ExternalEvent::NEEDS_REVIEW, 'GAP_REVIEW', 'Happened while the connection was paused or disconnected; a person has to decide before anything is booked.'],
-            };
+            return $gap->policy === 'BACKFILL_GAP'
+                ? [ExternalEvent::NEEDS_REVIEW, 'GAP_BACKFILL_REVIEW', 'Happened while the connection was paused or disconnected; review it, then process it as a backfill.']
+                : [ExternalEvent::NEEDS_REVIEW, 'GAP_REVIEW', 'Happened while the connection was paused or disconnected; a person has to decide before anything is booked.'];
         }
 
         $basis = $envelope['payload']['snapshot_basis'] ?? null;

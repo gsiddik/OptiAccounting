@@ -69,6 +69,17 @@ return [
         'relay' => ['batch_size' => 100, 'max_attempts' => 20],
     ],
 
+    /*
+    | Integration feeds (OA6). `feed_pairing`: whether a pulled feed must be proven to belong to the same OptiNexus tenant as the organization
+    | (audit A19). auto = required while identity_mode is optinexus; required = always; off = never (legacy standalone only).
+    */
+    'integration' => [
+        'feed_pairing' => in_array($pairing = strtolower((string) env('OPTIENTRY_FEED_PAIRING', 'auto')), ['auto', 'required', 'off'], true) ? $pairing : 'auto',
+        // A NEEDS_REVIEW payment, correction or cancellation that still finds no recorded invoice after this many minutes means the invoice event
+        // never reached the feed (a missed projection at the source): an alert, not a wait (audit A17).
+        'orphan_grace_minutes' => max(1, (int) env('OPTIENTRY_FEED_ORPHAN_GRACE_MINUTES', 120)),
+    ],
+
     // Most rows one CSV export of an OA2 list may hold; beyond it the request is refused (EXPORT_TOO_LARGE) and the filters must be narrowed.
     'export_max_rows' => max(1, (int) env('OPTIENTRY_EXPORT_MAX_ROWS', env('OPTIACCOUNTING_EXPORT_MAX_ROWS', 10000))),
 

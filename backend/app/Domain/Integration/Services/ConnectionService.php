@@ -53,7 +53,16 @@ class ConnectionService
     /** Once an event was received these identify what was received and can no longer change. */
     private const LOCKED_BY_EVENTS = ['source_tenant_reference', 'cutover_policy', 'cutover_date'];
 
-    public function __construct(private readonly AuditService $audit, private readonly AdapterRegistry $adapters, private readonly FeedClient $feed) {}
+    /** A source that refuses (credential, pairing, subscription) is asked again no sooner than this, whatever the pull interval is. */
+    public const REFUSED_BACKOFF_MINUTES = 15;
+
+    public function __construct(
+        private readonly AuditService $audit,
+        private readonly AdapterRegistry $adapters,
+        private readonly FeedClient $feed,
+        private readonly ConnectionHealth $health,
+        private readonly BookStatus $books,
+    ) {}
 
     /** @param array{status?:?string,source_system?:?string} $filter */
     public function query(array $filter = []): Builder
@@ -153,28 +162,59 @@ class ConnectionService
      * Success bookkeeping of one pulled page; call it in the transaction that stored the page's events, so the cursor moves if and only if
      * the events are stored.
      */
-    public function pullSucceeded(Connection $connection, ?string $cursor): void
+    public function pullSucceeded(Connection $connection, ?string $cursor, array $feed = []): void
     {
+        $highWater = isset($feed['high_water']) && is_numeric($feed['high_water']) ? (int) $feed['high_water'] : null;
         $connection->forceFill([
             'last_cursor' => $cursor ?? $connection->last_cursor, 'last_pulled_at' => now(), 'last_error' => null, 'consecutive_failures' => 0,
-        ])->save();
+            'feed_access' => 'OK', 'feed_access_code' => null, 'feed_checked_at' => now(), 'feed_next_attempt_at' => null,
+            'feed_access_since' => $connection->feed_access === 'OK' ? $connection->feed_access_since : now(),
+            'paired_nexus_tenant_id' => ($feed['paired_nexus_tenant_id'] ?? null) ?: $connection->paired_nexus_tenant_id,
+        ]);
+        if ($highWater !== null) {
+            $connection->forceFill(['source_high_water' => $highWater, 'source_high_water_at' => now()]);
+        }
+        $connection->save();
     }
 
     /**
      * A pull attempt that stored nothing: keep the cursor, remember why, and give up (ERROR) after MAX_PULL_FAILURES in a row. A failure that
      * belongs to a pull started under an earlier `lifecycle_version` (the connection was paused, reconnected or reconfigured meanwhile) says
      * nothing about the connection as it is now and is dropped.
+     *
+     * `$why` says what kind of failure it was (ecosystem audit A19), because the three kinds are handled differently:
+     *   REFUSED      the source (or the pairing check) refuses this organization on purpose. It is not a fault of the pipeline: the failure is not
+     *                counted (the connection does not turn ERROR), the connection stays ACTIVE with its history, and the source is asked again
+     *                only after REFUSED_BACKOFF_MINUTES (or the pull interval when that is longer);
+     *   UNAVAILABLE  an outage: counted, and the source's Retry-After (when it gave one) delays the next attempt;
+     *   INVALID / no FeedException  the answer was not the feed, or the page could not be stored: counted.
      */
-    public function pullFailed(string $id, string $reason, ?int $lifecycleVersion = null): Connection
+    public function pullFailed(string $id, string $reason, ?int $lifecycleVersion = null, ?FeedException $why = null): Connection
     {
-        return DB::transaction(function () use ($id, $reason, $lifecycleVersion) {
+        return DB::transaction(function () use ($id, $reason, $lifecycleVersion, $why) {
             $connection = $this->find($id, lock: true);
             if ($lifecycleVersion !== null && ($connection->lifecycle_version !== $lifecycleVersion || $connection->status !== Connection::ACTIVE)) {
                 return $connection;
             }
-            $failures = $connection->consecutive_failures + 1;
+            $refused = $why?->access === FeedException::REFUSED;
+            $failures = $refused ? $connection->consecutive_failures : $connection->consecutive_failures + 1;
             $connection->forceFill(['last_pulled_at' => now(), 'last_error' => Str::limit($reason, 500, ''), 'consecutive_failures' => $failures]);
-            if ($failures >= self::MAX_PULL_FAILURES && $connection->status === Connection::ACTIVE) {
+            if ($why !== null) {
+                $changed = $connection->feed_access !== $why->access || $connection->feed_access_code !== $why->errorCode;
+                $next = match (true) {
+                    $refused => now()->addMinutes(max(self::REFUSED_BACKOFF_MINUTES, $connection->pull_interval_minutes)),
+                    $why->retryAfter !== null && $why->retryAfter > 0 => now()->addSeconds($why->retryAfter),
+                    default => null,
+                };
+                $connection->forceFill([
+                    'feed_access' => $why->access, 'feed_access_code' => Str::limit($why->errorCode, 60, ''), 'feed_checked_at' => now(), 'feed_next_attempt_at' => $next,
+                    'feed_access_since' => $changed ? now() : ($connection->feed_access_since ?? now()),
+                ]);
+                if ($why->highWater !== null) {
+                    $connection->forceFill(['source_high_water' => $why->highWater, 'source_high_water_at' => now()]);
+                }
+            }
+            if (! $refused && $failures >= self::MAX_PULL_FAILURES && $connection->status === Connection::ACTIVE) {
                 $connection->status = Connection::ERROR;
                 $connection->lifecycle_version++;
                 $this->audit->record('accounting.integration.connection.errored', 'integration_connection', $connection->id, ['status' => Connection::ACTIVE], [
@@ -198,6 +238,7 @@ class ConnectionService
             'pull_interval_minutes' => $connection->pull_interval_minutes, 'settings' => $connection->settings ?: new \stdClass, 'last_cursor' => $connection->last_cursor,
             'last_pulled_at' => $connection->last_pulled_at?->toIso8601String(), 'last_error' => $connection->last_error,
             'consecutive_failures' => $connection->consecutive_failures, 'open_gap' => $this->presentOpenGap($connection),
+            'access' => $this->health->access($connection), 'health_level' => $this->health->evaluate($connection)['level'],
             'created_at' => $connection->created_at?->toIso8601String(), 'updated_at' => $connection->updated_at?->toIso8601String(),
         ];
     }
@@ -220,6 +261,10 @@ class ConnectionService
      * `processed` (= `posted`, the older name) counts events whose processing finished; it does not say a journal exists. `outcomes` does
      * (ecosystem audit A27): JOURNAL_POSTED, AWAITING_APPROVAL, DRAFT_DOCUMENT, INFORMATIONAL, NO_EFFECT, and UNCLASSIFIED for events that were
      * processed before outcomes were recorded and left no journal. `backlog` shows what is waiting and how long (audit A28).
+     *
+     * `books` is the live count of those processed events by where their document stands now (BookStatus, audit A27): only IN_LEDGER is in the
+     * general ledger, a draft or a document awaiting approval is not. `access` / `source` / `health` are the consumer side of the feed contract
+     * (audit A19 / A17): what the source's last answer said, where its feed stands against our cursor, and the alerts a person has to look at.
      */
     public function summary(string $id): array
     {
@@ -235,11 +280,15 @@ class ConnectionService
             $outcomes[$outcome] = (int) $n;
         }
 
+        $backlog = $this->backlog($connection);
+
         return [
             'connection_id' => $connection->id, 'status' => $connection->status, 'received' => array_sum($counts), 'processed' => $counts[ExternalEvent::POSTED],
             'posted' => $counts[ExternalEvent::POSTED], 'counts' => $counts, 'outcomes' => $outcomes,
             'duplicates' => (int) (clone $events)->sum('duplicate_count'), 'conflicts' => (clone $events)->where('conflict', true)->count(),
-            'backlog' => $this->backlog($connection), 'open_gap' => $this->presentOpenGap($connection),
+            'backlog' => $backlog, 'open_gap' => $this->presentOpenGap($connection),
+            'access' => $this->health->access($connection), 'source' => $this->health->source($connection),
+            'health' => $this->health->evaluate($connection, $backlog), 'books' => $this->books->counts($connection->id),
             'last_cursor' => $connection->last_cursor, 'last_pulled_at' => $connection->last_pulled_at?->toIso8601String(),
             'last_error' => $connection->last_error, 'consecutive_failures' => $connection->consecutive_failures,
         ];
@@ -330,6 +379,9 @@ class ConnectionService
     {
         // Switching a connection on again after a pause or a disconnect closes its gap, which needs the source's head: asked first, outside any transaction.
         $head = $to === Connection::ACTIVE ? $this->headForOpenGap($id) : null;
+        if ($to === Connection::ACTIVE && $head === null) {
+            $this->assertFeedServes($id);
+        }
 
         return DB::transaction(function () use ($id, $to, $from, $action, $guard, $head) {
             $connection = $this->find($id, lock: true);
@@ -341,7 +393,7 @@ class ConnectionService
             $wasListening = in_array($connection->status, [Connection::ACTIVE, Connection::ERROR, Connection::PAUSED], true);
             $connection->forceFill(['status' => $to, 'lifecycle_version' => $connection->lifecycle_version + 1]);
             if ($to === Connection::ACTIVE) {
-                $connection->forceFill(['consecutive_failures' => 0, 'last_error' => null]);
+                $connection->forceFill(['consecutive_failures' => 0, 'last_error' => null, 'feed_next_attempt_at' => null]);
                 $this->closeGap($connection, $head);
             }
             if ($wasListening && in_array($to, [Connection::PAUSED, Connection::DISCONNECTED], true)) {
@@ -385,7 +437,32 @@ class ConnectionService
         try {
             return $this->feed->head($connection);
         } catch (FeedException $e) {
-            throw new DomainException('The source could not tell where its feed stands, so the pause cannot be closed safely: '.$e->getMessage(), 'SOURCE_HEAD_UNAVAILABLE', 409);
+            throw new DomainException('The source could not tell where its feed stands, so the pause cannot be closed safely: '.$e->getMessage(), 'SOURCE_HEAD_UNAVAILABLE', 409, [
+                'access' => $e->access, 'feed_code' => $e->errorCode,
+            ]);
+        }
+    }
+
+    /**
+     * Where pairing is required a connection is only switched on when the source actually serves this organization: one tiny request, outside
+     * any transaction, that applies the same checks as a pull (credential, pairing with this organization's OptiNexus tenant, page shape). A
+     * refusal and an outage are told apart; nothing is stored either way. Without pairing (legacy standalone installation) the first pull is the test.
+     */
+    private function assertFeedServes(string $id): void
+    {
+        $connection = Str::isUuid($id) ? Connection::query()->find($id) : null;
+        if ($connection === null || ! FeedPairing::required() || $this->missingForActivation($connection) !== []) {
+            return;
+        }
+
+        try {
+            $this->feed->probe($connection);
+        } catch (FeedException $e) {
+            $refused = $e->access === FeedException::REFUSED;
+            throw new DomainException(
+                $refused ? 'The source refused access to its feed: '.$e->getMessage() : 'The source could not be asked or did not answer with its feed: '.$e->getMessage(),
+                $refused ? 'CONNECTION_FEED_REFUSED' : 'CONNECTION_FEED_UNAVAILABLE', 409, ['access' => $e->access, 'feed_code' => $e->errorCode],
+            );
         }
     }
 

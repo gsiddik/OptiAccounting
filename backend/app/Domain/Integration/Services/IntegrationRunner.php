@@ -33,12 +33,19 @@ class IntegrationRunner
         private readonly PullService $pulls,
         private readonly EventProcessor $processor,
         private readonly AdapterRegistry $adapters,
+        private readonly ConnectionHealth $health,
     ) {}
 
-    /** @return array{connections:int,pulled:int,received:int,posted:int,journals:int} */
+    /**
+     * Connections that OptiEntry itself holds (connector not entitled, organization not linked to OptiNexus where pairing is required) are not
+     * pulled: the source keeps its events and the history stays as it is (`held`, ecosystem audit A19). A source that refused the last pull
+     * is asked again only after its back-off (`feed_next_attempt_at`).
+     *
+     * @return array{connections:int,pulled:int,received:int,posted:int,journals:int,held:int}
+     */
     public function pullDue(): array
     {
-        $totals = ['connections' => 0, 'pulled' => 0, 'received' => 0, 'posted' => 0, 'journals' => 0];
+        $totals = ['connections' => 0, 'pulled' => 0, 'received' => 0, 'posted' => 0, 'journals' => 0, 'held' => 0];
         $tenants = $this->context->withoutTenantScope(fn () => Connection::query()->where('status', Connection::ACTIVE)->distinct()->pluck('tenant_id'));
 
         foreach ($tenants as $tenantId) {
@@ -48,6 +55,11 @@ class IntegrationRunner
                 }
                 foreach (Connection::query()->where('status', Connection::ACTIVE)->orderBy('id')->get() as $connection) {
                     if (! $this->due($connection)) {
+                        continue;
+                    }
+                    if ($this->health->heldBy($connection) !== null) {
+                        $totals['held']++;
+
                         continue;
                     }
                     $totals['connections']++;
@@ -134,6 +146,10 @@ class IntegrationRunner
 
     private function due(Connection $connection): bool
     {
+        if ($connection->feed_next_attempt_at !== null && $connection->feed_next_attempt_at->isFuture()) {
+            return false; // the source refused or asked for time (Retry-After)
+        }
+
         return $connection->last_pulled_at === null
             || $connection->last_pulled_at->copy()->addMinutes($connection->pull_interval_minutes)->subSeconds(self::SLACK_SECONDS)->lte(now());
     }

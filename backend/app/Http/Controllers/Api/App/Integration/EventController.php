@@ -29,7 +29,7 @@ class EventController extends AppController
             'per_page' => ['nullable', 'integer', 'between:1,200'],
         ]);
 
-        return response()->json($this->events->query($filter)->paginate($filter['per_page'] ?? 50)->through(fn (ExternalEvent $e) => $this->events->present($e)));
+        return response()->json($this->events->presentPage($this->events->query($filter)->paginate($filter['per_page'] ?? 50)));
     }
 
     public function show(string $event): JsonResponse

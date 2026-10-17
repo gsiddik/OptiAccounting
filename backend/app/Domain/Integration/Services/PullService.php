@@ -15,7 +15,8 @@ use Throwable;
  *   - Never inside a database transaction: the HTTP call comes first; each page then gets ONE transaction in which every event is ingested
  *     and the connection's cursor advances, so the cursor moves if and only if the page's events are stored.
  *   - A failed call, an invalid page or an unidentifiable envelope leaves the cursor unchanged, records the reason and counts a failure;
- *     five in a row turn the connection ERROR (ConnectionService::pullFailed). A good page resets the counter.
+ *     five in a row turn the connection ERROR (ConnectionService::pullFailed). A good page resets the counter. A source that REFUSES to serve
+ *     this organization (credential, pairing, subscription) is not a failure of the pipeline: it is recorded as such and asked again later.
  *   - A pause, disconnect, reconfiguration or reconnection that happens while the HTTP call is running (ecosystem audit A20) stops the pull
  *     at the page boundary: inside the page transaction the connection row is locked FOR UPDATE and compared with the status and
  *     `lifecycle_version` the run started with; when they differ the page is not stored, the cursor stays and the summary says `halted`.
@@ -37,12 +38,27 @@ class PullService
         private readonly EventProcessor $processor,
         private readonly ConnectionService $connections,
         private readonly AuditService $audit,
+        private readonly ConnectionHealth $health,
     ) {}
 
     /** "Sync now" (permission accounting.integration.manage): one pull on demand, audited; 409 while another pull of the connection is running. */
     public function syncNow(string $id): array
     {
-        $summary = $this->pull($this->connections->find($id));
+        $connection = $this->connections->find($id);
+        if (($held = $this->health->heldBy($connection)) !== null) {
+            // The same hold as the scheduler's: an organization the connector is not available to, or one that is not linked to OptiNexus where pairing is required.
+            throw new DomainException(
+                'OptiEntry does not run this connection now: '.implode('; ', $held['reasons']).'.',
+                match ($held['code']) {
+                    'CONNECTOR_NOT_ENTITLED' => 'CONNECTOR_NOT_ENTITLED',
+                    'TENANT_NOT_LINKED' => 'TENANT_NOT_LINKED',
+                    default => 'CONNECTION_HELD',
+                },
+                403,
+                ['reasons' => $held['reasons'], 'held_by' => $held['code']],
+            );
+        }
+        $summary = $this->pull($connection);
         if ($summary['skipped']) {
             throw new DomainException('Another pull of this connection is running.', 'PULL_IN_PROGRESS', 409);
         }
@@ -87,7 +103,7 @@ class PullService
                     report($e);
                 }
                 $summary['error'] = $expected ? $e->getMessage() : 'The page could not be stored.';
-                $this->connections->pullFailed($id, $summary['error'], $version);
+                $this->connections->pullFailed($id, $summary['error'], $version, $this->feedFailure($e));
 
                 return $summary;
             }
@@ -126,6 +142,19 @@ class PullService
     }
 
     /**
+     * What a failed pull says about the source: the FeedException as it is; an envelope the inbox refused (an event of another source, an
+     * unidentifiable one) means the source answered something that is not its feed; any other fault (the page could not be stored) says nothing about it.
+     */
+    private function feedFailure(Throwable $e): ?FeedException
+    {
+        return match (true) {
+            $e instanceof FeedException => $e,
+            $e instanceof DomainException => FeedException::invalid($e->getMessage(), $e->errorCode),
+            default => null,
+        };
+    }
+
+    /**
      * One page, in the caller's transaction. The connection is locked FOR UPDATE first, so a pause or disconnect that is committing waits for
      * this page and one that committed earlier is seen here; null means the connection is no longer what the pull started with.
      *
@@ -147,7 +176,7 @@ class PullService
                 default => $stored['conflicts']++,
             };
         }
-        $this->connections->pullSucceeded($connection, $feed['next_cursor']);
+        $this->connections->pullSucceeded($connection, $feed['next_cursor'], $feed);
 
         return $stored;
     }

@@ -265,3 +265,39 @@ none changes a merged migration, and no existing row is rewritten.
   summary shows `backlog` (due, oldest age, `blocked_by` CONNECTION_NOT_ACTIVE | CONNECTOR_NOT_ENTITLED, `stalled` after 30 minutes).
 - **Contradiction recorded.** §6 says reactivation never back-posts history; the stored `gap_policy` was not applied until now. The safest
   backward-compatible reading is used: the default `REQUIRES_REVIEW` holds, it never books.
+
+## 11. Consumer side of the Fleet feed contract (A19, A17, A27; migration `2026_10_19_200001`)
+
+Counterpart of OptiFleet-v2 `docs/integration/ACCOUNTING_FEED.md` (pairing, `high_water`, `review`). Additive; nothing is rewritten, posted history
+is never touched by any of it.
+
+- **Pairing (A19).** Every page (pull, activation probe, gap head) is checked by `FeedPairing` after its shape is validated: `pairing.nexus_tenant_id`
+  must equal `tenants.optinexus_tenant_id` of the connection's own organization (set by OptiNexus sign-in/provisioning, never by the page, the form or
+  a request), and `producer_application`/`consumer_application` (when stated) must be the connection's source system and this application. Required when
+  `OPTIENTRY_FEED_PAIRING=required`, or `auto` (default) while `OPTIENTRY_IDENTITY_MODE=optinexus`; `off` (legacy standalone) skips it. A page without
+  `pairing`, for another tenant/pair, or for an organization not linked to OptiNexus is refused as a whole: nothing stored, cursor unchanged.
+- **Three situations, never one "error".** `feed_access` on the connection: `REFUSED` (401/403 with the source's `FEED_*` code, or a pairing refusal:
+  not counted toward ERROR, the connection stays ACTIVE with its history, asked again after 15 min or the pull interval), `UNAVAILABLE` (network, 429,
+  5xx, `FEED_GOVERNANCE_UNAVAILABLE`: counted, `Retry-After` honoured up to 1 h), `INVALID` (malformed page, other status, `FEED_CURSOR_AHEAD`:
+  counted). `feed_access_since/checked_at/next_attempt_at` say since when and when it is asked next; the scheduler skips a connection until then.
+  A third thing is OptiEntry holding the connection itself (`access.entry`: tenant not active, module/feature/connector not entitled, organization not
+  linked to OptiNexus where pairing is required): nothing is pulled or processed, "sync now" answers 403 with the reason, the source keeps the events.
+- **Activation probe.** Where pairing is required a connection is only switched on when one tiny feed request succeeds with a matching pairing
+  (`CONNECTION_FEED_REFUSED` / `CONNECTION_FEED_UNAVAILABLE`, 409; nothing stored). Resuming a paused one uses the same check through the gap head.
+- **`high_water` and a restored source.** The newest committed sequence is stored with each page (`source_high_water`); a stored cursor ahead of it is
+  `FEED_CURSOR_AHEAD` (INVALID, nothing accepted) and shows as `SOURCE_BEHIND_CURSOR`. `lag` = high water minus cursor is shown on the connection.
+- **Quarantine (`review.required`).** An envelope with `review.required === true` waits NEEDS_REVIEW `SOURCE_REVIEW_REQUIRED`, event by event, and is
+  never booked automatically; a person processes it (retry) or dismisses it. It is not part of a gap's batch decision (its reason is not the gap's);
+  a gap policy that refuses (`IGNORE_GAP`, `START_NEW_CUTOVER`) still refuses it first.
+- **Books state (A27).** `BookStatus` reads the document behind a processed event live (`ap_invoices`, `vendor_payments` through
+  `external_source_links`): `IN_LEDGER`, `AWAITING_APPROVAL`, `DRAFT`, `REVERSED`, `VOID`, `INFORMATIONAL`, `NO_EFFECT`, `UNCLASSIFIED`. Only
+  `IN_LEDGER` is in the general ledger. Event list rows carry `books_state` (one query set per page), event detail `books` (+documents), the summary
+  `books` counts. The wording "Posted" for processing is now "Processing finished".
+- **Health (A17).** `ConnectionHealth` (read-only) gives `health.level` OK/WARN/ALERT and alerts: `SOURCE_REFUSED|INVALID|UNAVAILABLE`,
+  `SOURCE_BEHIND_CURSOR`, `PULL_OVERDUE`, `ENTRY_HELD`, `MISSING_RECORDED_EVENT` (NEEDS_REVIEW `INVOICE_NOT_FOUND` older than
+  `OPTIENTRY_FEED_ORPHAN_GRACE_MINUTES`, default 120: the recorded event was lost at the source; the operator runs the source's monitor and bounded
+  repair, which only appends quarantined events), `QUARANTINED_EVENTS`, `OPEN_CONFLICTS`, `DEAD_LETTERS`, `BACKLOG_STALLED`. `integration:health [--json]`
+  (hourly in the scheduler) logs every ALERT at critical level and exits non-zero while there is one.
+- **Live test checklist (Entry side).** Tenant linked to its OptiNexus tenant (`tenants.optinexus_tenant_id`); `optientry:service-principal:issue <tenant>`;
+  `optientry:nexus:check`; connection with base URL, `ofaf_...` credential, source tenant reference, cutover date and settings; activate; then
+  `integration:pull`, `integration:process`, `integration:health --json`.
