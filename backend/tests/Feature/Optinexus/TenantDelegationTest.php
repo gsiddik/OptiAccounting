@@ -109,6 +109,7 @@ class TenantDelegationTest extends OptinexusTestCase
             ->assertJsonPath('data.0.is_tenant_admin', true)
             ->assertJsonPath('data.0.local.status', 'ACTIVE')
             ->assertJsonPath('data.0.local.member_id', $this->session['membership']->id)
+            ->assertJsonPath('data.0.is_self', true)
             ->assertJsonPath('meta.seats', ['limit' => 5, 'used' => 1, 'remaining' => 4])
             ->assertJsonPath('meta.pagination.total', 1);
 
@@ -138,7 +139,7 @@ class TenantDelegationTest extends OptinexusTestCase
         $accountant = $this->roleId('tpl-accountant');
 
         $response = $this->api('post', '/users', $this->newPerson(['role_ids' => [$accountant], 'initial_password' => 'Str0ng!Passw0rd#1']))
-            ->assertCreated()->assertJsonPath('outcome', 'created')->assertJsonPath('roles.0.name', 'Accountant')->assertJsonPath('local.status', 'INVITED');
+            ->assertCreated()->assertJsonPath('outcome', 'created')->assertJsonPath('projection', 'CREATED')->assertJsonPath('roles.0.name', 'Accountant')->assertJsonPath('local.status', 'INVITED');
         $id = $response->json('id');
 
         // OptiNexus received exactly what a person typed, on behalf of the signed-in Admin Tenant.

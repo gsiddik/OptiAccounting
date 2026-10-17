@@ -1,4 +1,5 @@
 import { formatAmount } from './accounting'
+import { hasMessage, translate, type MessageKey } from '../i18n'
 import { ApiError } from './api'
 import { ACCOUNTING_ERRORS, ACCOUNTING_STATUS } from './accountingLabels'
 import { OA4_ERRORS, OA4_STATUS } from './oa4Labels'
@@ -27,7 +28,11 @@ const STATUS: Record<string, [string, Tone]> = {
 
 export function statusLabel(status: string | null | undefined): [string, Tone] {
   if (!status) return ['—', 'neutral']
-  return STATUS[status] ?? ACCOUNTING_STATUS[status] ?? OPERATIONAL_STATUS[status] ?? OA4_STATUS[status] ?? [status, 'neutral']
+  const known = STATUS[status] ?? ACCOUNTING_STATUS[status] ?? OPERATIONAL_STATUS[status] ?? OA4_STATUS[status]
+  // A status that has both languages in the catalog is shown in the chosen one; the tone stays what it always was.
+  const key = `status.${status}`
+  if (hasMessage(key)) return [translate(key), known?.[1] ?? 'neutral']
+  return known ?? [status, 'neutral']
 }
 
 export const scopeLabels: Record<string, string> = {
@@ -35,6 +40,12 @@ export const scopeLabels: Record<string, string> = {
   BRANCH: 'Cabang',
   BUSINESS_UNIT: 'Unit bisnis',
   OWN: 'Milik sendiri',
+}
+
+/** Data scope type in the chosen language. */
+export function scopeLabel(type: string): string {
+  const key = `scope.${type}`
+  return hasMessage(key) ? translate(key) : (scopeLabels[type] ?? type)
 }
 
 export const sourceLabels: Record<string, string> = {
@@ -174,11 +185,17 @@ export function describeError(error: unknown): string {
   if (error instanceof ApiError) {
     if (error.code === 'CAPACITY_EXCEEDED') {
       const d = error.details as { limit_code?: string; limit?: number; used?: number }
-      const what = capacityLabels[d.limit_code ?? ''] ?? 'kapasitas'
-      return `Batas ${what.toLowerCase()} tercapai (${d.used ?? '?'} dari ${d.limit ?? '?'}). Hubungi administrator platform untuk menambah kapasitas.`
+      const capacityKey = `capacity.${d.limit_code ?? 'UNKNOWN'}`
+      const what = translate(hasMessage(capacityKey) ? capacityKey : 'capacity.UNKNOWN')
+      return translate('error.CAPACITY_EXCEEDED', { what, used: d.used ?? '?', limit: d.limit ?? '?' })
     }
     if (error.code === 'PRIVILEGE_ESCALATION' && Array.isArray(error.details.permissions)) {
-      return `${ERRORS.PRIVILEGE_ESCALATION} (${(error.details.permissions as string[]).join(', ')})`
+      return `${translate('error.PRIVILEGE_ESCALATION')} (${(error.details.permissions as string[]).join(', ')})`
+    }
+    const catalogKey = error.code === 'IDENTITY_PROVIDER_UNAVAILABLE' && error.details.outcome_unknown === true ? 'error.IDENTITY_PROVIDER_UNAVAILABLE.write' : `error.${error.code}`
+    if (error.code && hasMessage(catalogKey)) {
+      const permissions = Array.isArray(error.details.permissions) ? (error.details.permissions as string[]).join(', ') : ''
+      return translate(catalogKey as MessageKey, { permissions })
     }
     if (error.code === 'DEPENDENCY_MISSING' && Array.isArray(error.details.missing)) {
       return `${ERRORS.DEPENDENCY_MISSING} Dibutuhkan: ${(error.details.missing as string[]).join(', ')}.`
@@ -192,12 +209,12 @@ export function describeError(error: unknown): string {
     if (error.code && ERRORS[error.code]) return `${ERRORS[error.code]}${serverFigures(error)}`
     const first = Object.values(error.fields)[0]?.[0]
     if (error.status === 422 && first) return first
-    if (error.status === 0) return 'Tidak dapat terhubung ke server. Periksa koneksi Anda.'
-    if (error.status === 429) return 'Terlalu banyak percobaan. Coba lagi sebentar lagi.'
-    if (error.status >= 500) return 'Terjadi kesalahan pada server. Coba lagi nanti.'
-    if (error.status === 403) return ERRORS.PERMISSION_DENIED
-    if (error.status === 404) return 'Data tidak ditemukan.'
+    if (error.status === 0) return translate('error.status.network')
+    if (error.status === 429) return translate('error.status.rate_limited')
+    if (error.status >= 500) return translate('error.status.server')
+    if (error.status === 403) return translate('error.status.forbidden')
+    if (error.status === 404) return translate('error.status.not_found')
     return error.message
   }
-  return error instanceof Error ? error.message : 'Terjadi kesalahan.'
+  return error instanceof Error ? error.message : translate('error.status.unexpected')
 }

@@ -75,6 +75,7 @@ class TenantDelegation
         $local = $this->localProjection($tenantId, array_column($items, 'id'));
         foreach ($items as &$item) {
             $item['local'] = $local[$item['id']] ?? null;
+            $item['is_self'] = $item['id'] === $subject; // the screen never offers a person to remove or demote their own access
         }
         unset($item);
 
@@ -125,7 +126,7 @@ class TenantDelegation
             throw $e;
         }
 
-        return $view + ['outcome' => $outcome, 'local' => $local['row']];
+        return $view + ['outcome' => $outcome, 'projection' => $local['projection'], 'local' => $local['row']];
     }
 
     /**

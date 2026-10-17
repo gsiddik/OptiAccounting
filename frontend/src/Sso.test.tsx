@@ -171,6 +171,8 @@ describe('what OptiNexus manages is not offered for editing', () => {
     'GET /app/users': { data: members },
     'GET /app/roles': { data: { data: [{ id: 'r-9', name: 'Kasir Cabang', is_system: false, permissions: [] }] } },
     'GET /app/permissions': { data: { data: [] } },
+    // Delegation is not set up on this installation: the pages fall back to the read-only local view.
+    'GET /app/delegation/status': { data: { available: false, reason: 'DELEGATION_NOT_CONFIGURED', mode: 'optinexus' } },
   })
 
   it('keeps member and role actions in a standalone installation', async () => {
@@ -185,20 +187,21 @@ describe('what OptiNexus manages is not offered for editing', () => {
     expect(screen.queryByText(/dikelola di OptiNexus/)).not.toBeInTheDocument()
   })
 
-  it('shows members read-only but leaves data scope editable in OptiNexus mode', async () => {
+  it('falls back to read-only members, with data scope editable, while delegation is not set up', async () => {
     mockApi(tenantRoutes('optinexus'))
     setToken('t')
     renderApp('/app/pengguna')
 
     const row = within((await screen.findByRole('table', { name: 'Daftar pengguna' }))).getByText('Sari Keuangan').closest('tr')!
     expect(screen.getByText(/dikelola di OptiNexus/)).toBeInTheDocument()
+    expect(screen.getByText(/belum disiapkan untuk instalasi ini/)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Pengguna baru' })).not.toBeInTheDocument()
     expect(within(row).queryByRole('button', { name: 'Peran' })).not.toBeInTheDocument()
     expect(within(row).queryByRole('button', { name: 'Tangguhkan' })).not.toBeInTheDocument()
     expect(within(row).getByRole('button', { name: 'Cakupan' })).toBeInTheDocument()
   })
 
-  it('shows roles read-only in OptiNexus mode', async () => {
+  it('falls back to read-only roles while delegation is not set up', async () => {
     mockApi(tenantRoutes('optinexus'))
     setToken('t')
     renderApp('/app/peran')

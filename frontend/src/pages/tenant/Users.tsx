@@ -14,6 +14,7 @@ import { useAction, useDebounced, useResource } from '../../lib/hooks'
 import { scopeLabels } from '../../lib/labels'
 import { toDraft, toPayload, type ScopeDraft } from '../../lib/scopes'
 import type { Branch, BusinessUnit, DataScopeRow, Member, Paginated, Role } from '../../lib/types'
+import { DelegatedUsers } from './delegation/DelegatedUsers'
 
 type NextStatus = 'ACTIVE' | 'SUSPENDED' | 'INACTIVE'
 
@@ -25,7 +26,17 @@ function useOrganizationLists(enabled: boolean) {
   return { branches: branches.data ?? [], units: units.data ?? [], loading: branches.loading || units.loading, error: branches.error ?? units.error }
 }
 
+/**
+ * Settings > Users. With OptiNexus as the identity authority an Admin Tenant manages people from here through the delegation API
+ * (`DelegatedUsers`); the page below is the original, local one, which is the whole page for `standalone` installations (legacy,
+ * docs/architecture/LEGACY_IDENTITY_MIGRATION.md) and the read-only fallback while delegation is not set up.
+ */
 export default function Users() {
+  const { managedExternally } = useCapabilities()
+  return managedExternally ? <DelegatedUsers fallback={<LegacyUsers />} /> : <LegacyUsers />
+}
+
+function LegacyUsers() {
   const { can, canEdit } = useCapabilities()
   const { state } = useAuth()
   const myId = state.status === 'ready' ? state.me.user.id : null

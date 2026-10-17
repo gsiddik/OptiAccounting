@@ -34,6 +34,12 @@ changed in OptiEntry. Merge only on owner request.
   `revision`, per-permission `capability_code` + `delegable`, `tenant.delegate` scope) and the explicit delegable set (101/136; governance,
   credentials, period close, integration connections excluded; rationale in `OPTINEXUS_ONBOARDING.md` section 5). Standalone is labelled legacy;
   migration plan `docs/architecture/LEGACY_IDENTITY_MIGRATION.md` (no auto-migration). Design: `OPTINEXUS_ADAPTER.md` sections 9-10.
+- E1 frontend: i18n layer (`frontend/src/i18n`: one `{id, en}` entry per key, typed keys, language switch in the top bar, default `id`, choice
+  kept in `localStorage`); `describeError`, `statusLabel`, modals, pagination, scope editor already use it. Settings > Users (list from OptiNexus,
+  add/link with optional initial password, role multiselect, data scope, remove access, seat banner) and Settings > Roles (templates + custom,
+  editor grouped by module, non-delegable/not-entitled permissions shown unavailable, catalog tab) in `pages/tenant/delegation/`; legacy pages
+  stay for `standalone` and as read-only fallback while delegation is not set up. States: loading, empty, forbidden, provider-unavailable,
+  not-set-up, error, each with the `X-Request-Id` reference (`ApiError.requestId`, `lib/errors.ts` shared with the error boundaries).
 
 ## Tests (executed in this session)
 - A03: `tests/Feature/Optinexus` 121 passed (21 in `NexusPermissionTest`: >120 permissions in one request, wildcard/unknown-key/mismatched-answer
@@ -47,6 +53,10 @@ changed in OptiEntry. Merge only on owner request.
   Full backend suite, `OPTIENTRY_IDENTITY_MODE=standalone` (the sandbox `.env` forces `optinexus`, which makes the standalone-mode Auth/Rbac/
   Security/Capacity tests fail with 403 independent of any change): 1373 passed, 1 skipped (frontend sources not in the container), 1 failed
   (`SeederAndBootstrapTest` reads `../docs/DEMO.md`, which the backend-only container mount lacks; 16 passed with `docs/` mounted at `/docs`).
+- E1 frontend (`cd frontend && npx vitest run`): 53 files, 1148 passed (24 in `Delegation.test.tsx`: list/create/outcomes/refusals/roles/states/English,
+  8 in `i18n.test.ts`, 19 in `errors.test.ts`); `npx tsc -b` clean; `oxlint` only fast-refresh warnings. Backend
+  `DelegationMessagesTest` (every error code the delegation layer emits has an id+en message; needs `frontend/` mounted at `/frontend`).
+  Browser (Playwright/Chromium against the Vite dev server with the API mocked): Users/Roles/dialogs/states at 1440, 820, 390: no horizontal overflow.
 - Pint clean.
 - Container package (sandbox, Ubuntu php-fpm image instead of the Alpine one, which cannot be built here): `docker compose config` OK;
   bootstrap -> api/worker/scheduler/web/ui healthy; bootstrap re-run "Nothing to migrate"; runtime role refuses an unmigrated database after

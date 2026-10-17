@@ -49,14 +49,17 @@ export class ApiError extends Error {
   code: string | null
   details: Record<string, unknown>
   fields: Record<string, string[]>
+  /** The server's `X-Request-Id` of the failed call: the reference a person quotes to support, never a stack trace. */
+  requestId: string | null
 
-  constructor(status: number, message: string, code: string | null, details: Record<string, unknown>, fields: Record<string, string[]>) {
+  constructor(status: number, message: string, code: string | null, details: Record<string, unknown>, fields: Record<string, string[]>, requestId: string | null = null) {
     super(message)
     this.name = 'ApiError'
     this.status = status
     this.code = code
     this.details = details
     this.fields = fields
+    this.requestId = requestId
   }
 }
 
@@ -86,7 +89,9 @@ api.interceptors.response.use(
         setToken(null)
         onUnauthorized?.()
       }
-      return Promise.reject(new ApiError(status, body.message ?? error.message, body.code ?? null, body.details ?? {}, body.errors ?? {}))
+      const header = error.response?.headers?.['x-request-id']
+      const requestId = typeof header === 'string' && header !== '' ? header : null
+      return Promise.reject(new ApiError(status, body.message ?? error.message, body.code ?? null, body.details ?? {}, body.errors ?? {}, requestId))
     }
     return Promise.reject(error)
   },
