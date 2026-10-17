@@ -16,6 +16,12 @@ export function hasMessage(key: string): key is MessageKey {
   return Object.prototype.hasOwnProperty.call(CATALOG, key)
 }
 
+/** A shell label (menu, breadcrumb) in the chosen language when the catalog has it (`nav.<Indonesian label>`), else as written. */
+export function navLabel(text: string): string {
+  const key = `nav.${text}`
+  return hasMessage(key) ? translate(key) : text
+}
+
 export function useI18n() {
   const locale = useSyncExternalStore(subscribeLocale, currentLocale, currentLocale)
   const t = useCallback((key: MessageKey, params?: Params) => interpolate(CATALOG[key][locale], params), [locale])

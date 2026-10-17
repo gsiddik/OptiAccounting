@@ -1,5 +1,6 @@
 import { useEffect, useId, useMemo, useState } from 'react'
 import { matchPath, NavLink, useLocation } from 'react-router-dom'
+import { navLabel, useI18n } from '../i18n'
 import { Icon } from './Icon'
 import type { NavItem } from './Shell'
 
@@ -41,6 +42,7 @@ function writeCollapsed(scope: string, collapsed: Set<string>) {
  * per portal. The group that holds the current page is always opened when you arrive on it, so the active link is never hidden.
  */
 export function SidebarNav({ scope, items, label }: { scope: 'platform' | 'tenant'; items: NavItem[]; label: string }) {
+  useI18n()
   const { pathname } = useLocation()
   const idBase = useId()
   const parts = useMemo(() => sections(items), [items])
@@ -76,14 +78,14 @@ export function SidebarNav({ scope, items, label }: { scope: 'platform' | 'tenan
     <nav aria-label={label} className="nav">
       {headed.length > 1 && (
         <button type="button" className="nav-toggle-all" onClick={toggleAll}>
-          {allCollapsed ? 'Bentangkan semua' : 'Ciutkan semua'}
+          {navLabel(allCollapsed ? 'Bentangkan semua' : 'Ciutkan semua')}
         </button>
       )}
       {parts.map((part, index) => {
         const links = part.items.map((item) => (
           <NavLink key={item.to} to={item.to} end={item.end} className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}>
             <Icon name={item.icon} />
-            {item.label}
+            {navLabel(item.label)}
           </NavLink>
         ))
         if (!part.group) return <div key={`item-${index}`} className="nav-section">{links}</div>
@@ -94,7 +96,7 @@ export function SidebarNav({ scope, items, label }: { scope: 'platform' | 'tenan
           <div key={part.group} className="nav-section">
             <div className="nav-group">
               <button type="button" className={`nav-group-toggle${!open && part.group === activeGroup ? ' has-active' : ''}`} aria-expanded={open} aria-controls={panel} onClick={() => toggle(part.group as string)}>
-                <span>{part.group}</span>
+                <span>{navLabel(part.group)}</span>
                 <Icon name="chevron-down" size={14} />
               </button>
             </div>

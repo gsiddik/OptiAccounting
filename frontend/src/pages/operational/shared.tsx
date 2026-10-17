@@ -3,6 +3,7 @@ import { FormModal } from '../../components/Modal'
 import { useToast } from '../../components/Toast'
 import { Banner, Button, ErrorNotice, Field } from '../../components/ui'
 import { downloadCsv } from '../../lib/accounting'
+import { useI18n } from '../../i18n'
 import { useCapabilities } from '../../lib/capabilities'
 import { fieldError } from '../../lib/forms'
 import { formatDateTime } from '../../lib/format'
@@ -81,7 +82,8 @@ export { DimensionFilters }
 
 /** A banner explaining a read-only subscription at the top of an OA2 page. */
 export function ReadOnlyNotice({ show }: { show: boolean }) {
-  return show ? <Banner tone="warn">Modul ini dalam mode hanya baca: data dapat dilihat dan diekspor, tetapi tidak dapat diubah.</Banner> : null
+  const { t } = useI18n()
+  return show ? <Banner tone="warn">{t('common.readonly_module')}</Banner> : null
 }
 
 export { ErrorNotice }

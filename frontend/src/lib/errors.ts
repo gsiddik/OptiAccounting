@@ -37,8 +37,23 @@ export function classifyError(error: unknown): ErrorKind {
   return 'unexpected'
 }
 
+/**
+ * An API refusal put in the wording of a screen (in the language chosen at the top). `describeError` shows its message as it is, and the
+ * request id of the original refusal is still the reference a person quotes.
+ */
+export class WordedError extends Error {
+  readonly source: ApiError
+
+  constructor(message: string, source: ApiError) {
+    super(message)
+    this.name = 'WordedError'
+    this.source = source
+  }
+}
+
 /** The reference to quote to support: the server's request id (also written in its logs and audit trail), else the one a delegation answer carries. */
 export function errorReference(error: unknown): string | null {
+  if (error instanceof WordedError) return errorReference(error.source)
   if (!(error instanceof ApiError)) return null
   if (error.requestId) return error.requestId
   const reference = error.details.reference

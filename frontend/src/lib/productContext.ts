@@ -27,7 +27,9 @@ const MAX_POLL_MS = 300_000
 export function useProductContext(enabled: boolean, onEnded: (reason: string) => void): ProductContextState & { reload: () => Promise<ProductContext | null> } {
   const [state, setState] = useState<ProductContextState>({ status: 'loading' })
   const ended = useRef(onEnded)
-  ended.current = onEnded
+  useEffect(() => {
+    ended.current = onEnded
+  }, [onEnded])
   const done = useRef(false)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
 

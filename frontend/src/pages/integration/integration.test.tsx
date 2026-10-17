@@ -177,7 +177,7 @@ describe('connection detail', () => {
 
     const card = within((await screen.findByRole('heading', { name: 'Hasil sinkronisasi' })).closest('section') as HTMLElement)
     expect(card.getByText('Halaman ditarik').nextSibling).toHaveTextContent('2')
-    expect(card.getByText('Diposting').nextSibling).toHaveTextContent('3')
+    expect(card.getByText('Selesai diproses').nextSibling).toHaveTextContent('3')
     expect(writes(calls)).toEqual([expect.objectContaining({ method: 'POST', url: `${IT}/connections/c-1/sync-now` })])
     expect(gets(calls, `${IT}/connections/c-1/summary`).length).toBeGreaterThan(1) // the counts were read again
   })
@@ -293,7 +293,7 @@ describe('event inbox', () => {
     expect(table.getAllByText('Faktur bengkel dicatat').length).toBe(3)
     expect(table.getByRole('link', { name: 'evt-0001' })).toHaveAttribute('href', '/app/integrasi/kejadian/ev-1')
     expect(table.getByText('Perlu ditinjau')).toBeInTheDocument()
-    expect(table.getByText('Diposting')).toBeInTheDocument()
+    expect(table.getByText('Selesai diproses')).toBeInTheDocument()
     expect(table.getByText('Ditolak')).toBeInTheDocument()
     expect(table.getByText('Konflik isi')).toBeInTheDocument()
     expect(table.getAllByText('PERIOD_CLOSED').length).toBe(2)
@@ -328,7 +328,7 @@ describe('event inbox', () => {
 
     await waitFor(() => expect(writes(calls)).toEqual([expect.objectContaining({ method: 'POST', url: `${IT}/events/ev-1/retry`, data: { reason: 'Periode sudah dibuka' } })]))
     await waitFor(() => expect(gets(calls, `${IT}/events`).length).toBe(2))
-    expect(await screen.findByText(/Status sekarang: Diposting/)).toBeInTheDocument()
+    expect(await screen.findByText(/Status sekarang: Selesai diproses/)).toBeInTheDocument()
   })
 
   it('does not send a retry without a reason', async () => {

@@ -16,6 +16,11 @@ export const common = defineMessages({
   'common.previous': { id: 'Sebelumnya', en: 'Previous' },
   'common.next': { id: 'Berikutnya', en: 'Next' },
   'common.legacy': { id: 'Legacy', en: 'Legacy' },
+  'common.reason': { id: 'Alasan (dicatat di audit)', en: 'Reason (recorded in the audit trail)' },
+  'common.reason_hint': { id: 'Minimal 3 karakter.', en: 'At least 3 characters.' },
+  'common.readonly_module': { id: 'Modul ini dalam mode hanya baca: data dapat dilihat dan diekspor, tetapi tidak dapat diubah.', en: 'This module is read-only: data can be viewed and exported but not changed.' },
+  'common.yes': { id: 'Ya', en: 'Yes' },
+  'common.no': { id: 'Tidak', en: 'No' },
 
   'status.ACTIVE': { id: 'Aktif', en: 'Active' },
   'status.INVITED': { id: 'Diundang', en: 'Invited' },

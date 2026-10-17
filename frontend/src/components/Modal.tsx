@@ -120,6 +120,7 @@ export function ConfirmDialog({
   onConfirm: (reason: string) => void
   onClose: () => void
 }) {
+  const { t } = useI18n()
   const [reason, setReason] = useState('')
   const tooShort = reasonRequired && reason.trim().length < 3
 
@@ -127,7 +128,7 @@ export function ConfirmDialog({
     <FormModal title={title} submitLabel={confirmLabel} busy={busy} error={error} danger={danger} onClose={onClose} onSubmit={() => !tooShort && onConfirm(reason.trim())}>
       <div>{message}</div>
       {reasonRequired && (
-        <Field label="Alasan (dicatat di audit)" hint="Minimal 3 karakter.">
+        <Field label={t('common.reason')} hint={t('common.reason_hint')}>
           {(p) => <textarea className="textarea" value={reason} onChange={(e) => setReason(e.target.value)} {...p} />}
         </Field>
       )}
