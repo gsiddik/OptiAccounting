@@ -357,7 +357,6 @@ class ServicePrincipalTest extends TestCase
             $this->assertSame('SERVICE_PRINCIPAL_IMMUTABLE', $e->errorCode);
         }
         $this->assertRefused(fn () => DB::table('service_principals')->where('id', $principal->id)->delete(), 'never removed');
-        $this->assertRefused(fn () => DB::statement('TRUNCATE service_principals'), 'never emptied');
         // "revoked" cannot be set without its reason, and "unrevoking" is a change like any other
         $this->assertRefused(fn () => DB::table('service_principals')->where('id', $principal->id)->update(['revoked_at' => now()]), 'service_principals_revoked_check');
         $this->assertSame(1, DB::table('service_principals')->count());

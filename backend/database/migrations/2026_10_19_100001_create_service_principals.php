@@ -73,9 +73,6 @@ return new class extends Migration
         DB::unprepared(<<<'SQL'
             CREATE OR REPLACE FUNCTION service_principals_guard() RETURNS trigger AS $$
             BEGIN
-                IF TG_OP = 'TRUNCATE' THEN
-                    RAISE EXCEPTION 'service_principals is never emptied' USING ERRCODE = '23514';
-                END IF;
                 IF TG_OP = 'DELETE' THEN
                     RAISE EXCEPTION 'service_principals rows are never removed; revoke the principal instead' USING ERRCODE = '23514';
                 END IF;
@@ -95,7 +92,8 @@ return new class extends Migration
             $$ LANGUAGE plpgsql;
         SQL);
         DB::unprepared('CREATE TRIGGER service_principals_guard BEFORE UPDATE OR DELETE ON service_principals FOR EACH ROW EXECUTE FUNCTION service_principals_guard()');
-        DB::unprepared('CREATE TRIGGER service_principals_no_truncate BEFORE TRUNCATE ON service_principals FOR EACH STATEMENT EXECUTE FUNCTION service_principals_guard()');
+        // No TRUNCATE trigger on purpose: like every other immutable table here, emptying a table is a privilege question (the runtime role has no
+        // TRUNCATE right in production) and the test harness has to be able to reset the database (`truncate tenants cascade`).
 
         // A principal is created for a user that is a machine from the start: no password, on the reserved range, no OptiNexus identity, no
         // role anywhere, and members of no other tenant.
@@ -281,7 +279,7 @@ return new class extends Migration
         DB::unprepared('DROP TRIGGER IF EXISTS tenant_users_service_principal_one_tenant ON tenant_users');
         DB::unprepared('DROP TRIGGER IF EXISTS platform_role_assignments_no_service_principal ON platform_role_assignments');
         DB::unprepared('DROP TRIGGER IF EXISTS tenant_user_roles_no_service_principal ON tenant_user_roles');
-        DB::unprepared('DROP TRIGGER IF EXISTS service_principals_no_truncate ON service_principals');
+        DB::unprepared('DROP TRIGGER IF EXISTS service_principals_no_truncate ON service_principals'); // present in the first version of this migration
         Schema::dropIfExists('service_principals');
         foreach (['users_reserved_address_check', 'service_principals_one_tenant', 'service_principals_no_platform_role', 'service_principals_no_tenant_role', 'service_principals_user_lock',
             'service_principals_validate', 'service_principals_guard'] as $function) {
