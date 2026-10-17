@@ -21,6 +21,9 @@ class NexusApi
 {
     public const SCOPES = 'authorization.check commercial.read event.write audit.write';
 
+    /** Delegation (R08/A25) is asked for with its own token, so a service account that is not (yet) allowed `tenant.delegate` never loses the calls it already makes. */
+    public const DELEGATION_SCOPES = 'authorization.check tenant.delegate';
+
     private const TOKEN_KEY = 'optinexus.service.token';
 
     /**
@@ -31,19 +34,24 @@ class NexusApi
      *  - a connection error or 502/503/504, only when the caller says the call is safe to repeat (`$repeatable`): once, after a pause.
      * Every other status is returned as it is. Total waiting is bounded by `max_retries` x `max_retry_wait_seconds`.
      *
+     * `$scopes` names the token to use (default: SCOPES); every scope set has its own cached token. `$correlationId` ties the call to the
+     * user's request in OptiNexus' audit trail; it is the same for every repetition of one call.
+     *
      * @param  array<string,mixed>  $data
      */
-    public function send(string $method, string $path, array $data = [], bool $repeatable = false): Response
+    public function send(string $method, string $path, array $data = [], bool $repeatable = false, ?string $scopes = null, ?string $correlationId = null): Response
     {
         $max = max(0, (int) config('optientry.optinexus.service.max_retries'));
         $cap = max(1, (int) config('optientry.optinexus.service.max_retry_wait_seconds'));
+        $scopes ??= self::SCOPES;
+        $correlationId ??= (string) Str::uuid();
         $renewed = false;
         $limited = 0;
         $transient = 0;
 
         while (true) {
             try {
-                $response = $this->attempt($method, $path, $data);
+                $response = $this->attempt($method, $path, $data, $scopes, $correlationId);
             } catch (IdentityProviderUnavailable $e) {
                 if (! $repeatable || $transient++ >= 1 || ! $e->transient) {
                     throw $e;
@@ -56,7 +64,7 @@ class NexusApi
             $status = $response->status();
 
             if ($status === 401 && ! $renewed) { // expired or revoked token: renew once
-                Cache::forget(self::TOKEN_KEY);
+                Cache::forget($this->tokenKey($scopes));
                 $renewed = true;
 
                 continue;
@@ -104,10 +112,10 @@ class NexusApi
         return (array) ($response->json('data') ?? []);
     }
 
-    private function attempt(string $method, string $path, array $data): Response
+    private function attempt(string $method, string $path, array $data, string $scopes, string $correlationId): Response
     {
         try {
-            $request = $this->decorate(Http::withToken($this->token()));
+            $request = $this->decorate(Http::withToken($this->token($scopes)), $correlationId);
 
             return strtoupper($method) === 'GET' ? $request->get($this->url($path), $data) : $request->send(strtoupper($method), $this->url($path), ['json' => $data]);
         } catch (ConnectionException $e) {
@@ -115,10 +123,10 @@ class NexusApi
         }
     }
 
-    private function decorate(PendingRequest $request): PendingRequest
+    private function decorate(PendingRequest $request, string $correlationId): PendingRequest
     {
         return $request->acceptJson()
-            ->withHeaders(['X-Correlation-Id' => (string) Str::uuid()])
+            ->withHeaders(['X-Correlation-Id' => $correlationId])
             ->timeout((int) config('optientry.optinexus.service.timeout_seconds'))
             ->withoutRedirecting();
     }
@@ -128,30 +136,36 @@ class NexusApi
         return OptinexusSettings::baseUrl().'/api/v1'.$path;
     }
 
-    private function token(): string
+    private function tokenKey(string $scopes): string
+    {
+        return $scopes === self::SCOPES ? self::TOKEN_KEY : self::TOKEN_KEY.':'.substr(hash('sha256', $scopes), 0, 12);
+    }
+
+    private function token(string $scopes): string
     {
         if ($missing = OptinexusSettings::missingForService()) {
-            throw new IdentityProviderUnavailable('Service account is not configured: '.implode(', ', $missing));
+            throw new IdentityProviderUnavailable('Service account is not configured: '.implode(', ', $missing), configuration: true);
         }
 
-        $cached = Cache::get(self::TOKEN_KEY);
+        $key = $this->tokenKey($scopes);
+        $cached = Cache::get($key);
         if (is_string($cached) && $cached !== '') {
             return $cached;
         }
 
         // One worker renews the token; the others wait for it instead of each asking OptiNexus at the same moment.
         try {
-            return Cache::lock(self::TOKEN_KEY.':renewal', 15)->block(10, function () {
-                $cached = Cache::get(self::TOKEN_KEY);
+            return Cache::lock($key.':renewal', 15)->block(10, function () use ($key, $scopes) {
+                $cached = Cache::get($key);
 
-                return is_string($cached) && $cached !== '' ? $cached : $this->requestToken();
+                return is_string($cached) && $cached !== '' ? $cached : $this->requestToken($scopes, $key);
             });
         } catch (LockTimeoutException) {
             throw new IdentityProviderUnavailable('Service account token renewal timed out.', transient: true);
         }
     }
 
-    private function requestToken(): string
+    private function requestToken(string $scopes, string $key): string
     {
         $max = max(0, (int) config('optientry.optinexus.service.max_retries'));
         $cap = max(1, (int) config('optientry.optinexus.service.max_retry_wait_seconds'));
@@ -163,7 +177,7 @@ class NexusApi
                         'grant_type' => 'client_credentials',
                         'client_id' => config('optientry.optinexus.service.client_id'),
                         'client_secret' => config('optientry.optinexus.service.client_secret'),
-                        'scope' => self::SCOPES,
+                        'scope' => $scopes,
                     ]);
             } catch (ConnectionException $e) {
                 throw new IdentityProviderUnavailable(Str::limit($e->getMessage(), 200), transient: true);
@@ -182,11 +196,12 @@ class NexusApi
                 "Service account authentication failed (HTTP {$response->status()}).",
                 $response->status() === 429 ? ($this->retryAfter($response) ?? 60) : null,
                 transient: $response->serverError(),
+                configuration: in_array($response->status(), [400, 401, 403], true), // refused credentials or scope: not an outage
             );
         }
 
         $ttl = max(60, (int) ($response->json('expires_in') ?? 3600) - 120);
-        Cache::put(self::TOKEN_KEY, $token, $ttl);
+        Cache::put($key, $token, $ttl);
 
         return $token;
     }

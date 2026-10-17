@@ -26,6 +26,15 @@ changed in OptiEntry. Merge only on owner request.
   127.0.0.1, listening on the same port inside the container so one `alias:port` URL works for browsers and other containers, required
   `APP_KEY`/`DB_PASSWORD`, project name and volume keys unchanged. `VITE_ALLOWED_HOSTS` for the dev server.
 
+- E1 backend (R08/A25/A02): in `optinexus` mode an Admin Tenant creates/links users, sets role assignment, removes access and manages custom roles
+  from Entry through the OptiNexus delegation API (`/app/delegation/*`, acting user = signed-in user's `optinexus_subject`). No second authority:
+  lists are live Nexus answers, local rows are a projection (INVITED membership, default data scope OWN), permissions still come from the bulk
+  effective-permissions call. Seat precheck + compensation on a lost race, every documented Nexus delegation error code translated (+ `details.reference`),
+  `outcome_unknown` on write timeouts, per-role-name create lock, Entry audit entries `delegation.*`. Manifest v2 (`manifest_version`, content
+  `revision`, per-permission `capability_code` + `delegable`, `tenant.delegate` scope) and the explicit delegable set (101/136; governance,
+  credentials, period close, integration connections excluded; rationale in `OPTINEXUS_ONBOARDING.md` section 5). Standalone is labelled legacy;
+  migration plan `docs/architecture/LEGACY_IDENTITY_MIGRATION.md` (no auto-migration). Design: `OPTINEXUS_ADAPTER.md` sections 9-10.
+
 ## Tests (executed in this session)
 - A03: `tests/Feature/Optinexus` 121 passed (21 in `NexusPermissionTest`: >120 permissions in one request, wildcard/unknown-key/mismatched-answer
   refusal, per-permission scope, 429 + Retry-After bounded, 502 repeat, revoked token, rotated secret, many users/tenants, unbound account,
@@ -34,6 +43,10 @@ changed in OptiEntry. Merge only on owner request.
 - `tests/Feature/Integration`: 94 passed (35 in `IntegrationHardeningTest`: 18-case malformed-page matrix, four gap policies, resolution
   PROCESS/DISMISS, source-head refusal, pause during a page, conflicts, snapshot basis, backlog fairness). Concurrency
   `IntegrationConcurrencyTest`: 4 passed (pause waits for processing in flight; retry during a committing pause is refused).
+- E1 backend: `tests/Feature/Optinexus/TenantDelegationTest` (~50, incl. 21 error-code translations), `ManifestV2Test` (6), `ManifestAndCommandsTest`.
+  Full backend suite, `OPTIENTRY_IDENTITY_MODE=standalone` (the sandbox `.env` forces `optinexus`, which makes the standalone-mode Auth/Rbac/
+  Security/Capacity tests fail with 403 independent of any change): 1373 passed, 1 skipped (frontend sources not in the container), 1 failed
+  (`SeederAndBootstrapTest` reads `../docs/DEMO.md`, which the backend-only container mount lacks; 16 passed with `docs/` mounted at `/docs`).
 - Pint clean.
 - Container package (sandbox, Ubuntu php-fpm image instead of the Alpine one, which cannot be built here): `docker compose config` OK;
   bootstrap -> api/worker/scheduler/web/ui healthy; bootstrap re-run "Nothing to migrate"; runtime role refuses an unmigrated database after

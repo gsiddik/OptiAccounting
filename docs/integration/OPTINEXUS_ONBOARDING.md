@@ -18,7 +18,7 @@ Use a Sanctum token of an administrator (`POST /api/v1/auth/login`).
 |---|---|---|
 | 1 | `POST /applications` `{application_code: "optiaccounting", name, description, frontend_url, backend_url}`, then `POST /applications/{id}/submit`, `/approve`, `/publish` | Code must equal `OPTINEXUS_APPLICATION_CODE`. |
 | 2 | `POST /applications/{id}/capabilities` for every `capabilities[]` of the manifest, **modules first** | The manifest gives `parent_code`; OptiNexus wants `parent_id`, so pass the id returned for the module. Capabilities are created ACTIVE (do not call `activate`). |
-| 3 | `POST /permissions` `{application_id, permission_key, name, description}` for every `permissions[]` | Keys are `optiaccounting.<resource>.<action>`. Platform permissions are not registered (platform operators are local). |
+| 3 | `POST /permissions` `{application_id, permission_key, name, description, capability_code, delegable}` for every `permissions[]` | Keys are `optiaccounting.<resource>.<action>`. Platform permissions are not registered (platform operators are local). `capability_code` and `delegable` come from manifest v2 (section 5); an importer that does not know them ignores them and then nothing is delegable. |
 | 4 | `php artisan db:seed --class=SystemRoleSeeder` on OptiNexus | PLATFORM_SUPERADMIN receives `*` only when this seeder runs. Without it the administrator cannot grant the new permissions (`403 PRIVILEGE_ESCALATION_DENIED`). |
 | 5 | `POST /event-catalog` for every `events[]` | Until an event type is registered, OptiNexus answers 422 and the relay retries (nothing is lost). |
 | 6 | A product with the application, a plan with the capabilities (modules and features) and the limits `user_limit`, `branch_limit`, `business_unit_limit`, then `POST /subscriptions` and `/activate` | Capability codes equal the local module and feature codes. A limit that is absent means "no limit set". |
@@ -26,7 +26,7 @@ Use a Sanctum token of an administrator (`POST /api/v1/auth/login`).
 | 8 | A role with `role_type: APPLICATION` and `application_id` (no `tenant_id` on the role), `POST /roles/{role}/permissions/{permission}` per permission | The tenant goes on the assignment, not on the role. |
 | 9 | Per person: `POST /users`, `POST /users/{u}/tenants/{t}`, `POST /users/{u}/applications/{app}` `{tenant_id}`, `POST /users/{u}/roles/{role}` `{tenant_id}` | A person with the application but no permission is refused (`no_permissions`). |
 | 10 | `POST /oidc-clients` `{application_id, name, redirect_uris, post_logout_redirect_uris, launch_url, backchannel_logout_uri, confidential: true, require_pkce: true}` | Take the values from `oidc_client` of the manifest. The secret is shown once. |
-| 11 | `POST /service-accounts` `{name, application_id}` | The secret is shown once. `application_id` is required: permissions are pulled with `POST /authorization/effective-permissions`, which answers only for the application the service account is bound to (an unbound account gets `403 SERVICE_ACCOUNT_NOT_BOUND`). Scopes are requested at token time: `authorization.check commercial.read event.write audit.write`. |
+| 11 | `POST /service-accounts` `{name, application_id}` | The secret is shown once. `application_id` is required: permissions are pulled with `POST /authorization/effective-permissions`, which answers only for the application the service account is bound to (an unbound account gets `403 SERVICE_ACCOUNT_NOT_BOUND`). Scopes are requested at token time: `authorization.check commercial.read event.write audit.write`; **plus `tenant.delegate`** (requested with its own token) so that an Admin Tenant can manage users and custom roles from OptiEntry (section 5). The account must be bound to the application and never to `cgo`. |
 
 Bulk registration hits OptiNexus's rate limit (`429 RATE_LIMITED`); wait and retry.
 
@@ -63,9 +63,13 @@ enabled) and the person, then projects the subscription.
 
 ## 3. Behaviour to know
 
-- **Members, roles and subscriptions are edited in OptiNexus.** The matching local
-  actions answer `409 MANAGED_BY_OPTINEXUS` and the UI hides them. Data scopes,
-  organization (branches, business units) and tenant profile stay local.
+- **Subscriptions and entitlements are edited in OptiNexus; users and custom roles are
+  administered from OptiEntry through delegation.** An Admin Tenant (flag set by an operator in
+  OptiNexus) creates or links people, sets their roles, removes them and creates, edits and
+  deletes custom roles in Settings > Users and Roles; OptiNexus applies and audits every change
+  (docs/architecture/OPTINEXUS_ADAPTER.md section 10). The legacy local endpoints answer
+  `409 MANAGED_BY_OPTINEXUS`. Data scopes, organization (branches, business units) and the
+  tenant profile stay local.
 - **Removing a person's access to the application in OptiNexus** is sent as an
   access-revoked call of scope `user`: the local account is deactivated in every
   tenant until the next successful OptiNexus sign-in. Removing the person from one
@@ -101,3 +105,23 @@ Locally, OA2 and OA3 need nothing from the operator (OA4 adds only the permissio
 `ACCOUNTING_CASH_BANK` (and `2026_10_11_100002` every tenant that holds `ACCOUNTING_AR`) through a bundle the new features too (same windows, source `BUNDLE`; operator overrides are never touched), and in `optinexus` mode
 a tenant receives them from the next entitlement sync once its plan carries the features (step 6). Run `php artisan optientry:nexus:check` afterwards: it names any
 capability, permission or event that is still unregistered.
+
+## 5. Manifest v2 and what an Admin Tenant may delegate
+
+`optientry:nexus:manifest` prints `manifest_version` (2), `revision` (a digest of the catalog: capabilities, permissions with their flags,
+events, limit keys and scopes; the same for every installation of one release, it changes if and only if the catalog does) and, per
+permission, `group`, `capability_code` (the module or feature whose entitlement the permission needs, read from the route gates; `null`
+when no entitlement is needed or the routes disagree) and `delegable`. Import is additive: register new entries, never delete.
+
+The delegable set is explicit (`app/Domain/Integration/Optinexus/DelegableSet.php`, 101 of 136 tenant permissions); **anything not listed is
+`false`, including every permission added later.** A test fails if a listed code does not exist or a forbidden family leaks in.
+
+| Delegable (`true`) | Not delegable (`false`) and why |
+|---|---|
+| Reading the books and reports; journals (create, update, submit, approve, post, reverse); payables, receivables, expenses, cash and bank documents; vendor and customer masters; budgets; fixed assets (capitalize, depreciate, dispose); reconciliation work; cost centers; `audit.view`; `organization.view`; `account.subscription.view` | **Who may do what:** every `access.*` (users, roles, permission list, data scopes) and `organization.manage`. **Connections:** every `accounting.integration.*` (view, manage, retry). **Accounting time:** `accounting.period.manage|close|soft_close|hard_close|reopen|preclose`, `accounting.closing.*`, `accounting.year_end.run`, `accounting.journal.post_soft_closed`, `accounting.opening_balance.manage|post`. **Control overrides:** `accounting.ap_invoice.override_duplicate`. **What the books are made of / how facts become entries:** `accounting.profile|coa|posting_rule|account_mapping|tax|currency|exchange_rate|report_definition.manage`, `expense_category|asset_category|cash_bank.manage` |
+
+Rationale: delegable means day-to-day accounting work and read access. Segregation of duties (creator is not approver) is enforced by the
+document workflow, not by the role, so handing out approve and post rights does not weaken it. Everything that grants access, connects
+or credentials another system, moves accounting time or overrides a control stays with operators and role templates. An operator may flag
+a single permission delegable in OptiNexus for one tenant's needs without a code change; OptiNexus intersects the set with the tenant's
+entitlements on every call, so a module the tenant does not hold is never offered.

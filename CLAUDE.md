@@ -37,6 +37,11 @@ release status live in `docs/status/*.md`, not here.
   `standalone` (local users/tenants/roles/permissions) and `optinexus`
   (OptiNexus is the authority for tenant, user, membership, role, permission,
   application subscription and events). See `SAAS_ARCHITECTURE.md`.
+  Owner decisions R01-R08 (2026-10-12): `optinexus` is the target; `standalone` is **legacy**
+  (kept working, labelled legacy, not R01-R08 compliant; migration plan in
+  `docs/architecture/LEGACY_IDENTITY_MIGRATION.md`). In `optinexus` mode an Admin Tenant manages
+  users and custom roles from the OptiEntry UI through the OptiNexus delegation API
+  (`OPTINEXUS_ADAPTER.md` §10); OptiEntry keeps no second authority.
 - Product name: OptiEntry (formerly OptiAccounting). Identifiers already registered in OptiNexus or persisted
   in databases keep the former name (application code, `optiaccounting.*` permission/event keys, database
   names); `OPTIACCOUNTING_*` env vars and `optiaccounting:*` artisan names still work as fallbacks. Do not

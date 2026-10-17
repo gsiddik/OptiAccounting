@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\App\Accounting;
 use App\Http\Controllers\Api\App\Budget;
 use App\Http\Controllers\Api\App\CashBank;
 use App\Http\Controllers\Api\App\Currency;
+use App\Http\Controllers\Api\App\Delegation;
 use App\Http\Controllers\Api\App\Expense;
 use App\Http\Controllers\Api\App\FixedAsset;
 use App\Http\Controllers\Api\App\Operational;
@@ -131,6 +132,21 @@ Route::prefix('v1')->middleware('request.id')->group(function () {
         Route::patch('roles/{role}', [App\RoleController::class, 'update'])->middleware(['local.identity', 'access:access.role.manage']);
         Route::delete('roles/{role}', [App\RoleController::class, 'destroy'])->middleware(['local.identity', 'access:access.role.manage']);
         Route::get('permissions', [App\RoleController::class, 'permissions'])->middleware('access:access.permission.view');
+
+        // Identity mode `optinexus` (audit R08/A25): users and custom roles are administered in OptiNexus through its delegation API, on
+        // behalf of the signed-in Admin Tenant. These answer 409 DELEGATION_NOT_AVAILABLE in `standalone` mode, where the routes above apply.
+        Route::prefix('delegation')->group(function () {
+            Route::get('status', [Delegation\DelegatedUserController::class, 'status'])->middleware('access:access.user.view');
+            Route::get('users', [Delegation\DelegatedUserController::class, 'index'])->middleware('access:access.user.view');
+            Route::post('users', [Delegation\DelegatedUserController::class, 'store'])->middleware('access:access.user.manage');
+            Route::put('users/{subject}/roles', [Delegation\DelegatedUserController::class, 'roles'])->whereUuid('subject')->middleware('access:access.user.manage');
+            Route::delete('users/{subject}', [Delegation\DelegatedUserController::class, 'destroy'])->whereUuid('subject')->middleware('access:access.user.manage');
+            Route::get('assignable-roles', [Delegation\DelegatedRoleController::class, 'assignable'])->middleware('access:access.user.view');
+            Route::get('roles', [Delegation\DelegatedRoleController::class, 'index'])->middleware('access:access.role.view');
+            Route::post('roles', [Delegation\DelegatedRoleController::class, 'store'])->middleware('access:access.role.manage');
+            Route::put('roles/{role}', [Delegation\DelegatedRoleController::class, 'update'])->whereUuid('role')->middleware('access:access.role.manage');
+            Route::delete('roles/{role}', [Delegation\DelegatedRoleController::class, 'destroy'])->whereUuid('role')->middleware('access:access.role.manage');
+        });
 
         Route::get('account/subscription', [App\AccountController::class, 'subscription'])->middleware('access:account.subscription.view');
         Route::get('account/modules', [App\AccountController::class, 'modules'])->middleware('access:account.subscription.view');

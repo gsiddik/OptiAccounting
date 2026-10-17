@@ -37,7 +37,7 @@ class ManifestAndCommandsTest extends OptinexusTestCase
         }
 
         $this->assertSame(['user_limit', 'branch_limit', 'business_unit_limit'], $manifest['entitlement_limit_keys']);
-        $this->assertEqualsCanonicalizing(['authorization.check', 'commercial.read', 'event.write', 'audit.write'], $manifest['service_account']['scopes']);
+        $this->assertEqualsCanonicalizing(['authorization.check', 'commercial.read', 'event.write', 'audit.write', 'tenant.delegate'], $manifest['service_account']['scopes']);
         $this->assertSame(['https://api.test/api/v1/auth/sso/callback'], $manifest['oidc_client']['redirect_uris']);
         $this->assertStringEndsWith('/api/v1/integration/optinexus/backchannel-logout', $manifest['oidc_client']['backchannel_logout_uri']);
         $this->assertSame(self::FRONTEND, $manifest['oidc_client']['launch_url']);
@@ -60,7 +60,7 @@ class ManifestAndCommandsTest extends OptinexusTestCase
     public function test_the_check_command_passes_against_a_healthy_optinexus(): void
     {
         $this->artisan('optientry:nexus:check')->assertSuccessful()
-            ->expectsOutputToContain('Discovery document')->expectsOutputToContain('Service account token and scopes');
+            ->expectsOutputToContain('Discovery document')->expectsOutputToContain('Service account token and scopes')->expectsOutputToContain('Delegation of users and roles');
     }
 
     public function test_the_check_command_names_what_is_wrong(): void
@@ -71,6 +71,13 @@ class ManifestAndCommandsTest extends OptinexusTestCase
         $this->nexus['service_scopes_ok'] = true;
         config(['optientry.optinexus.service.client_secret' => '']);
         $this->artisan('optientry:nexus:check')->assertFailed()->expectsOutputToContain('OPTINEXUS_SERVICE_CLIENT_SECRET');
+        config(['optientry.optinexus.service.client_secret' => 'svc-secret']);
+
+        // The basic calls work but the service account may not delegate: users and roles cannot be managed from here.
+        $this->nexus['delegation']['scope_revoked'] = true;
+        $this->artisan('optientry:nexus:check')->assertFailed()->expectsOutputToContain('tenant.delegate');
+        $this->nexus['delegation']['scope_revoked'] = false;
+        $this->artisan('optientry:nexus:check')->assertSuccessful();
 
         config(['optientry.optinexus.service.client_secret' => 'svc-secret', 'optientry.optinexus.sso.client_id' => '']);
         $this->artisan('optientry:nexus:check')->assertFailed()->expectsOutputToContain('OPTINEXUS_SSO_CLIENT_ID');

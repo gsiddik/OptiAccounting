@@ -17,6 +17,8 @@ use Illuminate\Testing\TestResponse;
  */
 trait FakesOptinexus
 {
+    use FakesNexusDelegation;
+
     protected const NEXUS_URL = 'https://nexus.test';
 
     protected const NEXUS_TENANT = '7b1c5d0e-2f55-4f3e-9a58-0d3d2a6c1111';
@@ -61,7 +63,9 @@ trait FakesOptinexus
             'event_response' => [201, ['success' => true]],
             'audit_response' => [201, ['success' => true]],
             'signing_key' => 'primary',
+            'token_scopes' => [], // service token => the scope string it was issued with
         ];
+        $this->nexusDelegationReset();
 
         Http::preventStrayRequests();
         Http::fake(fn (Request $request) => $this->nexusRespond($request));
@@ -158,7 +162,7 @@ trait FakesOptinexus
     private function nexusRespond(Request $request): mixed
     {
         $path = (string) parse_url($request->url(), PHP_URL_PATH);
-        $this->nexus['requests'][] = ['method' => $request->method(), 'path' => $path, 'body' => $request->data(), 'auth' => $request->header('Authorization')[0] ?? null];
+        $this->nexus['requests'][] = ['method' => $request->method(), 'path' => $path, 'body' => $request->data(), 'auth' => $request->header('Authorization')[0] ?? null, 'correlation' => $request->header('X-Correlation-Id')[0] ?? null, 'url' => $request->url()];
 
         if ($this->nexus['down']) {
             return Http::failedConnection('Nexus is down');
@@ -223,6 +227,7 @@ trait FakesOptinexus
             return Http::response(['message' => 'invalid_client'], 401);
         }
         $this->nexus['service_tokens']++;
+        $this->nexus['token_scopes']['service-token-'.$this->nexus['service_tokens']] = (string) ($form['scope'] ?? '');
 
         return Http::response(['token_type' => 'Bearer', 'expires_in' => 3600, 'access_token' => 'service-token-'.$this->nexus['service_tokens']]);
     }
@@ -255,6 +260,10 @@ trait FakesOptinexus
                 'applications_enabled' => $tenant['applications'],
                 'effective_entitlements' => $tenant['entitlements'],
             ]]);
+        }
+
+        if (str_starts_with($path, '/api/v1/delegation/')) {
+            return $this->nexusDelegationRespond($request, $path);
         }
 
         if ($path === '/api/v1/events') {

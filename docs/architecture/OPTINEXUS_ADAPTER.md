@@ -84,8 +84,9 @@ by `optientry:nexus:check`. The individual endpoint stays available in OptiNexus
 Compatibility: this release of OptiEntry needs an OptiNexus release that has `POST /authorization/effective-permissions` and a service
 account with `application_id` set (see OPTINEXUS_ONBOARDING.md); the service account scope stays `authorization.check`.
 
-Role, permission-grant and member lifecycle endpoints of the tenant portal
-answer `409 MANAGED_BY_OPTINEXUS` in this mode; data scopes stay editable.
+The local role, permission-grant and member lifecycle endpoints (`/app/users`, `/app/roles`, status, role assignment) are the **legacy
+local authority** and answer `409 MANAGED_BY_OPTINEXUS` in this mode; an Admin Tenant administers users and custom roles through the
+delegation routes of section 10 instead. Data scopes stay editable.
 Platform permissions remain local (platform operators are local break-glass
 accounts; OptiNexus-authenticated platform operators are out of scope).
 
@@ -145,7 +146,72 @@ the catalog yet) is retried, other 4xx fail at once. Initial event types:
 - Failure behaviour: existing sessions work until the permission cache expires;
   new sign-ins fail closed; accounting data is never touched by an outage.
 
-## 9. Not in scope (owner decisions if wanted)
+## 9. Mode status (owner decisions R01-R08, 2026-10-12)
+
+`optinexus` is the target: OptiNexus is the authority for tenant, user, membership, role, permission, subscription and entitlement, for
+single-product use as well. `standalone` (local users, roles, permissions, subscriptions) is **legacy**: it keeps working and keeps its
+tests so existing installations are not broken, but it does not satisfy R01-R08. Everything that is local authority is marked in code
+and docs: `LocalPermissionSource`, `MemberController`/`RoleController` writes, `Platform\*` subscription and entitlement writes,
+`RequireLocalIdentity`. Moving a legacy installation to the target is a planned, mapped, operator-run migration, never an automatic one:
+`docs/architecture/LEGACY_IDENTITY_MIGRATION.md`.
+
+## 10. Tenant delegation: users and custom roles from the OptiEntry UI (R08 / audit A25)
+
+An Admin Tenant (the flag exists only in OptiNexus and is set only by an operator) manages the people and roles of their organisation
+from Settings > Users and Roles, without entering the OptiNexus portal. OptiEntry has **no second authority**: every list is an answer of
+OptiNexus, every change goes through its delegation API (`GET/POST /delegation/tenants/{tenant}/users`, `PUT .../users/{user}/roles`,
+`DELETE .../users/{user}`, `POST/PUT/DELETE .../roles`, `GET .../catalog`; contract in OptiNexus `docs/ecosystem/GOVERNANCE_CONTRACTS.md`
+section 2), and permissions still come from `effective-permissions` (section 4).
+
+| Piece | Where |
+|---|---|
+| Routes (tenant API, `access:access.user.view|manage`, `access.role.view|manage`) | `/api/v1/app/delegation/{status,users,assignable-roles,roles}` |
+| Thin controllers, Form Requests | `Api/App/Delegation/Delegated{User,Role}Controller`, `Requests/Delegation/*` |
+| Domain service (link, seats, projection, audit, refusal audit) | `Integration/Optinexus/Delegation/TenantDelegation` |
+| HTTP client, error translation | `NexusDelegationClient`, `DelegationErrors` (every OptiNexus code -> one stable code here) |
+| Token | `NexusApi::DELEGATION_SCOPES` = `authorization.check tenant.delegate`, its **own** cached token: a service account that may not (yet) delegate loses nothing it already does |
+
+Rules the code keeps:
+
+- **Identity of the call.** The tenant is the session tenant's `optinexus_tenant_id`, the acting user the signed-in user's
+  `optinexus_subject`; neither is read from the request (a `tenant_id` or `acting_user_id` in a body or query is ignored). A person without
+  a subject (break-glass operator) gets `ACTOR_NOT_LINKED`; OptiNexus answers `ACTOR_NOT_TENANT_ADMIN` for anyone who is not an active
+  Admin Tenant of that tenant with access to this application (the page shows a "forbidden" state, not a partial list).
+- **Delegable set.** OptiNexus enforces it on every role create/edit (`PERMISSION_NOT_DELEGABLE`, `details.permissions`) and on every
+  assignment (`ROLE_NOT_ASSIGNABLE`, `details.role_ids`); OptiEntry never pre-judges it (an operator may widen or narrow it in OptiNexus)
+  and surfaces the refusal in its own permission codes. Its default comes from the manifest (`delegable`, OPTINEXUS_ONBOARDING section 5).
+  The catalog endpoint returns every local permission with `state`: `AVAILABLE`, `NOT_ENTITLED` (we mark it delegable, OptiNexus does not
+  offer it to this tenant) or `NOT_DELEGABLE`; the UI shows the last two as unavailable.
+- **Local projection.** After a successful create/link the person gets a local user (`optinexus_subject`, no password) and an `INVITED`
+  membership with a data scope (default `OWN`, the narrowest; the Admin may choose another within their own reach), which the first
+  verified sign-in activates (`AccountLinker`). An e-mail that already belongs to a local account is never claimed here (audit
+  `delegation.projection_deferred`); only a verified sign-in links accounts. Roles are not copied: the permissions of the person are
+  whatever OptiNexus answers. Removing a person ends the local membership (`INACTIVE` + `optinexus_deactivated_at`, tokens revoked, seat
+  freed) so that adding them again undoes exactly that.
+- **Seats.** `CapacityService::reserve(USER_LIMIT)` runs before OptiNexus is asked and again when the projection is written; if the
+  second check fails (a concurrent creation took the last seat) the access just granted is withdrawn in OptiNexus (`delegation.user_withdrawn`)
+  and `CAPACITY_EXCEEDED` is answered. A person who already holds a seat takes no second one. A read-only or inactive subscription refuses
+  every change (`SUBSCRIPTION_READ_ONLY` / `SUBSCRIPTION_INACTIVE`).
+- **Retry safety.** A read is repeated once on a transient failure; a write is never repeated by the transport (only 401 token renewal and
+  429, where OptiNexus certainly did not process it). A write whose answer is lost is reported with `details.outcome_unknown = true`, so
+  the UI tells the person to refresh before repeating. Creating a person is idempotent in OptiNexus (same e-mail, one identity); creating a
+  role refuses an equal name (`ROLE_NAME_TAKEN`) and a double submit (`DELEGATION_IN_PROGRESS`, cache lock).
+- **Error vocabulary** (all carry `details.reference` = the `X-Request-Id`, which is also sent to OptiNexus as `X-Correlation-Id`, so one
+  id finds the call in both audit logs): OptiNexus codes that a person can act on pass through (`ACTOR_NOT_TENANT_ADMIN`,
+  `TENANT_NOT_ACTIVE`, `APPLICATION_NOT_ACTIVE`, `APPLICATION_NOT_SUBSCRIBED`, `PERMISSION_NOT_DELEGABLE`, `ROLE_NOT_ASSIGNABLE`,
+  `ROLE_NOT_EDITABLE`, `ROLE_IN_USE`, `USER_NOT_IN_TENANT`, `TENANT_ADMIN_PROTECTED`, `IDENTITY_NOT_LINKABLE`, `MEMBERSHIP_NOT_ACTIVE`,
+  `SELF_REVOCATION_DENIED`); installation problems (`SERVICE_ACCOUNT_NOT_BOUND`, `APPLICATION_NOT_DELEGABLE`, `TENANT_MISMATCH`, missing
+  scope, inactive account) become `DELEGATION_NOT_CONFIGURED` (503); an unknown tenant `DELEGATION_TENANT_UNKNOWN` (409); 429 and 5xx
+  `IDENTITY_PROVIDER_UNAVAILABLE` (503, `retry_after`); validation `422` with field errors; anything else `DELEGATION_UNEXPECTED_RESPONSE`
+  (502). Local codes: `DELEGATION_NOT_AVAILABLE` (409, standalone), `TENANT_NOT_LINKED`, `ACTOR_NOT_LINKED`, `UNKNOWN_PERMISSION`,
+  `ROLE_NAME_TAKEN`, `DELEGATION_IN_PROGRESS`, `CAPACITY_EXCEEDED`.
+- **Audit.** Entry audit actions: `delegation.user_added|user_roles_set|user_removed|user_withdrawn|user_withdraw_failed|role_created|
+  role_updated|role_deleted|projection_deferred` and `delegation.refused` (every refusal OptiNexus decided, with its code and the
+  permissions or roles it named). OptiNexus audits the same calls as `delegation.*` with the Admin Tenant as actor.
+- **Not reachable from OptiEntry, by design:** Admin Tenant accounts (`TENANT_ADMIN_PROTECTED`), other tenants and applications, ecosystem
+  roles, plans, entitlements, subscriptions, tenant-wide membership. `optientry:nexus:check` verifies the scope and the endpoint.
+
+## 11. Not in scope (owner decisions if wanted)
 
 Batch permission endpoint in OptiNexus; OptiNexus-authenticated platform
 operators; mixed local/OptiNexus tenants in one installation (SAAS §1); a

@@ -82,6 +82,24 @@ class NexusCheck extends Command
             $api->data($response);
         });
 
+        $step('Delegation of users and roles (scope tenant.delegate)', function () use ($api) {
+            // A harmless question about an unknown tenant: OptiNexus answers 404 RESOURCE_NOT_FOUND only when it has the delegation API
+            // and the token carries tenant.delegate for an account bound to this application.
+            $nil = '00000000-0000-0000-0000-000000000000';
+            $response = $api->send('GET', "/delegation/tenants/{$nil}/catalog", ['acting_user_id' => $nil], repeatable: true, scopes: NexusApi::DELEGATION_SCOPES);
+            $code = $response->json('error.code');
+            if ($response->status() === 404 && $code === 'RESOURCE_NOT_FOUND') {
+                return 'ready';
+            }
+            if ($response->status() === 404) {
+                throw new \RuntimeException('OptiNexus lacks the delegation API (upgrade it)');
+            }
+            if (in_array($response->status(), [401, 403], true)) {
+                throw new \RuntimeException(($code ?: 'refused').': allow the scope tenant.delegate for the service account and bind it to the application; users and roles cannot be managed from OptiEntry until then');
+            }
+            throw new \RuntimeException('unexpected answer HTTP '.$response->status());
+        });
+
         return $ok ? self::SUCCESS : self::FAILURE;
     }
 }
