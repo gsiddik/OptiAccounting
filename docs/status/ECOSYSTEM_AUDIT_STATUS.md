@@ -19,6 +19,13 @@ changed in OptiEntry. Merge only on owner request.
   (single-flight), honours `Retry-After` within a cap, repeats a read once on 502/503/504; no per-permission fallback. `optientry:nexus:check`
   reports an unbound account and an OptiNexus without the endpoint. Design: `OPTINEXUS_ADAPTER.md` section 4.
 
+- A04/A05/A07/A13 container package: `.dockerignore` (no env files, vendor, caches, logs, tests or docs in the image), image without a baked-in
+  environment, one `bootstrap` job (bounded database/Redis wait, migrate, production-safe seed) and runtime roles that wait for a current
+  schema and never migrate, identical `environment:` block for api/worker/scheduler/bootstrap, no bind-mounted source (the nginx image gets
+  only a template; the SPA image proxies `/api` on its own origin so it carries no URL), ports 8200 (API) / 5190 (console) published on
+  127.0.0.1, listening on the same port inside the container so one `alias:port` URL works for browsers and other containers, required
+  `APP_KEY`/`DB_PASSWORD`, project name and volume keys unchanged. `VITE_ALLOWED_HOSTS` for the dev server.
+
 ## Tests (executed in this session)
 - A03: `tests/Feature/Optinexus` 121 passed (21 in `NexusPermissionTest`: >120 permissions in one request, wildcard/unknown-key/mismatched-answer
   refusal, per-permission scope, 429 + Retry-After bounded, 502 repeat, revoked token, rotated secret, many users/tenants, unbound account,
@@ -28,7 +35,13 @@ changed in OptiEntry. Merge only on owner request.
   PROCESS/DISMISS, source-head refusal, pause during a page, conflicts, snapshot basis, backlog fairness). Concurrency
   `IntegrationConcurrencyTest`: 4 passed (pause waits for processing in flight; retry during a committing pause is refused).
 - Pint clean.
+- Container package (sandbox, Ubuntu php-fpm image instead of the Alpine one, which cannot be built here): `docker compose config` OK;
+  bootstrap -> api/worker/scheduler/web/ui healthy; bootstrap re-run "Nothing to migrate"; runtime role refuses an unmigrated database after
+  the bounded wait; bootstrap refuses `optinexus` mode without `OPTINEXUS_BASE_URL` and an unreachable database after the bounded wait;
+  SPA built on the host and served through the real nginx template (`/`, `/login`, assets immutable, `index.html` no-store, `/api` proxied).
+  Console bundle before A15: `index-*.js` 1,285,035 B (319.5 kB gzip), CSS 19,233 B.
 
 ## Not done yet / NOT RUN
+- Production image build (`docker build` with Alpine) and a Windows Podman run: NOT RUN here (Alpine mirror blocked, no Podman).
 - UI for gaps, conflicts, outcomes, dismiss and English/Indonesian labels (A26); OptiFleet-v2 must publish `high_water` before a paused connection
   can be switched on against it; full regression, frontend tests, screenshots and a live two-backend pull are pending (see central checkpoint).
