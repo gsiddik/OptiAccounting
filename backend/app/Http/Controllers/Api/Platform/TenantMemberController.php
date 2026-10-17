@@ -20,7 +20,7 @@ class TenantMemberController extends PlatformController
 
     public function index(Tenant $tenant): JsonResponse
     {
-        $rows = $this->inTenant($tenant, fn () => TenantUser::query()->with(['user:id,name,email,status', 'roles:id,name'])
+        $rows = $this->inTenant($tenant, fn () => TenantUser::query()->with(['user:id,name,email,status', 'roles:id,name', 'servicePrincipal'])
             ->orderByDesc('created_at')->paginate(25));
 
         return response()->json($rows);

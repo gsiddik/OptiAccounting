@@ -39,6 +39,8 @@ class MembershipService
      */
     public function add(string $tenantId, User $actor, array $person, array $roleIds, array $dataScopes): TenantUser
     {
+        ReservedAddress::assertHuman($person['email']); // before any lookup by address: a service principal is never invited anywhere
+
         return DB::transaction(function () use ($tenantId, $actor, $person, $roleIds, $dataScopes) {
             $this->reserveUserSlot($tenantId);
 
@@ -87,7 +89,8 @@ class MembershipService
             }
 
             $before = $membership->status;
-            if ($before === TenantUser::INACTIVE && $status === TenantUser::ACTIVE) {
+            // a service principal takes no seat, so switching it on needs none
+            if ($before === TenantUser::INACTIVE && $status === TenantUser::ACTIVE && ! $this->isServicePrincipal($membership)) {
                 $this->reserveUserSlot($membership->tenant_id);
             }
 
@@ -163,8 +166,17 @@ class MembershipService
         }
     }
 
+    private function isServicePrincipal(TenantUser $membership): bool
+    {
+        return DB::table('service_principals')->where('user_id', $membership->user_id)->exists();
+    }
+
     private function assignRoles(TenantUser $membership, User $actor, array $roleIds): void
     {
+        if ($roleIds !== [] && $this->isServicePrincipal($membership)) {
+            throw new DomainException('A service identity holds no role.', 'SERVICE_PRINCIPAL_PROTECTED', 409);
+        }
+
         $roleIds = array_values(array_unique($roleIds));
         $roles = Role::query()->forTenant($membership->tenant_id)->whereIn('id', $roleIds)->get();
         if ($roles->count() !== count($roleIds)) {

@@ -13,6 +13,8 @@ use App\Domain\Expense\Models\ExpenseCategory;
 use App\Domain\Expense\Services\ExpenseCategoryService;
 use App\Domain\Identity\Models\Tenant;
 use App\Domain\Identity\Models\User;
+use App\Domain\Identity\Services\ServicePrincipalKinds;
+use App\Domain\Identity\Services\ServicePrincipalRegistry;
 use App\Domain\Integration\Adapters\OptiFleet\OptiFleetAdapter;
 use App\Domain\Integration\Models\ExternalEvent;
 use App\Domain\Integration\Models\IntegrationConnection;
@@ -96,6 +98,9 @@ class DemoOa6Seeder
 
             $this->today = now(config('app.timezone'))->toDateString();
             $this->floor = substr((string) $firstOpen, 0, 10);
+
+            // What the platform operator does once per tenant: issue the integration service identity (A23). Without it the connector cannot be switched on.
+            app(ServicePrincipalRegistry::class)->issue($tenant, ServicePrincipalKinds::OPTIFLEET_INTEGRATION, 'Demo data: the OptiFleet integration user of the demo organization', 'SEEDER', null, 'DemoSeeder');
 
             $connection = $this->connection();
             if ($connection !== null) {

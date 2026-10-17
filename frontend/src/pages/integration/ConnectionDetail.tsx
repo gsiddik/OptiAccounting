@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useToast } from '../../components/Toast'
 import { Banner, Button, Card, ErrorNotice, Loading, PageHeader } from '../../components/ui'
+import { useI18n, type MessageKey } from '../../i18n'
 import { api } from '../../lib/api'
 import { useAction, useResource } from '../../lib/hooks'
 import { describeError } from '../../lib/labels'
@@ -9,7 +10,8 @@ import { ReadOnlyNotice } from '../operational/shared'
 import { ConnectionBadge, Facts } from './components'
 import { ConnectionForm } from './ConnectionForm'
 import { LifecycleDialog, SettingsDialog, type Lifecycle } from './ConnectionDialogs'
-import { ConfigCard, SettingsCard, SummaryCard } from './ConnectionPanels'
+import { AccessBanners, AccessCard, BooksCard, ConfigCard, HealthCard, SettingsCard, SourceCard, SummaryCard } from './ConnectionPanels'
+import { GapsCard, OpenGapBanner } from './GapPanel'
 import { ENDPOINTS, OPTIFLEET, PATHS, settingsOf, useIntegrationAccess } from './data'
 import { integrationError, sourceLabel } from './labels'
 import type { Connection, ConnectionSummary, SyncResult } from './types'
@@ -22,10 +24,11 @@ const OFFERED: Record<Lifecycle | 'sync', string[]> = {
   disconnect: ['DRAFT', 'CONFIGURING', 'READY', 'ACTIVE', 'PAUSED', 'ERROR'],
   sync: ['ACTIVE'],
 }
-const LIFECYCLE: [Lifecycle, string][] = [['activate', 'Aktifkan'], ['pause', 'Jeda'], ['resume', 'Lanjutkan'], ['disconnect', 'Putuskan']]
+const LIFECYCLE: [Lifecycle, MessageKey][] = [['activate', 'it.action.activate'], ['pause', 'it.action.pause'], ['resume', 'it.action.resume'], ['disconnect', 'it.action.disconnect']]
 
 export default function ConnectionDetail() {
   const { id = '' } = useParams()
+  const { t } = useI18n()
   const access = useIntegrationAccess()
   const toast = useToast()
   const sync = useAction()
@@ -45,7 +48,7 @@ export default function ConnectionDetail() {
     const done = await sync.run(async () => (await api.post<SyncResult>(ENDPOINTS.action(id, 'sync-now'))).data)
     if (done.ok) {
       setResult(done.value)
-      toast.success('Sinkronisasi selesai.')
+      toast.success(t('it.detail.sync_done'))
     }
     reloadAll()
   }
@@ -61,23 +64,30 @@ export default function ConnectionDetail() {
         description={<>{sourceLabel(c.source_system)} · <ConnectionBadge status={c.status} /></>}
         actions={
           <>
-            <Link className="btn" to={PATHS.connections}>Semua koneksi</Link>
-            <Link className="btn" to={PATHS.connectionEvents(c.id)}>Kotak masuk kejadian</Link>
-            {access.canManage && offered('sync') && <Button loading={sync.busy} onClick={() => void syncNow()}>Sinkronkan sekarang</Button>}
+            <Link className="btn" to={PATHS.connections}>{t('it.detail.all')}</Link>
+            <Link className="btn" to={PATHS.connectionEvents(c.id)}>{t('it.detail.inbox')}</Link>
+            {access.canManage && offered('sync') && <Button loading={sync.busy} onClick={() => void syncNow()}>{t('it.detail.sync')}</Button>}
             {access.canManage && LIFECYCLE.filter(([action]) => offered(action)).map(([action, label]) => (
-              <Button key={action} variant={action === 'activate' ? 'primary' : action === 'disconnect' ? 'danger' : 'secondary'} onClick={() => setDialog(action)}>{label}</Button>
+              <Button key={action} variant={action === 'activate' ? 'primary' : action === 'disconnect' ? 'danger' : 'secondary'} onClick={() => setDialog(action)}>{t(label)}</Button>
             ))}
           </>
         }
       />
       <ReadOnlyNotice show={access.readOnly} />
-      {!access.can('accounting.integration.manage') && <Banner tone="info">Tampilan hanya baca: Anda tidak memiliki izin mengelola koneksi.</Banner>}
-      {c.status === 'ERROR' && <Banner tone="bad">Penarikan gagal {c.consecutive_failures} kali berturut-turut dan koneksi dihentikan. Perbaiki penyebabnya, lalu lanjutkan atau jeda koneksi.</Banner>}
-      {c.last_error && <Banner tone="warn"><strong>Galat tarikan terakhir.</strong> {c.last_error}</Banner>}
+      {!access.can('accounting.integration.manage') && <Banner tone="info">{t('it.detail.viewonly')}</Banner>}
+      {c.status === 'ERROR' && <Banner tone="bad">{t('it.detail.error_state', { n: c.consecutive_failures })}</Banner>}
+      <AccessBanners connection={c} />
+      <OpenGapBanner connection={c} />
+      {c.last_error && <Banner tone="warn"><strong>{t('it.detail.last_error')}</strong> {c.last_error}</Banner>}
       {sync.error != null && <Banner tone="bad">{describeError(integrationError(sync.error))}</Banner>}
       {result && <SyncCard result={result} />}
 
+      <HealthCard connection={c} summary={summary.data} />
       <SummaryCard connection={c} summary={summary.data} error={summary.error} onRetry={summary.reload} />
+      <BooksCard summary={summary.data} />
+      <SourceCard summary={summary.data} />
+      <AccessCard connection={c} />
+      <GapsCard connection={c} canManage={access.canManage} onChanged={reloadAll} />
       <ConfigCard connection={c} onEdit={access.canManage ? () => setDialog('edit') : undefined} />
       {c.source_system === OPTIFLEET && <SettingsCard connection={c} onEdit={access.canManage ? () => setDialog('settings') : undefined} />}
 
@@ -89,16 +99,17 @@ export default function ConnectionDetail() {
 }
 
 function SyncCard({ result }: { result: SyncResult }) {
+  const { t } = useI18n()
   return (
-    <Card title="Hasil sinkronisasi">
-      {result.error && <Banner tone="warn"><strong>Tarikan berhenti dengan galat.</strong> {result.error}</Banner>}
+    <Card title={t('it.sync.title')}>
+      {result.error && <Banner tone="warn"><strong>{t('it.sync.stopped')}</strong> {result.error}</Banner>}
       <Facts rows={[
-        ['Halaman ditarik', String(result.pages)],
-        ['Kejadian baru', String(result.received)],
-        ['Terkirim ganda', String(result.duplicates)],
-        ['Konflik isi', String(result.conflicts)],
-        ['Diproses', String(result.processed)],
-        ['Diposting', String(result.posted)],
+        [t('it.sync.pages'), String(result.pages)],
+        [t('it.sync.received'), String(result.received)],
+        [t('it.sync.duplicates'), String(result.duplicates)],
+        [t('it.sync.conflicts'), String(result.conflicts)],
+        [t('it.sync.processed'), String(result.processed)],
+        [t('it.sync.finished'), String(result.posted)],
       ]} />
     </Card>
   )

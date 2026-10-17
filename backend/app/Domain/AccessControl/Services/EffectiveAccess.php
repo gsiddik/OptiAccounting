@@ -121,6 +121,13 @@ class EffectiveAccess
             return AccessDecision::deny(AccessDecision::DATA_SCOPE_DENIED);
         }
 
+        // A permission granted at OWN scope covers the member's own records only, however wide the member's local data scope is.
+        if ($request->resource !== null && $request->permission !== null
+            && ($this->permissions->tenantGrants($tenantId, $membership->id)[$request->permission] ?? null) === 'OWN'
+            && ($request->resource['owner_id'] ?? null) !== $user->id) {
+            return AccessDecision::deny(AccessDecision::DATA_SCOPE_DENIED);
+        }
+
         return AccessDecision::allow($readOnly);
     }
 

@@ -3,7 +3,8 @@ import { api, currentToken, setToken, setUnauthorizedHandler } from './api'
 import { navigation } from './navigation'
 import type { LoginResponse, Me } from './types'
 
-type AuthState = { status: 'loading' } | { status: 'anonymous' } | { status: 'ready'; me: Me }
+/** `ended` says why a signed-in session is gone (an OptiNexus refusal code, or `session_expired`), so the sign-in page can explain it. */
+type AuthState = { status: 'loading' } | { status: 'anonymous'; ended?: string } | { status: 'ready'; me: Me }
 
 export type EnterTarget = { kind: 'tenant'; tenantId: string } | { kind: 'platform' }
 
@@ -14,6 +15,8 @@ type AuthValue = {
   signInWithTicket: (ticket: string) => Promise<Me>
   enter: (target: EnterTarget) => Promise<Me>
   logout: () => Promise<void>
+  /** The API has already ended this session (OptiNexus no longer allows it): drop it here and remember why. */
+  endSession: (reason: string) => void
 }
 
 const AuthContext = createContext<AuthValue | null>(null)
@@ -50,7 +53,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>(() => (currentToken() ? { status: 'loading' } : { status: 'anonymous' }))
 
   useEffect(() => {
-    setUnauthorizedHandler(() => setState({ status: 'anonymous' }))
+    setUnauthorizedHandler(() => setState({ status: 'anonymous', ended: 'session_expired' }))
     return () => setUnauthorizedHandler(null)
   }, [])
 
@@ -110,7 +113,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (end) navigation.go(end)
   }, [])
 
-  const value = useMemo(() => ({ state, login, signInWithTicket, enter, logout }), [state, login, signInWithTicket, enter, logout])
+  const endSession = useCallback((reason: string) => {
+    setToken(null)
+    ssoLogout.set(null)
+    setState({ status: 'anonymous', ended: reason })
+  }, [])
+
+  const value = useMemo(() => ({ state, login, signInWithTicket, enter, logout, endSession }), [state, login, signInWithTicket, enter, logout, endSession])
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
 

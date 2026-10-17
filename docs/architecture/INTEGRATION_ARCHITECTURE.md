@@ -169,8 +169,8 @@ permissions `accounting.integration.view|manage|retry`, audit actions `accountin
   pages per run, advisory lock per connection, new events then processed one by one. `integration:pull` and `integration:process`
   run every five minutes for ACTIVE tenants whose module and feature are writable; processing covers ACTIVE connections only.
 - **Not implemented (deliberately):** push endpoint (`POST /api/v1/integration/events`), webhooks, CSV import adapter, outbox relay to
-  sources, MISSING reconciliation (needs source totals; the summary shows received vs processed only), historical backfill, gap-policy
-  behaviour, the `OPTIFLEET_CONNECTOR` feature check (belongs to the OptiFleet adapter batch).
+  sources, MISSING reconciliation (needs source totals; the summary shows received vs processed only), historical backfill. (Gap-policy
+  behaviour came with §10; the `OPTIFLEET_CONNECTOR` feature check with §9.)
 
 ## 9. OptiFleet adapter notes (OA6 batch B)
 
@@ -200,17 +200,104 @@ registry is a singleton and the tenant context is scoped, so every collaborator 
 - **Vendor.** Resolved through `external_dimensions` (entity `VENDOR`, metadata `vendor_id`), then by normalised tax id (several matches =
   `VENDOR_AMBIGUOUS`, never guessed), then by code unless the tax ids differ; otherwise created once (`external_source` = optifleet).
   An INACTIVE vendor is not replaced (`VENDOR_INACTIVE`).
-- **Actor and segregation of duties.** No system actor existed and every AP service needs a user. Decision: one credential-less service user
-  per tenant (`optifleet.integration@<tenant code>.optientry.invalid`, no password so it cannot sign in, ACTIVE membership, no role, no
-  permission, TENANT data scope; creation is audited). It is set as the context user only while the adapter runs and prepares documents
-  (`created_by`). It is never an approver and holds no soft-closed exception. With approval required the invoice is SUBMITTED and a person
-  approves and posts; otherwise it posts when the SoD policy allows the preparer to post, else it stays DRAFT for a person. SoD is
-  therefore never weakened; the payment follows the same path, and its event is NEEDS_REVIEW `INVOICE_NOT_POSTED` until the invoice is
-  posted. A person can switch the user off by suspending its membership (`INTEGRATION_ACTOR_DISABLED`). Known caveat: the membership counts as
-  a seat in `CapacityService`.
+- **Actor and segregation of duties.** No system actor existed and every AP service needs a user. Decision: one credential-less service
+  principal per tenant (kind `OPTIFLEET_INTEGRATION`, user `optifleet.integration@<tenant code>.optientry.invalid`: no password so it cannot
+  sign in, ACTIVE membership, no role, no permission, TENANT data scope). Since the ecosystem audit (A23) *what is a machine* is decided by the
+  immutable registry `service_principals`, not by the address: only the platform operator issues a row (`optientry:service-principal:issue`
+  or `POST /api/v1/platform/tenants/{tenant}/service-principals`, permission `platform.service_principal.manage`; the migration mapped the
+  users of earlier releases once, idempotently), a tenant has no way to create or flag one, a row never changes except for its final
+  revocation (service layer and trigger), and the principal's user can never get a password, an OptiNexus identity, a role, another address
+  or a membership of another tenant (triggers). A person can never hold an address of the range `optientry.invalid` (`EMAIL_RESERVED`): users
+  are refused on save, in the invite / platform-user / OptiNexus sign-in paths and by a commit-time database check. Only a live registry row
+  exempts a user from the seat count (`CapacityService`); a person on the range counts like anyone. The adapter never creates the user: without
+  a live principal the connector is *not available* to the tenant (activation and resume `CONNECTOR_NOT_ENTITLED`, events stay RECEIVED and
+  unflagged until the operator issues it). It is set as the context user only while the adapter runs and prepares documents (`created_by`).
+  It is never an approver and holds no soft-closed exception. With approval required the invoice is SUBMITTED and a person approves and posts;
+  otherwise it posts when the SoD policy allows the preparer to post, else it stays DRAFT for a person. SoD is therefore never weakened; the
+  payment follows the same path, and its event is NEEDS_REVIEW `INVOICE_NOT_POSTED` until the invoice is posted. A tenant can switch the user
+  off by suspending its membership (`INTEGRATION_ACTOR_DISABLED`); the operator revokes it for good (membership and user INACTIVE, a replacement
+  is a new user `optifleet.integration.2@...`, posted history keeps naming the old one). Issue/revoke are audited (`service_principal.issued`,
+  `service_principal.revoked`).
 - **Traceability.** Every document gets an `external_source_links` row: source type `workshop_invoice` -> `ap_invoice`, and
   `workshop_invoice_payment` -> `vendor_payment` (document, journal and event ids). A correction adds a row for the new document; the
   latest row is the current document of that source invoice.
 - **Not covered.** Vendor (procurement) invoices and payments, goods receipt, stock issue and spare part sale (not in the feed yet),
   foreign currency, branch/dimension mapping to journal lines. An event that cannot be booked as stated is held for a person
   (NEEDS_REVIEW), never booked approximately.
+
+## 10. Ecosystem audit hardening (A17, A18, A20, A21, A22, A27, A28; migration `2026_10_18_100001`)
+
+The audit of 2026-10-12 found that the OA6 slice could book from data nobody had decided to book. These rules are additive to §8-§9;
+none changes a merged migration, and no existing row is rewritten.
+
+- **Feed contract (A22).** `FeedClient` validates every page before anything is stored: cursor and `sequence` are digit strings (or JSON
+  integers) that fit 64 bits, no leading zeros; at most `limit` events; sequences are exactly `after+1, after+2, ...` (gap-free, ascending);
+  `next_cursor` = last sequence; an empty page does not advance or say `has_more`; nothing beyond `high_water`. A page that breaks a rule
+  is a failed pull (cursor unchanged, counted toward ERROR). The source states `high_water` (newest committed sequence) on every page.
+- **Lifecycle boundary (A20).** `integration_connections.lifecycle_version` is bumped by every pause, resume, disconnect, activation, error and
+  reconfiguration. A pull remembers the version it started with; each page is stored in a transaction that locks the connection row FOR UPDATE
+  and stores nothing (`halted`) if status or version changed. `EventProcessor`, `RetryService` and `ConflictService` lock the connection FOR
+  SHARE (then the event FOR UPDATE; the order is always connection, then event), so a pause waits for processing in flight and nothing starts
+  after it commits. A retry of a NEEDS_REVIEW/FAILED/DEAD_LETTER event on a connection that is not ACTIVE is refused (`CONNECTION_NOT_ACTIVE`);
+  dismissing (`REJECTED`, `REVIEW_DISMISSED`) stays possible. A failure of a pull that a pause overtook is not counted.
+- **Gaps (A18).** `integration_gaps`: pausing or disconnecting an ACTIVE/ERROR/PAUSED connection opens a gap at the cursor (`sequence_at_open`);
+  switching it on again probes the source head (`high_water`, outside any transaction; `SOURCE_HEAD_UNAVAILABLE` when it cannot say) and
+  closes the gap at `ceiling_sequence` with the connection's policy at that moment. Events in (open, ceiling] carry `gap_id` and follow the
+  policy at the inbox gate: `REQUIRES_REVIEW` -> NEEDS_REVIEW `GAP_REVIEW`; `BACKFILL_GAP` -> NEEDS_REVIEW `GAP_BACKFILL_REVIEW`;
+  `IGNORE_GAP` -> REJECTED `GAP_IGNORED`; `START_NEW_CUTOVER` -> REJECTED `GAP_NEW_CUTOVER` and the cutover date moves to the day of
+  reconnection (tenant time). A person decides the held ones for the whole gap (`POST gaps/{id}/resolution`: PROCESS through the normal retry
+  path, so approval, SoD and closed periods still apply, or DISMISS), at most 100 per call. Nothing is auto-posted for a gap.
+- **Snapshot basis (A17).** An event whose `payload.snapshot_basis` is not `event_time` (e.g. rebuilt from current state) waits NEEDS_REVIEW
+  `SNAPSHOT_BASIS_REVIEW`; only a person releases it. The producer's repair/monitoring duties are in the OptiFleet-v2 feed document.
+- **Conflicts (A21).** A known event id with different content keeps the stored event, records the disputed payload in
+  `external_event_conflicts` (append-only evidence; a trigger forbids changing it, deleting it, or touching a resolved row), flags the event
+  and, if it was not posted, holds it NEEDS_REVIEW `PAYLOAD_CONFLICT`. A flagged event is never processed or retried until
+  `POST events/{id}/conflict-resolution` (`accounting.integration.manage`, reason required): USE_ORIGINAL (processed with the original) or
+  REJECT (REJECTED `CONFLICT_REJECTED`, impossible once posted: reverse the document). A posted event with a conflict stays posted and shows
+  the open incident. If the source really changes its mind it sends a new event id (a correction).
+- **Outcome (A27).** `external_events.status = POSTED` means processed, not "in the ledger". `accounting_outcome` says what reached the books:
+  `JOURNAL_POSTED`, `AWAITING_APPROVAL` (SUBMITTED), `DRAFT_DOCUMENT`, `INFORMATIONAL` (memos), `NO_EFFECT` (e.g. a never-posted invoice
+  cancelled); `document_status` is the document's status then. Events processed before this release have NULL: the API derives
+  `JOURNAL_POSTED` from `resulting_journal_id` and otherwise leaves it null (counted as `UNCLASSIFIED` in the summary), nothing is
+  guessed or rewritten. The summary adds `processed` (= `posted`, the older name), `outcomes`, `backlog` and `open_gap`.
+- **Scheduling (A28).** `integration:process` takes up to 200 due events per ACTIVE connection per run (oldest first) instead of 200 overall,
+  and skips a connection whose connector reports entitlement problems without touching its events (counted `held`). The connection
+  summary shows `backlog` (due, oldest age, `blocked_by` CONNECTION_NOT_ACTIVE | CONNECTOR_NOT_ENTITLED, `stalled` after 30 minutes).
+- **Contradiction recorded.** §6 says reactivation never back-posts history; the stored `gap_policy` was not applied until now. The safest
+  backward-compatible reading is used: the default `REQUIRES_REVIEW` holds, it never books.
+
+## 11. Consumer side of the Fleet feed contract (A19, A17, A27; migration `2026_10_19_200001`)
+
+Counterpart of OptiFleet-v2 `docs/integration/ACCOUNTING_FEED.md` (pairing, `high_water`, `review`). Additive; nothing is rewritten, posted history
+is never touched by any of it.
+
+- **Pairing (A19).** Every page (pull, activation probe, gap head) is checked by `FeedPairing` after its shape is validated: `pairing.nexus_tenant_id`
+  must equal `tenants.optinexus_tenant_id` of the connection's own organization (set by OptiNexus sign-in/provisioning, never by the page, the form or
+  a request), and `producer_application`/`consumer_application` (when stated) must be the connection's source system and this application. Required when
+  `OPTIENTRY_FEED_PAIRING=required`, or `auto` (default) while `OPTIENTRY_IDENTITY_MODE=optinexus`; `off` (legacy standalone) skips it. A page without
+  `pairing`, for another tenant/pair, or for an organization not linked to OptiNexus is refused as a whole: nothing stored, cursor unchanged.
+- **Three situations, never one "error".** `feed_access` on the connection: `REFUSED` (401/403 with the source's `FEED_*` code, or a pairing refusal:
+  not counted toward ERROR, the connection stays ACTIVE with its history, asked again after 15 min or the pull interval), `UNAVAILABLE` (network, 429,
+  5xx, `FEED_GOVERNANCE_UNAVAILABLE`: counted, `Retry-After` honoured up to 1 h), `INVALID` (malformed page, other status, `FEED_CURSOR_AHEAD`:
+  counted). `feed_access_since/checked_at/next_attempt_at` say since when and when it is asked next; the scheduler skips a connection until then.
+  A third thing is OptiEntry holding the connection itself (`access.entry`: tenant not active, module/feature/connector not entitled, organization not
+  linked to OptiNexus where pairing is required): nothing is pulled or processed, "sync now" answers 403 with the reason, the source keeps the events.
+- **Activation probe.** Where pairing is required a connection is only switched on when one tiny feed request succeeds with a matching pairing
+  (`CONNECTION_FEED_REFUSED` / `CONNECTION_FEED_UNAVAILABLE`, 409; nothing stored). Resuming a paused one uses the same check through the gap head.
+- **`high_water` and a restored source.** The newest committed sequence is stored with each page (`source_high_water`); a stored cursor ahead of it is
+  `FEED_CURSOR_AHEAD` (INVALID, nothing accepted) and shows as `SOURCE_BEHIND_CURSOR`. `lag` = high water minus cursor is shown on the connection.
+- **Quarantine (`review.required`).** An envelope with `review.required === true` waits NEEDS_REVIEW `SOURCE_REVIEW_REQUIRED`, event by event, and is
+  never booked automatically; a person processes it (retry) or dismisses it. It is not part of a gap's batch decision (its reason is not the gap's);
+  a gap policy that refuses (`IGNORE_GAP`, `START_NEW_CUTOVER`) still refuses it first.
+- **Books state (A27).** `BookStatus` reads the document behind a processed event live (`ap_invoices`, `vendor_payments` through
+  `external_source_links`): `IN_LEDGER`, `AWAITING_APPROVAL`, `DRAFT`, `REVERSED`, `VOID`, `INFORMATIONAL`, `NO_EFFECT`, `UNCLASSIFIED`. Only
+  `IN_LEDGER` is in the general ledger. Event list rows carry `books_state` (one query set per page), event detail `books` (+documents), the summary
+  `books` counts. The wording "Posted" for processing is now "Processing finished".
+- **Health (A17).** `ConnectionHealth` (read-only) gives `health.level` OK/WARN/ALERT and alerts: `SOURCE_REFUSED|INVALID|UNAVAILABLE`,
+  `SOURCE_BEHIND_CURSOR`, `PULL_OVERDUE`, `ENTRY_HELD`, `MISSING_RECORDED_EVENT` (NEEDS_REVIEW `INVOICE_NOT_FOUND` older than
+  `OPTIENTRY_FEED_ORPHAN_GRACE_MINUTES`, default 120: the recorded event was lost at the source; the operator runs the source's monitor and bounded
+  repair, which only appends quarantined events), `QUARANTINED_EVENTS`, `OPEN_CONFLICTS`, `DEAD_LETTERS`, `BACKLOG_STALLED`. `integration:health [--json]`
+  (hourly in the scheduler) logs every ALERT at critical level and exits non-zero while there is one.
+- **Live test checklist (Entry side).** Tenant linked to its OptiNexus tenant (`tenants.optinexus_tenant_id`); `optientry:service-principal:issue <tenant>`;
+  `optientry:nexus:check`; connection with base URL, `ofaf_...` credential, source tenant reference, cutover date and settings; activate; then
+  `integration:pull`, `integration:process`, `integration:health --json`.

@@ -1,10 +1,13 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { BrandLogo } from '../components/BrandLogo'
 import { Banner, Button, Field, Loading } from '../components/ui'
+import { hasMessage, useI18n, type MessageKey } from '../i18n'
 import { api, ApiError } from '../lib/api'
 import { homePath, useAuth } from '../lib/auth'
 import { useResource } from '../lib/hooks'
+import { navigation } from '../lib/navigation'
+import { tenantHintOf } from '../lib/tenantHint'
 import { describeError, describeSsoError } from '../lib/labels'
 import type { SsoStatus } from '../lib/types'
 
@@ -19,16 +22,40 @@ async function loadStatus(): Promise<SsoStatus> {
   }
 }
 
+const AUTOSTART_KEY = 'oa.sso.autostart'
+
+/** True at most once a minute, so a hint that OptiNexus turns away cannot bounce the browser back and forth. */
+function mayAutoStart(): boolean {
+  try {
+    const last = Number(sessionStorage.getItem(AUTOSTART_KEY) ?? 0)
+    if (Date.now() - last < 60_000) return false
+    sessionStorage.setItem(AUTOSTART_KEY, String(Date.now()))
+    return true
+  } catch {
+    return false
+  }
+}
+
 export default function Login() {
   const { state } = useAuth()
+  const { t } = useI18n()
   const [params] = useSearchParams()
   const status = useResource(loadStatus, [])
-
-  if (state.status === 'ready') return <Navigate to={homePath(state.me)} replace />
-
+  const hint = tenantHintOf(`?${params.toString()}`)
+  const ended = state.status === 'anonymous' ? state.ended : undefined
   const sso = status.data
   const ssoError = describeSsoError(params.get('sso_error'))
   const viaNexus = sso?.sso_enabled === true
+  const startUrl = `${api.defaults.baseURL ?? ''}/auth/sso/redirect${hint ? `?tenant_hint=${encodeURIComponent(hint)}` : ''}`
+
+  // Arriving from another product's switcher: OptiNexus already knows the person, so go straight on instead of asking for a click.
+  useEffect(() => {
+    if (state.status !== 'anonymous' || !viaNexus || !hint || ssoError || ended) return
+    if (mayAutoStart()) navigation.go(startUrl)
+  }, [state.status, viaNexus, hint, ssoError, ended, startUrl])
+
+  if (state.status === 'ready') return <Navigate to={homePath(state.me)} replace />
+
   const heading = viaNexus ? 'Gunakan akun OptiNexus Anda untuk membuka OptiEntry.' : 'Gunakan akun Anda untuk membuka portal platform atau organisasi.'
 
   return (
@@ -39,12 +66,17 @@ export default function Login() {
           <h1 id="login-title">Masuk</h1>
           <p className="muted">{heading}</p>
         </div>
+        {ended && (
+          <Banner tone="warn">
+            <strong style={{ display: 'block' }}>{t('session.ended.title')}</strong>{t((hasMessage(`session.ended.${ended}`) ? `session.ended.${ended}` : 'session.ended.generic') as MessageKey)}
+          </Banner>
+        )}
         {ssoError && <Banner tone="bad">{ssoError}</Banner>}
         {status.loading || !sso ? (
           <Loading />
         ) : viaNexus ? (
           <>
-            <a className="btn btn-primary btn-block" href={`${api.defaults.baseURL ?? ''}/auth/sso/redirect`}>Masuk dengan OptiNexus</a>
+            <a className="btn btn-primary btn-block" href={startUrl}>Masuk dengan OptiNexus</a>
             {sso.password_login && (
               <details className="auth-alt">
                 <summary>Masuk sebagai operator platform</summary>

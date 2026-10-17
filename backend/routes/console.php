@@ -15,3 +15,5 @@ Schedule::command('optientry:nexus:sync-entitlements')->everyFiveMinutes()->with
 // Integration platform (OA6): pull the source feeds, then apply whatever is due. Both skip tenants that are not entitled or not writable.
 Schedule::command('integration:pull')->everyFiveMinutes()->withoutOverlapping(10);
 Schedule::command('integration:process')->everyFiveMinutes()->withoutOverlapping(10);
+// Health of the connections (refused or silent source, feed behind the cursor, missing recorded events, quarantine): critical log entries, non-zero exit.
+Schedule::command('integration:health')->hourly()->withoutOverlapping(10);

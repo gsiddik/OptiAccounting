@@ -6,6 +6,8 @@ use App\Domain\AccessControl\Models\DataScope;
 use App\Domain\Identity\Models\Tenant;
 use App\Domain\Identity\Models\TenantUser;
 use App\Domain\Identity\Models\User;
+use App\Domain\Identity\Services\ServicePrincipalKinds;
+use App\Domain\Identity\Services\ServicePrincipalRegistry;
 use Firebase\JWT\JWT;
 use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -304,6 +306,19 @@ class SsoSignInTest extends TestCase
 
         $this->nexusCallback()->assertRedirectContains('sso_error=account_conflict');
         $this->assertSame('someone-else', $local->fresh()->optinexus_subject);
+    }
+
+    public function test_an_identity_with_an_address_of_the_reserved_range_never_links_to_a_service_principal(): void
+    {
+        $tenant = $this->tenant('other');
+        $principal = app(ServicePrincipalRegistry::class)->issue($tenant, ServicePrincipalKinds::OPTIFLEET_INTEGRATION, 'test', 'CLI', null, 'phpunit')['principal'];
+        $address = User::query()->findOrFail($principal->user_id)->email;
+
+        $this->nexusCallback(['email' => $address, 'email_verified' => true])->assertRedirectContains('sso_error=email_reserved');
+        $this->nexusCallback(['email' => 'brand.new@anything.optientry.invalid', 'email_verified' => true])->assertRedirectContains('sso_error=email_reserved');
+
+        $this->assertNull(User::query()->findOrFail($principal->user_id)->optinexus_subject);
+        $this->assertSame(0, User::query()->where('email', 'brand.new@anything.optientry.invalid')->count());
     }
 
     public function test_a_platform_operator_account_is_never_linked_by_email(): void

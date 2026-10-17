@@ -50,11 +50,15 @@ cd frontend && npm run lint && npm test && npm run build
 ## Run with Docker
 
 ```bash
-cp .env.example .env    # set APP_KEY
+cp .env.example .env    # set APP_KEY and DB_PASSWORD (see the file)
 docker compose up -d --build
 ```
 
-API on `http://localhost:8000`, SPA on `http://localhost:5173`.
+Console on `http://localhost:5190` (it serves `/api` on the same origin), API on `http://localhost:8200`. Both are published on
+`127.0.0.1` only (`BIND_ADDRESS`). One `bootstrap` job migrates and seeds the catalogs; `api`, `worker` and `scheduler` start after it and
+never migrate. Hot-reload development: `docker compose --profile dev up ui-dev` (`http://localhost:5173`). Upgrading an installation that
+used the former ports (8000/5173) or the former default database password: set `DB_PASSWORD` to the password already in use; the project
+name and volumes are unchanged, so no data moves. To run next to OptiNexus and OptiFleet use `deploy/ecosystem` in the OptiNexus repository.
 
 ## Seeders
 

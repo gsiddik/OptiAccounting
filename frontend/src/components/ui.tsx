@@ -1,6 +1,8 @@
 import { useId, type ButtonHTMLAttributes, type ReactNode } from 'react'
 import { useInRouterContext } from 'react-router-dom'
 import { AnnounceCrumbLabel } from './CrumbLabels'
+import { useI18n } from '../i18n'
+import { errorReference } from '../lib/errors'
 import { describeError, statusLabel } from '../lib/labels'
 
 type Variant = 'primary' | 'secondary' | 'danger' | 'ghost'
@@ -41,19 +43,39 @@ export function Banner({ tone = 'info', children }: { tone?: 'info' | 'warn' | '
   )
 }
 
-export function Loading({ label = 'Memuat…' }: { label?: string }) {
+export function Loading({ label }: { label?: string }) {
+  const { t } = useI18n()
   return (
     <div className="loading" role="status">
-      <span className="spinner" aria-hidden="true" /> {label}
+      <span className="spinner" aria-hidden="true" /> {label ?? t('common.loading')}
     </div>
   )
 }
 
+/** The reference a person quotes to support (the server's request id); nothing when the failure never reached the server. */
+export function ErrorReference({ error }: { error: unknown }) {
+  const { t } = useI18n()
+  const reference = errorReference(error)
+  if (!reference) return null
+  return <small className="state-ref">{t('common.reference', { reference })}</small>
+}
+
+/** An error as a banner: what to do about it, and the reference to quote. */
+export function ErrorBanner({ error }: { error: unknown }) {
+  return (
+    <Banner tone="bad">
+      {describeError(error)}
+      <ErrorReference error={error} />
+    </Banner>
+  )
+}
+
 export function ErrorNotice({ error, onRetry }: { error: unknown; onRetry?: () => void }) {
+  const { t } = useI18n()
   return (
     <div className="stack" style={{ padding: 20, alignItems: 'flex-start' }}>
-      <Banner tone="bad">{describeError(error)}</Banner>
-      {onRetry && <Button onClick={onRetry}>Coba lagi</Button>}
+      <ErrorBanner error={error} />
+      {onRetry && <Button onClick={onRetry}>{t('common.retry')}</Button>}
     </div>
   )
 }
@@ -156,17 +178,16 @@ export function Tabs<T extends string>({ tabs, value, onChange }: { tabs: { id: 
 }
 
 export function Pagination({ page, lastPage, total, onPage }: { page: number; lastPage: number; total: number; onPage: (page: number) => void }) {
+  const { t } = useI18n()
   return (
     <div className="pagination">
-      <span>
-        {total} data · halaman {page} dari {Math.max(lastPage, 1)}
-      </span>
+      <span>{t('common.pagination', { total, page, last: Math.max(lastPage, 1) })}</span>
       <div className="actions">
         <Button size="sm" disabled={page <= 1} onClick={() => onPage(page - 1)}>
-          Sebelumnya
+          {t('common.previous')}
         </Button>
         <Button size="sm" disabled={page >= lastPage} onClick={() => onPage(page + 1)}>
-          Berikutnya
+          {t('common.next')}
         </Button>
       </div>
     </div>

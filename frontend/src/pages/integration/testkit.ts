@@ -2,7 +2,7 @@ import { configure } from '@testing-library/react'
 import { setToken } from '../../lib/api'
 import { mockApi, page } from '../../test/fakeApi'
 import { tenantCaps, tenantMe } from '../../test/render'
-import type { Connection, ConnectionSummary, EventDetailData, IntegrationEvent, SourceLink } from './types'
+import type { Connection, ConnectionAccess, ConnectionSummary, EventDetailData, Gap, IntegrationEvent, SourceLink } from './types'
 
 // Shared fixtures and boot helper of the integration page tests (imported by the *.test.tsx files in this folder only).
 
@@ -29,6 +29,7 @@ export function boot(permissions: string[], routes: Routes = {}, options: { mode
   const caps = tenantCaps({ permissions, subscriptionMode: mode })
   const calls = mockApi({
     'GET /auth/me': { data: tenantMe },
+    [`GET ${IT}/gaps`]: { data: page([]) },
     'GET /app/capabilities': { data: { ...caps, modules: Object.fromEntries(MODULES.map((m) => [m, mode])), features: { INTEGRATION_CONNECTION: true, ...options.features } } },
     ...routes,
   })
@@ -44,6 +45,16 @@ export const connection = (over: Partial<Connection> = {}): Connection => ({
   id: 'c-1', name: 'OptiFleet Maju Jaya', source_system: 'optifleet', source_tenant_reference: 'fleet-co-1', status: 'ACTIVE', base_url: 'https://fleet.example.test', has_credential: true,
   cutover_policy: 'OPENING_BALANCE_ONLY', cutover_date: '2026-10-01', gap_policy: 'REQUIRES_REVIEW', pull_interval_minutes: 5, last_cursor: '41', last_pulled_at: '2026-10-10T03:00:00Z',
   last_error: null, consecutive_failures: 0, settings: { payables_cash_bank_account_id: 'cb-1', expense_category_id: 'ec-1' }, created_at: '2026-10-01T03:00:00Z', updated_at: '2026-10-10T03:00:00Z', ...over,
+})
+
+export const access = (over: Partial<ConnectionAccess> = {}): ConnectionAccess => ({
+  state: 'OK', code: null, since: null, checked_at: '2026-10-10T03:00:00Z', next_attempt_at: null,
+  pairing: { required: true, linked: true, verified_nexus_tenant_id: 'nx-tenant-1' }, entry: null, ...over,
+})
+
+export const gap = (over: Partial<Gap> = {}): Gap => ({
+  id: 'g-1', connection_id: 'c-1', status: 'CLOSED', open_reason: 'PAUSED', policy: 'REQUIRES_REVIEW', sequence_at_open: 41, ceiling_sequence: 47, new_cutover_date: null,
+  opened_at: '2026-10-08T03:00:00Z', closed_at: '2026-10-09T03:00:00Z', events: { total: 6, held: 4, processed: 1, refused: 1 }, ...over,
 })
 
 export const summary = (over: Partial<ConnectionSummary> = {}): ConnectionSummary => ({

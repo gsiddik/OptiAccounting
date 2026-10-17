@@ -49,6 +49,9 @@ return [
             'client_id' => env('OPTINEXUS_SERVICE_CLIENT_ID'),
             'client_secret' => env('OPTINEXUS_SERVICE_CLIENT_SECRET'),
             'timeout_seconds' => (int) env('OPTINEXUS_TIMEOUT', 15),
+            // Bounded recovery of one call (NexusApi::send): repeats after a 429 and the longest Retry-After slept through.
+            'max_retries' => max(0, min(5, (int) env('OPTINEXUS_MAX_RETRIES', 2))),
+            'max_retry_wait_seconds' => max(1, min(30, (int) env('OPTINEXUS_MAX_RETRY_WAIT', 5))),
         ],
 
         // Local password login for users with platform access (operators) while OptiNexus is the identity authority.
@@ -59,12 +62,22 @@ return [
 
         // Seconds an answer about a user's permissions may be reused. Never above 300 (SAAS_ARCHITECTURE §7).
         'permission_ttl_seconds' => max(1, min(300, (int) env('OPTINEXUS_PERMISSION_TTL', 300))),
-        'permission_pool_size' => 25,
 
         // Re-read a tenant's commercial state at sign-in when the projection is older than this.
         'entitlement_ttl_seconds' => max(0, (int) env('OPTINEXUS_ENTITLEMENT_TTL', 300)),
 
         'relay' => ['batch_size' => 100, 'max_attempts' => 20],
+    ],
+
+    /*
+    | Integration feeds (OA6). `feed_pairing`: whether a pulled feed must be proven to belong to the same OptiNexus tenant as the organization
+    | (audit A19). auto = required while identity_mode is optinexus; required = always; off = never (legacy standalone only).
+    */
+    'integration' => [
+        'feed_pairing' => in_array($pairing = strtolower((string) env('OPTIENTRY_FEED_PAIRING', 'auto')), ['auto', 'required', 'off'], true) ? $pairing : 'auto',
+        // A NEEDS_REVIEW payment, correction or cancellation that still finds no recorded invoice after this many minutes means the invoice event
+        // never reached the feed (a missed projection at the source): an alert, not a wait (audit A17).
+        'orphan_grace_minutes' => max(1, (int) env('OPTIENTRY_FEED_ORPHAN_GRACE_MINUTES', 120)),
     ],
 
     // Most rows one CSV export of an OA2 list may hold; beyond it the request is refused (EXPORT_TOO_LARGE) and the filters must be narrowed.

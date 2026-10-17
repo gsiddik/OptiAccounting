@@ -10,6 +10,7 @@ use App\Domain\Entitlement\Services\CapacityService;
 use App\Domain\Identity\Models\Tenant;
 use App\Domain\Identity\Models\TenantUser;
 use App\Domain\Identity\Models\User;
+use App\Domain\Identity\Services\ReservedAddress;
 use App\Domain\Identity\Services\TenantService;
 use App\Domain\Integration\Services\OutboxPublisher;
 use App\Support\TenantContext;
@@ -75,7 +76,7 @@ class AccountLinker
             return [$user, $membership];
         });
 
-        $this->permissions->prime($tenant->id, $membership->id, $pulled['permissions']);
+        $this->permissions->prime($tenant->id, $membership->id, $pulled['grants']);
 
         return [$user, $tenant, $membership];
     }
@@ -148,6 +149,9 @@ class AccountLinker
             if ($email === '') {
                 throw new SsoException('email_required');
             }
+            if (ReservedAddress::matches($email)) {
+                throw new SsoException('email_reserved'); // the range belongs to service principals: never linked to a person's identity
+            }
 
             $existing = User::query()->whereRaw('lower(email) = ?', [$email])->first();
             if ($existing) {
@@ -199,7 +203,7 @@ class AccountLinker
                 $membership->joined_at = now();
                 $membership->save();
 
-                // Data scope stays local. Start from what OptiNexus granted; a local administrator may narrow it.
+                // Data scope stays local. It starts from the narrowest scope OptiNexus granted (never wider than any single grant); a local administrator may widen or narrow it.
                 $scope = new DataScope;
                 $scope->tenant_id = $tenant->id;
                 $scope->tenant_user_id = $membership->id;

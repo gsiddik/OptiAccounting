@@ -4,6 +4,7 @@ import { Shell, type NavItem } from './components/Shell'
 import { Banner, EmptyState, Loading } from './components/ui'
 import { homePath, useAuth } from './lib/auth'
 import { CapabilityProvider, useCapabilities } from './lib/capabilities'
+import { loginPath } from './lib/tenantHint'
 import ChooseAccess from './pages/ChooseAccess'
 import Login from './pages/Login'
 import SsoCallback from './pages/SsoCallback'
@@ -192,7 +193,7 @@ function RequireScope({ scope, children }: { scope: 'platform' | 'tenant'; child
   const { state } = useAuth()
   const location = useLocation()
   if (state.status === 'loading') return <Loading label="Memuat sesi…" />
-  if (state.status === 'anonymous') return <Navigate to="/login" replace state={{ from: location.pathname }} />
+  if (state.status === 'anonymous') return <Navigate to={loginPath(location.search)} replace state={{ from: location.pathname }} />
   if (state.me.scope !== scope) return <Navigate to={homePath(state.me)} replace />
   return <>{children}</>
 }
@@ -227,8 +228,10 @@ function NotFound() {
 
 function Landing() {
   const { state } = useAuth()
+  const location = useLocation()
   if (state.status === 'loading') return <Loading label="Memuat sesi…" />
-  if (state.status === 'anonymous') return <Navigate to="/login" replace />
+  // Another product's switcher opens this address with ?tenant_hint=: sign-in keeps it so OptiNexus opens the same organisation.
+  if (state.status === 'anonymous') return <Navigate to={loginPath(location.search)} replace />
   return <Navigate to={homePath(state.me)} replace />
 }
 

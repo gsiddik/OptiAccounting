@@ -29,6 +29,10 @@ export const ENDPOINTS = {
   events: `${API}/events`,
   event: (id: string) => `${API}/events/${id}`,
   retry: (id: string) => `${API}/events/${id}/retry`,
+  dismiss: (id: string) => `${API}/events/${id}/dismiss`,
+  conflictResolution: (id: string) => `${API}/events/${id}/conflict-resolution`,
+  gaps: `${API}/gaps`,
+  gapResolution: (id: string) => `${API}/gaps/${id}/resolution`,
 } as const
 
 /** Source systems offered when creating a connection. The API takes any lowercase identifier; `optifleet` has an adapter and settings of its own. */

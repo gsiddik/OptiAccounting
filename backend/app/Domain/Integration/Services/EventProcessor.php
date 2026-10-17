@@ -6,6 +6,7 @@ use App\Domain\Audit\Services\AuditService;
 use App\Domain\Integration\Contracts\ConnectorRequirements;
 use App\Domain\Integration\Models\ExternalEvent;
 use App\Domain\Integration\Models\ExternalSourceLink;
+use App\Domain\Integration\Models\IntegrationConnection;
 use App\Domain\Shared\DomainException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -23,7 +24,14 @@ use Throwable;
  *   the fifth failed attempt                                                          -> DEAD_LETTER (audited); only a person can retry
  *   no adapter for the source, or the adapter does not support the type / major       -> NEEDS_REVIEW (NO_ADAPTER / UNSUPPORTED_EVENT)
  *   the adapter's connector is not (or no longer) entitled for the tenant             -> the event is left exactly as it is (ConnectorRequirements)
+ *   the connection is not ACTIVE (paused, disconnected, in error)                      -> the event is left exactly as it is: a pause is a hard stop
+ *   the event's content is disputed (an open conflict)                                 -> never processed until a person decides (ConflictService)
  *
+ * The connection row is locked FOR SHARE before the event row: a processor in flight finishes before a pause or disconnect (which lock the
+ * connection FOR UPDATE) can complete, so the moment a pause returns is a clear boundary - nothing starts after it. Lock order everywhere is
+ * connection, then event.
+ *
+ * `POSTED` means the event was processed, not that a journal exists: `accounting_outcome` says what reached the books (ProcessOutcome).
  * Only RECEIVED events and FAILED events whose backoff has elapsed are processed; anything else is returned untouched, so calling this twice
  * (two workers, a retry racing the scheduler) applies an event once. Nothing here blocks manual accounting: no lock outlives the transaction.
  */
@@ -39,8 +47,9 @@ class EventProcessor
     public function process(ExternalEvent $event): ExternalEvent
     {
         return DB::transaction(function () use ($event) {
+            $connection = IntegrationConnection::query()->sharedLock()->find($event->connection_id);
             $locked = ExternalEvent::query()->lockForUpdate()->find($event->id);
-            if ($locked === null || ! $locked->isDue()) {
+            if ($locked === null || ! $locked->isDue() || $connection === null || $connection->status !== IntegrationConnection::ACTIVE) {
                 return $locked ?? $event;
             }
 
@@ -61,6 +70,7 @@ class EventProcessor
                     $this->link($locked, $outcome);
                     $this->touch($locked, [
                         'status' => ExternalEvent::POSTED, 'resulting_journal_id' => $outcome->journalId, 'processed_at' => now(),
+                        'accounting_outcome' => $outcome->accountingOutcome(), 'document_status' => $outcome->documentStatus,
                         'next_attempt_at' => null, 'last_error_code' => null, 'last_error' => null,
                     ]);
                 });

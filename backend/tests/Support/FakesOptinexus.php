@@ -17,6 +17,9 @@ use Illuminate\Testing\TestResponse;
  */
 trait FakesOptinexus
 {
+    use FakesNexusDelegation;
+    use FakesNexusProductContext;
+
     protected const NEXUS_URL = 'https://nexus.test';
 
     protected const NEXUS_TENANT = '7b1c5d0e-2f55-4f3e-9a58-0d3d2a6c1111';
@@ -61,7 +64,10 @@ trait FakesOptinexus
             'event_response' => [201, ['success' => true]],
             'audit_response' => [201, ['success' => true]],
             'signing_key' => 'primary',
+            'token_scopes' => [], // service token => the scope string it was issued with
         ];
+        $this->nexusDelegationReset();
+        $this->nexusProductContextReset();
 
         Http::preventStrayRequests();
         Http::fake(fn (Request $request) => $this->nexusRespond($request));
@@ -158,7 +164,7 @@ trait FakesOptinexus
     private function nexusRespond(Request $request): mixed
     {
         $path = (string) parse_url($request->url(), PHP_URL_PATH);
-        $this->nexus['requests'][] = ['method' => $request->method(), 'path' => $path, 'body' => $request->data(), 'auth' => $request->header('Authorization')[0] ?? null];
+        $this->nexus['requests'][] = ['method' => $request->method(), 'path' => $path, 'body' => $request->data(), 'auth' => $request->header('Authorization')[0] ?? null, 'correlation' => $request->header('X-Correlation-Id')[0] ?? null, 'url' => $request->url()];
 
         if ($this->nexus['down']) {
             return Http::failedConnection('Nexus is down');
@@ -223,6 +229,7 @@ trait FakesOptinexus
             return Http::response(['message' => 'invalid_client'], 401);
         }
         $this->nexus['service_tokens']++;
+        $this->nexus['token_scopes']['service-token-'.$this->nexus['service_tokens']] = (string) ($form['scope'] ?? '');
 
         return Http::response(['token_type' => 'Bearer', 'expires_in' => 3600, 'access_token' => 'service-token-'.$this->nexus['service_tokens']]);
     }
@@ -230,7 +237,8 @@ trait FakesOptinexus
     private function nexusApi(Request $request, string $path): mixed
     {
         $auth = $request->header('Authorization')[0] ?? '';
-        if (! str_starts_with($auth, 'Bearer service-token-')) {
+        // `revoked_below`: service tokens with a lower number have been revoked in OptiNexus (only a renewed token works).
+        if (! str_starts_with($auth, 'Bearer service-token-') || (int) substr($auth, strlen('Bearer service-token-')) < ($this->nexus['revoked_below'] ?? 0)) {
             return Http::response(['success' => false, 'error' => ['code' => 'UNAUTHENTICATED']], 401);
         }
         if (! $this->nexus['service_scopes_ok']) {
@@ -238,15 +246,8 @@ trait FakesOptinexus
         }
         $body = $request->data();
 
-        if ($path === '/api/v1/authorization/check') {
-            if (($body['application_code'] ?? null) !== 'optiaccounting') {
-                return Http::response(['success' => false, 'error' => ['code' => 'RESOURCE_NOT_FOUND']], 404);
-            }
-            $grants = $this->nexus['grants'][($body['user_id'] ?? '').'|'.($body['tenant_id'] ?? '')] ?? [];
-            $code = substr((string) ($body['permission'] ?? ''), strlen('optiaccounting.'));
-            $scope = $grants[$code] ?? null;
-
-            return Http::response(['success' => true, 'data' => ['allowed' => $scope !== null, 'permission' => $body['permission'] ?? null, 'scope' => $scope]]);
+        if ($path === '/api/v1/authorization/effective-permissions') {
+            return $this->nexusEffectivePermissions($body);
         }
 
         if (preg_match('#^/api/v1/tenants/([^/]+)/commercial-context$#', $path, $m)) {
@@ -263,6 +264,14 @@ trait FakesOptinexus
             ]]);
         }
 
+        if ($path === '/api/v1/authorization/product-context') {
+            return $this->nexusProductContext($body);
+        }
+
+        if (str_starts_with($path, '/api/v1/delegation/')) {
+            return $this->nexusDelegationRespond($request, $path);
+        }
+
         if ($path === '/api/v1/events') {
             [$status, $payload] = $this->nexus['event_response'];
 
@@ -275,6 +284,43 @@ trait FakesOptinexus
         }
 
         return Http::response(['success' => false, 'error' => ['code' => 'NOT_FOUND']], 404);
+    }
+
+    /**
+     * OptiNexus' bulk permission endpoint (schema 1.0). The application is the one the service account is bound to. A test can make it
+     * throttle (`throttle` = how many answers are 429, `retry_after` = seconds), fail (`failures` = how many answers are 502),
+     * go missing (`bulk_missing`), be unbound (`service_unbound`), add rows to the answer (`extra_rows`) or replace it (`bulk_answer`).
+     */
+    private function nexusEffectivePermissions(array $body): mixed
+    {
+        if ($this->nexus['bulk_missing'] ?? false) {
+            return Http::response(['success' => false, 'error' => ['code' => 'RESOURCE_NOT_FOUND']], 404);
+        }
+        if (($this->nexus['throttle'] ?? 0) > 0) {
+            $this->nexus['throttle']--;
+
+            return Http::response(['success' => false, 'error' => ['code' => 'RATE_LIMITED']], 429, ['Retry-After' => (string) ($this->nexus['retry_after'] ?? 1)]);
+        }
+        if (($this->nexus['failures'] ?? 0) > 0) {
+            $this->nexus['failures']--;
+
+            return Http::response('bad gateway', 502);
+        }
+        if ($this->nexus['service_unbound'] ?? false) {
+            return Http::response(['success' => false, 'error' => ['code' => 'SERVICE_ACCOUNT_NOT_BOUND']], 403);
+        }
+        if (($body['application_code'] ?? 'optiaccounting') !== 'optiaccounting') {
+            return Http::response(['success' => false, 'error' => ['code' => 'APPLICATION_MISMATCH']], 403);
+        }
+
+        $grants = $this->nexus['grants'][($body['user_id'] ?? '').'|'.($body['tenant_id'] ?? '')] ?? [];
+        $rows = array_map(fn ($code, $scope) => ['permission' => "optiaccounting.{$code}", 'scope' => $scope], array_keys($grants), $grants);
+
+        return Http::response(['success' => true, 'data' => ($this->nexus['bulk_answer'] ?? []) + [
+            'schema_version' => '1.0', 'user_id' => $body['user_id'] ?? null, 'tenant_id' => $body['tenant_id'] ?? null, 'application_code' => 'optiaccounting',
+            'allowed' => $rows !== [], 'deny_reason' => $rows === [] ? 'PERMISSION_NOT_GRANTED' : null,
+            'permissions' => [...$rows, ...($this->nexus['extra_rows'] ?? [])], 'evaluated_at' => now()->toIso8601String(), 'ttl_seconds' => 300,
+        ]]);
     }
 
     // ---------------------------------------------------------------- keys and JWTs

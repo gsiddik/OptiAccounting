@@ -7,14 +7,21 @@ use App\Domain\AccessControl\Services\PermissionSource;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Permissions in `optinexus` mode: OptiNexus decides (role composition and assignment live there). It has no
- * "list effective permissions" call for service accounts, so every tenant permission of the local catalog is asked
- * with POST /authorization/check (key `<application>.<code>`), concurrently, and the allowed set is cached per
- * tenant + member for at most 5 minutes under the tenant access version. A failed call caches nothing and raises
- * IdentityProviderUnavailable: access fails closed, a stale answer is never used (docs/architecture/OPTINEXUS_ADAPTER.md §4).
+ * Permissions in `optinexus` mode: OptiNexus decides (role composition and assignment live there). One request,
+ * POST /authorization/effective-permissions (schema 1.0), returns everything the member holds in the tenant for this
+ * application, each key with its own scope; the application is the one OptiNexus bound to our service account, so nothing
+ * of another application or tenant can come back. The answer is cached per tenant + member for at most 5 minutes under the
+ * tenant access version, so a grant revoked in OptiNexus reaches us within that time (sooner when a revocation event bumps
+ * the version). A failed call caches nothing and raises IdentityProviderUnavailable: access fails closed, a stale answer is
+ * never used and nothing is granted by wildcard or by a local fallback (docs/architecture/OPTINEXUS_ADAPTER.md §4).
  */
 class NexusPermissionSource implements PermissionSource
 {
+    public const SCHEMA_VERSION = '1.0';
+
+    /** Narrowest first: the scope a member's local data scope starts from is the narrowest one OptiNexus granted. */
+    private const SCOPE_RANK = ['OWN' => 1, 'APPLICATION' => 2, 'TENANT' => 3, 'CUSTOMER' => 4, 'GLOBAL' => 5];
+
     public function __construct(
         private readonly NexusApi $api,
         private readonly AccessCache $cache,
@@ -22,9 +29,14 @@ class NexusPermissionSource implements PermissionSource
 
     public function tenantPermissions(string $tenantId, string $tenantUserId): array
     {
+        return array_keys($this->tenantGrants($tenantId, $tenantUserId));
+    }
+
+    public function tenantGrants(string $tenantId, string $tenantUserId): array
+    {
         return $this->cache->rememberForTenant(
             $tenantId,
-            "nexus-perm:{$tenantUserId}",
+            "nexus-grants:{$tenantUserId}",
             function () use ($tenantId, $tenantUserId) {
                 $link = DB::table('tenant_users as tu')
                     ->join('users as u', 'u.id', '=', 'tu.user_id')
@@ -37,55 +49,76 @@ class NexusPermissionSource implements PermissionSource
                     return [];
                 }
 
-                return $this->pull((string) $link->nexus_tenant, (string) $link->subject)['permissions'];
+                return $this->pull((string) $link->nexus_tenant, (string) $link->subject)['grants'];
             },
             (int) config('optientry.optinexus.permission_ttl_seconds'),
         );
     }
 
-    /** Stores an answer that was just pulled (sign-in) so the first requests of the session do not ask again. */
-    public function prime(string $tenantId, string $tenantUserId, array $permissions): void
+    /** Stores an answer that was just pulled (sign-in) so the first requests of the session do not ask again. @param array<string,string> $grants code => scope */
+    public function prime(string $tenantId, string $tenantUserId, array $grants): void
     {
         $ttl = (int) config('optientry.optinexus.permission_ttl_seconds');
-        $this->cache->rememberForTenant($tenantId, "nexus-perm:{$tenantUserId}", fn () => array_values($permissions), $ttl);
+        $this->cache->rememberForTenant($tenantId, "nexus-grants:{$tenantUserId}", fn () => $grants, $ttl);
     }
 
     /**
-     * Asks OptiNexus about every tenant permission for one user in one tenant.
+     * Asks OptiNexus, in one request, what one user holds in one tenant.
      *
-     * @return array{permissions:list<string>,scope:?string} `scope` is the widest scope OptiNexus granted
-     *                                                       (GLOBAL > CUSTOMER > TENANT > APPLICATION > OWN), null when nothing was granted
+     * Only exact permission codes of the local tenant catalog are accepted: a key outside it, a wildcard, a malformed row or a
+     * scope OptiNexus does not define is dropped, and an answer about another user, tenant or application is refused.
+     *
+     * @return array{permissions:list<string>,grants:array<string,string>,scope:?string} `scope` is the narrowest scope granted (null when nothing was)
+     *
+     * @throws IdentityProviderUnavailable
      */
     public function pull(string $nexusTenantId, string $subject): array
     {
         $application = OptinexusSettings::applicationCode();
-        $bodies = [];
-        foreach (DB::table('permissions')->where('scope', 'tenant')->pluck('code') as $code) {
-            $bodies[$code] = [
-                'user_id' => $subject,
-                'tenant_id' => $nexusTenantId,
-                'application_code' => $application,
-                'permission' => "{$application}.{$code}",
-            ];
+
+        $response = $this->api->send('POST', '/authorization/effective-permissions', [
+            'user_id' => $subject,
+            'tenant_id' => $nexusTenantId,
+            'application_code' => $application,
+        ], repeatable: true);
+
+        $data = $this->api->data($response);
+
+        if (($data['schema_version'] ?? null) !== self::SCHEMA_VERSION
+            || ($data['user_id'] ?? null) !== $subject
+            || ($data['tenant_id'] ?? null) !== $nexusTenantId
+            || ($data['application_code'] ?? null) !== $application
+            || ! is_array($data['permissions'] ?? null)) {
+            throw new IdentityProviderUnavailable('Unusable answer from effective-permissions (schema or subject mismatch).');
         }
 
-        $granted = [];
-        $rank = ['OWN' => 1, 'APPLICATION' => 2, 'TENANT' => 3, 'CUSTOMER' => 4, 'GLOBAL' => 5];
-        $widest = null;
+        $catalog = array_flip(DB::table('permissions')->where('scope', 'tenant')->pluck('code')->all());
+        $prefix = "{$application}.";
+        $grants = [];
 
-        foreach ($this->api->pool('/authorization/check', $bodies) as $code => $response) {
-            $data = $this->api->data($response);
-            if (($data['allowed'] ?? false) === true) {
-                $granted[] = (string) $code;
-                $scope = $data['scope'] ?? null;
-                if (is_string($scope) && ($rank[$scope] ?? 0) > ($rank[$widest] ?? 0)) {
-                    $widest = $scope;
-                }
+        foreach ($data['permissions'] as $row) {
+            $key = is_array($row) ? ($row['permission'] ?? null) : null;
+            $scope = is_array($row) ? ($row['scope'] ?? null) : null;
+
+            if (! is_string($key) || ! is_string($scope) || ! isset(self::SCOPE_RANK[$scope]) || ! str_starts_with($key, $prefix)) {
+                continue;
+            }
+
+            $code = substr($key, strlen($prefix));
+            if (isset($catalog[$code])) {
+                $grants[$code] = $scope;
             }
         }
 
-        sort($granted);
+        ksort($grants);
 
-        return ['permissions' => $granted, 'scope' => $widest];
+        $narrowest = null;
+        foreach ($grants as $scope) {
+            if ($narrowest === null || self::SCOPE_RANK[$scope] < self::SCOPE_RANK[$narrowest]) {
+                $narrowest = $scope;
+            }
+        }
+
+        return ['permissions' => array_keys($grants), 'grants' => $grants, 'scope' => $narrowest];
     }
 }

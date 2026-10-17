@@ -171,6 +171,8 @@ describe('what OptiNexus manages is not offered for editing', () => {
     'GET /app/users': { data: members },
     'GET /app/roles': { data: { data: [{ id: 'r-9', name: 'Kasir Cabang', is_system: false, permissions: [] }] } },
     'GET /app/permissions': { data: { data: [] } },
+    // Delegation is not set up on this installation: the pages fall back to the read-only local view.
+    'GET /app/delegation/status': { data: { available: false, reason: 'DELEGATION_NOT_CONFIGURED', mode: 'optinexus' } },
   })
 
   it('keeps member and role actions in a standalone installation', async () => {
@@ -185,20 +187,47 @@ describe('what OptiNexus manages is not offered for editing', () => {
     expect(screen.queryByText(/dikelola di OptiNexus/)).not.toBeInTheDocument()
   })
 
-  it('shows members read-only but leaves data scope editable in OptiNexus mode', async () => {
+  it('marks a service identity of the platform operator: no role or scope action, only the organization\'s off switch', async () => {
+    const withMachine = page([
+      ...members.data,
+      { id: 'm-3', status: 'ACTIVE', joined_at: null, user: { id: 'u-3', name: 'Integrasi OptiFleet', email: 'optifleet.integration@majujaya.optientry.invalid', status: 'ACTIVE' }, roles: [], data_scopes: [],
+        service_principal: { id: 'sp-1', kind: 'OPTIFLEET_INTEGRATION', revoked_at: null } },
+      { id: 'm-4', status: 'INACTIVE', joined_at: null, user: { id: 'u-4', name: 'Integrasi OptiFleet', email: 'optifleet.integration@old.optientry.invalid', status: 'INACTIVE' }, roles: [], data_scopes: [],
+        service_principal: { id: 'sp-0', kind: 'OPTIFLEET_INTEGRATION', revoked_at: '2026-10-01T00:00:00Z' } },
+    ])
+    mockApi({ ...tenantRoutes('standalone'), 'GET /app/users': { data: withMachine } })
+    setToken('t')
+    renderApp('/app/pengguna')
+
+    const table = await screen.findByRole('table', { name: 'Daftar pengguna' })
+    const live = within(table).getByText('optifleet.integration@majujaya.optientry.invalid').closest('tr')!
+    expect(within(live).getByText('Identitas layanan')).toBeInTheDocument()
+    expect(within(live).queryByRole('button', { name: 'Peran' })).not.toBeInTheDocument()
+    expect(within(live).queryByRole('button', { name: 'Cakupan' })).not.toBeInTheDocument()
+    expect(within(live).getByRole('button', { name: 'Tangguhkan' })).toBeInTheDocument()
+    expect(within(live).queryByRole('button', { name: 'Nonaktifkan' })).not.toBeInTheDocument()
+    const revoked = within(table).getByText('optifleet.integration@old.optientry.invalid').closest('tr')!
+    expect(within(revoked).getByText('Identitas layanan (dicabut)')).toBeInTheDocument()
+    expect(within(revoked).queryByRole('button')).not.toBeInTheDocument()
+    // a person keeps every action
+    expect(within(within(table).getByText('Sari Keuangan').closest('tr')!).getByRole('button', { name: 'Peran' })).toBeInTheDocument()
+  })
+
+  it('falls back to read-only members, with data scope editable, while delegation is not set up', async () => {
     mockApi(tenantRoutes('optinexus'))
     setToken('t')
     renderApp('/app/pengguna')
 
     const row = within((await screen.findByRole('table', { name: 'Daftar pengguna' }))).getByText('Sari Keuangan').closest('tr')!
     expect(screen.getByText(/dikelola di OptiNexus/)).toBeInTheDocument()
+    expect(screen.getByText(/belum disiapkan untuk instalasi ini/)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Pengguna baru' })).not.toBeInTheDocument()
     expect(within(row).queryByRole('button', { name: 'Peran' })).not.toBeInTheDocument()
     expect(within(row).queryByRole('button', { name: 'Tangguhkan' })).not.toBeInTheDocument()
     expect(within(row).getByRole('button', { name: 'Cakupan' })).toBeInTheDocument()
   })
 
-  it('shows roles read-only in OptiNexus mode', async () => {
+  it('falls back to read-only roles while delegation is not set up', async () => {
     mockApi(tenantRoutes('optinexus'))
     setToken('t')
     renderApp('/app/peran')

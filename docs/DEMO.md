@@ -123,7 +123,7 @@ which is expected in a demo. The 7 events (dated inside the open periods, relati
 - A USD workshop invoice: NEEDS_REVIEW, `CURRENCY_NOT_SUPPORTED` (only the functional currency is booked for now).
 - A payment for an invoice that was never received: NEEDS_REVIEW, `INVOICE_NOT_FOUND`; it succeeds on retry once the invoice event has arrived.
 
-The accounting policy of the demo requires approval, so the integration user (`optifleet.integration@maju-jaya.optientry.invalid`: no password, no role, listed among the tenant's users) only submits; the
+The accounting policy of the demo requires approval, so the integration user (`optifleet.integration@maju-jaya.optientry.invalid`: a registered service principal issued by the seeder, no password, no role, no seat, listed among the tenant's users) only submits; the
 manager approved and posted the documents afterwards. The events therefore link to their AP documents through the source links, and the journals belong to the manager's posting. The AP-to-GL
 reconciliation still reads MATCHED.
 
