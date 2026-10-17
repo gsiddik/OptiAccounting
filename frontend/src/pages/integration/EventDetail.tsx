@@ -121,7 +121,9 @@ export default function EventDetail() {
   const sourceDoc = [text(source?.type), text(source?.number) ?? text(source?.id)].filter(Boolean).join(' · ') || undefined
   const review = e.envelope.review as Record<string, unknown> | undefined
   const reviewReason = review?.required === true ? (text(review.reason) ?? '—') : undefined
-  const hint = statusHint(e.status)
+  // The generic "fix the cause, then retry" does not fit an event held for a decision (a content conflict, a gap, a source quarantine): its own banner says what to decide.
+  const heldForDecision = e.status === 'NEEDS_REVIEW' && (e.conflict || Boolean(e.gap_id) || reviewReason !== undefined)
+  const hint = heldForDecision ? undefined : statusHint(e.status)
   const processing = processingText(e.last_error_code, e.last_error)
   const canAct = access.canRetry && RETRYABLE.includes(e.status) && !e.conflict
   return (

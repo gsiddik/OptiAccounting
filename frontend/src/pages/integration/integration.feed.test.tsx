@@ -287,6 +287,12 @@ describe('content conflicts', () => {
     expect(screen.getAllByRole('button', { name: 'Putuskan konflik isi' }).length).toBeGreaterThan(0)
   })
 
+  it('does not tell the reader to fix a cause and retry an event that waits for a decision', async () => {
+    await open()
+    expect(screen.queryByText(/Tidak bisa diproses otomatis/)).not.toBeInTheDocument()
+    expect(screen.getAllByText(/Isi kejadian berbeda|konflik isi/i).length).toBeGreaterThan(0)
+  })
+
   it('keeps the original after a reason', async () => {
     const calls = await open(undefined, all, { [`POST ${IT}/events/ev-1/conflict-resolution`]: { data: detail() } })
     await userEvent.click(screen.getAllByRole('button', { name: 'Putuskan konflik isi' })[0])
