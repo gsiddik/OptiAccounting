@@ -230,7 +230,8 @@ trait FakesOptinexus
     private function nexusApi(Request $request, string $path): mixed
     {
         $auth = $request->header('Authorization')[0] ?? '';
-        if (! str_starts_with($auth, 'Bearer service-token-')) {
+        // `revoked_below`: service tokens with a lower number have been revoked in OptiNexus (only a renewed token works).
+        if (! str_starts_with($auth, 'Bearer service-token-') || (int) substr($auth, strlen('Bearer service-token-')) < ($this->nexus['revoked_below'] ?? 0)) {
             return Http::response(['success' => false, 'error' => ['code' => 'UNAUTHENTICATED']], 401);
         }
         if (! $this->nexus['service_scopes_ok']) {
@@ -238,15 +239,8 @@ trait FakesOptinexus
         }
         $body = $request->data();
 
-        if ($path === '/api/v1/authorization/check') {
-            if (($body['application_code'] ?? null) !== 'optiaccounting') {
-                return Http::response(['success' => false, 'error' => ['code' => 'RESOURCE_NOT_FOUND']], 404);
-            }
-            $grants = $this->nexus['grants'][($body['user_id'] ?? '').'|'.($body['tenant_id'] ?? '')] ?? [];
-            $code = substr((string) ($body['permission'] ?? ''), strlen('optiaccounting.'));
-            $scope = $grants[$code] ?? null;
-
-            return Http::response(['success' => true, 'data' => ['allowed' => $scope !== null, 'permission' => $body['permission'] ?? null, 'scope' => $scope]]);
+        if ($path === '/api/v1/authorization/effective-permissions') {
+            return $this->nexusEffectivePermissions($body);
         }
 
         if (preg_match('#^/api/v1/tenants/([^/]+)/commercial-context$#', $path, $m)) {
@@ -275,6 +269,43 @@ trait FakesOptinexus
         }
 
         return Http::response(['success' => false, 'error' => ['code' => 'NOT_FOUND']], 404);
+    }
+
+    /**
+     * OptiNexus' bulk permission endpoint (schema 1.0). The application is the one the service account is bound to. A test can make it
+     * throttle (`throttle` = how many answers are 429, `retry_after` = seconds), fail (`failures` = how many answers are 502),
+     * go missing (`bulk_missing`), be unbound (`service_unbound`), add rows to the answer (`extra_rows`) or replace it (`bulk_answer`).
+     */
+    private function nexusEffectivePermissions(array $body): mixed
+    {
+        if ($this->nexus['bulk_missing'] ?? false) {
+            return Http::response(['success' => false, 'error' => ['code' => 'RESOURCE_NOT_FOUND']], 404);
+        }
+        if (($this->nexus['throttle'] ?? 0) > 0) {
+            $this->nexus['throttle']--;
+
+            return Http::response(['success' => false, 'error' => ['code' => 'RATE_LIMITED']], 429, ['Retry-After' => (string) ($this->nexus['retry_after'] ?? 1)]);
+        }
+        if (($this->nexus['failures'] ?? 0) > 0) {
+            $this->nexus['failures']--;
+
+            return Http::response('bad gateway', 502);
+        }
+        if ($this->nexus['service_unbound'] ?? false) {
+            return Http::response(['success' => false, 'error' => ['code' => 'SERVICE_ACCOUNT_NOT_BOUND']], 403);
+        }
+        if (($body['application_code'] ?? 'optiaccounting') !== 'optiaccounting') {
+            return Http::response(['success' => false, 'error' => ['code' => 'APPLICATION_MISMATCH']], 403);
+        }
+
+        $grants = $this->nexus['grants'][($body['user_id'] ?? '').'|'.($body['tenant_id'] ?? '')] ?? [];
+        $rows = array_map(fn ($code, $scope) => ['permission' => "optiaccounting.{$code}", 'scope' => $scope], array_keys($grants), $grants);
+
+        return Http::response(['success' => true, 'data' => ($this->nexus['bulk_answer'] ?? []) + [
+            'schema_version' => '1.0', 'user_id' => $body['user_id'] ?? null, 'tenant_id' => $body['tenant_id'] ?? null, 'application_code' => 'optiaccounting',
+            'allowed' => $rows !== [], 'deny_reason' => $rows === [] ? 'PERMISSION_NOT_GRANTED' : null,
+            'permissions' => [...$rows, ...($this->nexus['extra_rows'] ?? [])], 'evaluated_at' => now()->toIso8601String(), 'ttl_seconds' => 300,
+        ]]);
     }
 
     // ---------------------------------------------------------------- keys and JWTs

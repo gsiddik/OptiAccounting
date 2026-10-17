@@ -49,6 +49,9 @@ return [
             'client_id' => env('OPTINEXUS_SERVICE_CLIENT_ID'),
             'client_secret' => env('OPTINEXUS_SERVICE_CLIENT_SECRET'),
             'timeout_seconds' => (int) env('OPTINEXUS_TIMEOUT', 15),
+            // Bounded recovery of one call (NexusApi::send): repeats after a 429 and the longest Retry-After slept through.
+            'max_retries' => max(0, min(5, (int) env('OPTINEXUS_MAX_RETRIES', 2))),
+            'max_retry_wait_seconds' => max(1, min(30, (int) env('OPTINEXUS_MAX_RETRY_WAIT', 5))),
         ],
 
         // Local password login for users with platform access (operators) while OptiNexus is the identity authority.
@@ -59,7 +62,6 @@ return [
 
         // Seconds an answer about a user's permissions may be reused. Never above 300 (SAAS_ARCHITECTURE §7).
         'permission_ttl_seconds' => max(1, min(300, (int) env('OPTINEXUS_PERMISSION_TTL', 300))),
-        'permission_pool_size' => 25,
 
         // Re-read a tenant's commercial state at sign-in when the projection is older than this.
         'entitlement_ttl_seconds' => max(0, (int) env('OPTINEXUS_ENTITLEMENT_TTL', 300)),

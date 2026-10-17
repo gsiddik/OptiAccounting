@@ -26,7 +26,7 @@ Use a Sanctum token of an administrator (`POST /api/v1/auth/login`).
 | 8 | A role with `role_type: APPLICATION` and `application_id` (no `tenant_id` on the role), `POST /roles/{role}/permissions/{permission}` per permission | The tenant goes on the assignment, not on the role. |
 | 9 | Per person: `POST /users`, `POST /users/{u}/tenants/{t}`, `POST /users/{u}/applications/{app}` `{tenant_id}`, `POST /users/{u}/roles/{role}` `{tenant_id}` | A person with the application but no permission is refused (`no_permissions`). |
 | 10 | `POST /oidc-clients` `{application_id, name, redirect_uris, post_logout_redirect_uris, launch_url, backchannel_logout_uri, confidential: true, require_pkce: true}` | Take the values from `oidc_client` of the manifest. The secret is shown once. |
-| 11 | `POST /service-accounts` `{name, application_id}` | The secret is shown once. Scopes are requested at token time: `authorization.check commercial.read event.write audit.write`. |
+| 11 | `POST /service-accounts` `{name, application_id}` | The secret is shown once. `application_id` is required: permissions are pulled with `POST /authorization/effective-permissions`, which answers only for the application the service account is bound to (an unbound account gets `403 SERVICE_ACCOUNT_NOT_BOUND`). Scopes are requested at token time: `authorization.check commercial.read event.write audit.write`. |
 
 Bulk registration hits OptiNexus's rate limit (`429 RATE_LIMITED`); wait and retry.
 

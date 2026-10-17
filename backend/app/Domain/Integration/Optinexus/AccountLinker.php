@@ -75,7 +75,7 @@ class AccountLinker
             return [$user, $membership];
         });
 
-        $this->permissions->prime($tenant->id, $membership->id, $pulled['permissions']);
+        $this->permissions->prime($tenant->id, $membership->id, $pulled['grants']);
 
         return [$user, $tenant, $membership];
     }
@@ -199,7 +199,7 @@ class AccountLinker
                 $membership->joined_at = now();
                 $membership->save();
 
-                // Data scope stays local. Start from what OptiNexus granted; a local administrator may narrow it.
+                // Data scope stays local. It starts from the narrowest scope OptiNexus granted (never wider than any single grant); a local administrator may widen or narrow it.
                 $scope = new DataScope;
                 $scope->tenant_id = $tenant->id;
                 $scope->tenant_user_id = $membership->id;

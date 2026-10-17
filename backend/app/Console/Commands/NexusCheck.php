@@ -61,12 +61,20 @@ class NexusCheck extends Command
         });
         $step('Service account token and scopes', function () use ($api) {
             Cache::forget('optinexus.service.token');
-            // A harmless authorization question for an unknown user: proves the token and the authorization.check scope.
-            $response = $api->send('POST', '/authorization/check', [
-                'user_id' => '00000000-0000-0000-0000-000000000000', 'application_code' => OptinexusSettings::applicationCode(), 'permission' => OptinexusSettings::applicationCode().'.check',
-            ]);
+            // A harmless question for an unknown user: proves the token, the authorization.check scope, that this service account is
+            // bound to the application and that OptiNexus offers the bulk endpoint this release needs.
+            $response = $api->send('POST', '/authorization/effective-permissions', [
+                'user_id' => '00000000-0000-0000-0000-000000000000', 'tenant_id' => '00000000-0000-0000-0000-000000000000', 'application_code' => OptinexusSettings::applicationCode(),
+            ], repeatable: true);
+            $code = $response->json('error.code');
             if ($response->status() === 404) {
-                throw new \RuntimeException('application "'.OptinexusSettings::applicationCode().'" is not registered in OptiNexus');
+                throw new \RuntimeException('OptiNexus lacks /authorization/effective-permissions (upgrade it)');
+            }
+            if ($response->status() === 403 && $code === 'APPLICATION_MISMATCH') {
+                throw new \RuntimeException('application "'.OptinexusSettings::applicationCode().'" is not bound to the account');
+            }
+            if ($response->status() === 403 && in_array($code, ['SERVICE_ACCOUNT_NOT_BOUND', 'TENANT_MISMATCH'], true)) {
+                throw new \RuntimeException("{$code}: bind the account to the application");
             }
             if ($response->status() === 403) {
                 throw new \RuntimeException('the service account lacks a required scope ('.NexusApi::SCOPES.')');

@@ -80,11 +80,21 @@ class ManifestAndCommandsTest extends OptinexusTestCase
         $this->artisan('optientry:nexus:check')->assertFailed();
     }
 
-    public function test_the_check_command_reports_an_unregistered_application(): void
+    public function test_the_check_command_reports_an_application_the_service_account_is_not_bound_to(): void
     {
         config(['optientry.optinexus.application_code' => 'not-registered']);
 
-        $this->artisan('optientry:nexus:check')->assertFailed()->expectsOutputToContain('is not registered in OptiNexus');
+        $this->artisan('optientry:nexus:check')->assertFailed()->expectsOutputToContain('is not bound to the account');
+    }
+
+    public function test_the_check_command_reports_an_unbound_service_account_and_an_optinexus_without_the_bulk_endpoint(): void
+    {
+        $this->nexus['service_unbound'] = true;
+        $this->artisan('optientry:nexus:check')->assertFailed()->expectsOutputToContain('SERVICE_ACCOUNT_NOT_BOUND');
+
+        $this->nexus['service_unbound'] = false;
+        $this->nexus['bulk_missing'] = true;
+        $this->artisan('optientry:nexus:check')->assertFailed()->expectsOutputToContain('lacks /authorization/effective-permissions');
     }
 
     public function test_the_check_command_is_a_no_op_in_standalone_mode(): void

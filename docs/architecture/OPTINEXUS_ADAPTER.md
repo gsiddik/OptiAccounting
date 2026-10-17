@@ -58,17 +58,31 @@ only when registered on the OIDC client; otherwise OptiNexus shows its own
 
 ## 4. Permissions
 
-OptiNexus has no "list effective permissions" call for service accounts, so the
-adapter asks `POST /authorization/check` once per tenant permission of the
-local catalog (key `optiaccounting.<code>`, requests pooled, 25 at a time) and
-caches the allowed set per tenant + user for `OPTINEXUS_PERMISSION_TTL`
-seconds (default and maximum 300) under the tenant access version, so
-`touchTenant()` and a revocation event invalidate it at once. If OptiNexus
-cannot answer, nothing is cached and the request fails closed with `503
-IDENTITY_PROVIDER_UNAVAILABLE`; revoked privileges therefore never outlive the
-TTL and a stale answer is never used. Cost: one request per catalog permission
-per active user per 5 minutes. A batch endpoint would cut that to one; it is a
-possible OptiNexus change, **not requested** (owner decision).
+One request answers the whole catalog: `POST /authorization/effective-permissions` (schema `1.0`, ecosystem audit A03) with
+`{user_id, tenant_id, application_code}` returns every permission the member holds in the tenant for **this** application, each with its
+own scope (`GLOBAL|APPLICATION|TENANT`, `OWN` when OptiNexus defines it). The application is the one OptiNexus bound to our service
+account, so a service account that is unbound or bound elsewhere gets `403 SERVICE_ACCOUNT_NOT_BOUND` / `APPLICATION_MISMATCH` and learns
+nothing of other applications or tenants. The adapter accepts only exact codes of the local tenant catalog (wildcards, unknown keys,
+malformed rows and unknown scopes are dropped) and refuses an answer whose `user_id`, `tenant_id`, `application_code` or `schema_version`
+differs from the question. Result: cached per tenant + user for `OPTINEXUS_PERMISSION_TTL` seconds (default and maximum 300, never above
+the `ttl_seconds` OptiNexus sends) under the tenant access version, so `touchTenant()` and a revocation event invalidate it at once;
+**a grant revoked in OptiNexus therefore stops working here within 300 s, sooner on a back-channel/revocation event** (OptiNexus itself
+caches nothing for this answer).
+
+Scope is per permission: `EffectiveAccess` keeps `code => scope`, a permission granted at `OWN` covers only the member's own records however
+wide the local data scope is, and a new membership's local data scope starts from the **narrowest** scope OptiNexus granted (never wider than
+any single grant; a local administrator may change it).
+
+Failure handling (`NexusApi::send`, all bounded): `401` renews the cached service token once (single-flight lock, so concurrent workers do
+not each ask for a token); `429` waits `Retry-After` and repeats at most `OPTINEXUS_MAX_RETRIES` (2) times, never sleeping longer than
+`OPTINEXUS_MAX_RETRY_WAIT` (5 s) - a longer wait is returned to the user as `503 IDENTITY_PROVIDER_UNAVAILABLE` with a `Retry-After`
+header; a connection error or `502/503/504` is repeated once (the call is a read). If OptiNexus still cannot answer, nothing is cached and
+the request fails closed: no wildcard, no local fallback, no stale grant. There is **no fallback to one `/authorization/check` per
+permission**: that fan-out (136 calls against a 120/min limit) is the defect A03 fixed, and an OptiNexus without the bulk endpoint is reported
+by `optientry:nexus:check`. The individual endpoint stays available in OptiNexus for other callers.
+
+Compatibility: this release of OptiEntry needs an OptiNexus release that has `POST /authorization/effective-permissions` and a service
+account with `application_id` set (see OPTINEXUS_ONBOARDING.md); the service account scope stays `authorization.check`.
 
 Role, permission-grant and member lifecycle endpoints of the tenant portal
 answer `409 MANAGED_BY_OPTINEXUS` in this mode; data scopes stay editable.

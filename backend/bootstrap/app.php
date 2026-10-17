@@ -40,5 +40,6 @@ return Application::configure(basePath: dirname(__DIR__))
         $exceptions->render(fn (DomainException $e) => response()->json(
             ['message' => $e->getMessage(), 'code' => $e->errorCode, 'details' => (object) $e->details],
             $e->status,
+            isset($e->details['retry_after']) ? ['Retry-After' => (string) $e->details['retry_after']] : [],
         ));
     })->create();

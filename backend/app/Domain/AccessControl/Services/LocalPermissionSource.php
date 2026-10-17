@@ -9,6 +9,11 @@ class LocalPermissionSource implements PermissionSource
 {
     public function __construct(private readonly AccessCache $cache) {}
 
+    public function tenantGrants(string $tenantId, string $tenantUserId): array
+    {
+        return array_fill_keys($this->tenantPermissions($tenantId, $tenantUserId), 'TENANT');
+    }
+
     public function tenantPermissions(string $tenantId, string $tenantUserId): array
     {
         return $this->cache->rememberForTenant($tenantId, "perm:{$tenantUserId}", fn () => DB::table('tenant_user_roles as ur')

@@ -2,12 +2,13 @@
 
 namespace App\Domain\Integration\Optinexus;
 
+use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
-use Illuminate\Http\Client\Pool;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Sleep;
 use Illuminate\Support\Str;
 
 /**
@@ -22,50 +23,71 @@ class NexusApi
 
     private const TOKEN_KEY = 'optinexus.service.token';
 
-    /** @param  array<string,mixed>  $data */
-    public function send(string $method, string $path, array $data = []): Response
+    /**
+     * One call to OptiNexus with bounded recovery, so a short disturbance does not become an outage for the user:
+     *  - 401: the cached token is dropped and renewed once;
+     *  - 429: the request was not processed, so it is repeated after `Retry-After` (capped; a longer wait is not slept through
+     *    but returned, see data()), at most `max_retries` times;
+     *  - a connection error or 502/503/504, only when the caller says the call is safe to repeat (`$repeatable`): once, after a pause.
+     * Every other status is returned as it is. Total waiting is bounded by `max_retries` x `max_retry_wait_seconds`.
+     *
+     * @param  array<string,mixed>  $data
+     */
+    public function send(string $method, string $path, array $data = [], bool $repeatable = false): Response
     {
-        $response = $this->attempt($method, $path, $data);
+        $max = max(0, (int) config('optientry.optinexus.service.max_retries'));
+        $cap = max(1, (int) config('optientry.optinexus.service.max_retry_wait_seconds'));
+        $renewed = false;
+        $limited = 0;
+        $transient = 0;
 
-        if ($response->status() === 401) { // expired or revoked token: renew once
-            Cache::forget(self::TOKEN_KEY);
-            $response = $this->attempt($method, $path, $data);
+        while (true) {
+            try {
+                $response = $this->attempt($method, $path, $data);
+            } catch (IdentityProviderUnavailable $e) {
+                if (! $repeatable || $transient++ >= 1 || ! $e->transient) {
+                    throw $e;
+                }
+                Sleep::for(1)->seconds();
+
+                continue;
+            }
+
+            $status = $response->status();
+
+            if ($status === 401 && ! $renewed) { // expired or revoked token: renew once
+                Cache::forget(self::TOKEN_KEY);
+                $renewed = true;
+
+                continue;
+            }
+
+            if ($status === 429 && $limited < $max) {
+                $wait = $this->retryAfter($response) ?? (2 ** $limited);
+                if ($wait <= $cap) {
+                    $limited++;
+                    Sleep::for(max(1, $wait))->seconds();
+
+                    continue;
+                }
+            }
+
+            if ($repeatable && in_array($status, [502, 503, 504], true) && $transient++ < 1) {
+                Sleep::for(1)->seconds();
+
+                continue;
+            }
+
+            return $response;
         }
-
-        return $response;
     }
 
-    /**
-     * Sends independent POSTs concurrently (in chunks) and returns the responses by the keys given.
-     *
-     * @param  array<string,array<string,mixed>>  $bodies  key => JSON body
-     * @return array<string,Response>
-     */
-    public function pool(string $path, array $bodies): array
+    /** Seconds OptiNexus asked us to wait (`Retry-After`), or null when it did not say. */
+    public function retryAfter(Response $response): ?int
     {
-        $token = $this->token();
-        $results = [];
+        $header = $response->header('Retry-After');
 
-        foreach (array_chunk($bodies, (int) config('optientry.optinexus.permission_pool_size'), true) as $chunk) {
-            try {
-                $responses = Http::pool(function (Pool $pool) use ($chunk, $path, $token) {
-                    foreach ($chunk as $key => $body) {
-                        $this->decorate($pool->as((string) $key)->withToken($token))->post($this->url($path), $body);
-                    }
-                });
-            } catch (ConnectionException $e) {
-                throw new IdentityProviderUnavailable(Str::limit($e->getMessage(), 200));
-            }
-
-            foreach ($responses as $key => $response) {
-                if ($response instanceof ConnectionException) {
-                    throw new IdentityProviderUnavailable(Str::limit($response->getMessage(), 200));
-                }
-                $results[$key] = $response;
-            }
-        }
-
-        return $results;
+        return is_numeric($header) ? max(0, (int) $header) : null;
     }
 
     /**
@@ -76,7 +98,7 @@ class NexusApi
     public function data(Response $response): array
     {
         if (! $response->successful()) {
-            throw new IdentityProviderUnavailable("HTTP {$response->status()}");
+            throw new IdentityProviderUnavailable("HTTP {$response->status()}", $response->status() === 429 ? ($this->retryAfter($response) ?? 60) : null, transient: $response->serverError());
         }
 
         return (array) ($response->json('data') ?? []);
@@ -89,7 +111,7 @@ class NexusApi
 
             return strtoupper($method) === 'GET' ? $request->get($this->url($path), $data) : $request->send(strtoupper($method), $this->url($path), ['json' => $data]);
         } catch (ConnectionException $e) {
-            throw new IdentityProviderUnavailable(Str::limit($e->getMessage(), 200));
+            throw new IdentityProviderUnavailable(Str::limit($e->getMessage(), 200), transient: true);
         }
     }
 
@@ -117,21 +139,50 @@ class NexusApi
             return $cached;
         }
 
+        // One worker renews the token; the others wait for it instead of each asking OptiNexus at the same moment.
         try {
-            $response = Http::asForm()->timeout((int) config('optientry.optinexus.service.timeout_seconds'))
-                ->post(OptinexusSettings::baseUrl().'/api/v1/oauth/token', [
-                    'grant_type' => 'client_credentials',
-                    'client_id' => config('optientry.optinexus.service.client_id'),
-                    'client_secret' => config('optientry.optinexus.service.client_secret'),
-                    'scope' => self::SCOPES,
-                ]);
-        } catch (ConnectionException $e) {
-            throw new IdentityProviderUnavailable(Str::limit($e->getMessage(), 200));
+            return Cache::lock(self::TOKEN_KEY.':renewal', 15)->block(10, function () {
+                $cached = Cache::get(self::TOKEN_KEY);
+
+                return is_string($cached) && $cached !== '' ? $cached : $this->requestToken();
+            });
+        } catch (LockTimeoutException) {
+            throw new IdentityProviderUnavailable('Service account token renewal timed out.', transient: true);
+        }
+    }
+
+    private function requestToken(): string
+    {
+        $max = max(0, (int) config('optientry.optinexus.service.max_retries'));
+        $cap = max(1, (int) config('optientry.optinexus.service.max_retry_wait_seconds'));
+
+        for ($attempt = 0; ; $attempt++) {
+            try {
+                $response = Http::asForm()->timeout((int) config('optientry.optinexus.service.timeout_seconds'))
+                    ->post(OptinexusSettings::baseUrl().'/api/v1/oauth/token', [
+                        'grant_type' => 'client_credentials',
+                        'client_id' => config('optientry.optinexus.service.client_id'),
+                        'client_secret' => config('optientry.optinexus.service.client_secret'),
+                        'scope' => self::SCOPES,
+                    ]);
+            } catch (ConnectionException $e) {
+                throw new IdentityProviderUnavailable(Str::limit($e->getMessage(), 200), transient: true);
+            }
+
+            $wait = $response->status() === 429 ? ($this->retryAfter($response) ?? (2 ** $attempt)) : null;
+            if ($wait === null || $attempt >= $max || $wait > $cap) {
+                break;
+            }
+            Sleep::for(max(1, $wait))->seconds();
         }
 
         $token = $response->json('access_token');
         if (! $response->ok() || ! is_string($token) || $token === '') {
-            throw new IdentityProviderUnavailable("Service account authentication failed (HTTP {$response->status()}).");
+            throw new IdentityProviderUnavailable(
+                "Service account authentication failed (HTTP {$response->status()}).",
+                $response->status() === 429 ? ($this->retryAfter($response) ?? 60) : null,
+                transient: $response->serverError(),
+            );
         }
 
         $ttl = max(60, (int) ($response->json('expires_in') ?? 3600) - 120);
