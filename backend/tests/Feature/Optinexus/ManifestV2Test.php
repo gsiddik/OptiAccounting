@@ -23,7 +23,7 @@ class ManifestV2Test extends OptinexusTestCase
     {
         $manifest = $this->manifest();
 
-        $this->assertSame(2, $manifest['manifest_version']);
+        $this->assertSame('2.0', $manifest['manifest_version']);
         $this->assertMatchesRegularExpression('/^[0-9a-f]{16}$/', $manifest['revision']);
         $this->assertSame($manifest['revision'], $this->manifest()['revision'], 'same content, same revision');
 
@@ -56,7 +56,7 @@ class ManifestV2Test extends OptinexusTestCase
         Artisan::call('optientry:nexus:manifest', [], $buffer);
         $printed = json_decode($buffer->fetch(), true);
 
-        $this->assertSame(2, $printed['manifest_version']);
+        $this->assertSame('2.0', $printed['manifest_version']);
         $this->assertSame($this->manifest()['revision'], $printed['revision']);
         $this->assertContains('tenant.delegate', $printed['service_account']['scopes']);
     }

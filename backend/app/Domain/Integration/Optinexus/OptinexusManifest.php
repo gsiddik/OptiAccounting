@@ -10,14 +10,14 @@ use Illuminate\Support\Facades\DB;
  * event catalog, service-account scopes, OIDC client). It is generated from this repository's own catalogs, so the
  * registration can never drift from the code (docs/integration/OPTINEXUS_ONBOARDING.md).
  *
- * Manifest v2 (audit A02/R08): `manifest_version` is the schema (2), `revision` a digest of the catalog content (it changes if and
+ * Manifest v2 (audit A02/R08): `manifest_version` is the schema ("2.0", a string, as OptiNexus requires), `revision` a digest of the catalog content (it changes if and
  * only if a capability, permission, delegable flag, event or scope changes, so an importer can tell "same" from "new" without
  * comparing everything; deployment URLs are not part of it), and every permission names its `capability_code` (the module or feature whose entitlement it needs, null
  * when none) and says whether it is `delegable` (DelegableSet; false unless listed). v1 readers ignore the additions.
  */
 class OptinexusManifest
 {
-    public const VERSION = 2;
+    public const VERSION = '2.0';
 
     /** @return array<string,mixed> */
     public function build(): array

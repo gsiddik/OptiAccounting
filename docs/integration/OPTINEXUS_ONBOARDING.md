@@ -108,7 +108,7 @@ capability, permission or event that is still unregistered.
 
 ## 5. Manifest v2 and what an Admin Tenant may delegate
 
-`optientry:nexus:manifest` prints `manifest_version` (2), `revision` (a digest of the catalog: capabilities, permissions with their flags,
+`optientry:nexus:manifest` prints `manifest_version` ("2.0"), `revision` (a digest of the catalog: capabilities, permissions with their flags,
 events, limit keys and scopes; the same for every installation of one release, it changes if and only if the catalog does) and, per
 permission, `group`, `capability_code` (the module or feature whose entitlement the permission needs, read from the route gates; `null`
 when no entitlement is needed or the routes disagree) and `delegable`. Import is additive: register new entries, never delete.
