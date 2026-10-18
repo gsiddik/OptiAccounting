@@ -193,10 +193,16 @@ export function describeError(error: unknown): string {
     if (error.code === 'PRIVILEGE_ESCALATION' && Array.isArray(error.details.permissions)) {
       return `${translate('error.PRIVILEGE_ESCALATION')} (${(error.details.permissions as string[]).join(', ')})`
     }
-    const catalogKey = error.code === 'IDENTITY_PROVIDER_UNAVAILABLE' && error.details.outcome_unknown === true ? 'error.IDENTITY_PROVIDER_UNAVAILABLE.write' : `error.${error.code}`
+    // An invitation that is no longer open says which state ended it (accepted, revoked): `error.INVITATION_NOT_PENDING.<STATE>` when the catalog has it.
+    const refusedState = error.code === 'INVITATION_NOT_PENDING' && typeof error.details.status === 'string' ? `error.INVITATION_NOT_PENDING.${error.details.status}` : ''
+    const catalogKey = error.code === 'IDENTITY_PROVIDER_UNAVAILABLE' && error.details.outcome_unknown === true
+      ? 'error.IDENTITY_PROVIDER_UNAVAILABLE.write'
+      : hasMessage(refusedState) ? refusedState : `error.${error.code}`
     if (error.code && hasMessage(catalogKey)) {
       const permissions = Array.isArray(error.details.permissions) ? (error.details.permissions as string[]).join(', ') : ''
-      return translate(catalogKey as MessageKey, { permissions })
+      // `retry_after` (seconds) is what OptiNexus' throttles (resend cooldown, invitation rate limit) asked us to wait.
+      const seconds = typeof error.details.retry_after === 'number' ? error.details.retry_after : undefined
+      return translate(catalogKey as MessageKey, { permissions, seconds })
     }
     if (error.code === 'DEPENDENCY_MISSING' && Array.isArray(error.details.missing)) {
       return `${ERRORS.DEPENDENCY_MISSING} Dibutuhkan: ${(error.details.missing as string[]).join(', ')}.`

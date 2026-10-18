@@ -67,4 +67,32 @@ export const errors = defineMessages({
   'error.DELEGATION_TENANT_UNKNOWN': { id: 'OptiNexus tidak mengenal organisasi ini. Hubungi administrator platform.', en: 'OptiNexus does not know this organization. Contact the platform administrator.' },
   'error.DELEGATION_UNEXPECTED_RESPONSE': { id: 'OptiNexus memberi jawaban yang tidak dikenali. Coba lagi atau hubungi dukungan dengan kode referensi.', en: 'OptiNexus gave an answer this application does not understand. Try again or contact support with the reference.' },
   'error.DELEGATION_IN_PROGRESS': { id: 'Peran dengan nama ini sedang dibuat. Tunggu sebentar lalu muat ulang.', en: 'A role with this name is already being created. Wait a moment, then reload.' },
+  // Invitations (OptiNexus contract 2b)
+  'error.INVITATION_PENDING': {
+    id: 'Sudah ada undangan terbuka untuk e-mail ini. Buka tab Undangan dan pilih Kirim ulang.',
+    en: 'There is already an open invitation for this e-mail. Open the Invitations tab and choose Resend.',
+  },
+  'error.ALREADY_MEMBER': { id: 'Orang ini sudah menjadi anggota dan punya akses ke OptiEntry.', en: 'This person is already a member with access to OptiEntry.' },
+  'error.INVITATION_NOT_FOUND': { id: 'Undangan tidak ditemukan. Muat ulang daftar.', en: 'The invitation was not found. Reload the list.' },
+  'error.INVITATION_NOT_PENDING': { id: 'Undangan ini tidak lagi terbuka. Muat ulang daftar.', en: 'This invitation is no longer open. Reload the list.' },
+  'error.INVITATION_NOT_PENDING.ACCEPTED': {
+    id: 'Undangan ini sudah diterima dan tautannya sudah terpakai. Tidak ada yang perlu dikirim ulang atau dicabut.',
+    en: 'This invitation has already been accepted and its link has been used. There is nothing to resend or revoke.',
+  },
+  'error.INVITATION_NOT_PENDING.REVOKED': {
+    id: 'Undangan ini sudah dicabut dan tautannya tidak berlaku. Undang lagi jika orang ini tetap perlu akses.',
+    en: 'This invitation was revoked and its link no longer works. Invite the person again if they still need access.',
+  },
+  'error.INVITATION_RESEND_COOLDOWN': {
+    id: 'Undangan baru saja dikirim. Tunggu {seconds} detik sebelum mengirim ulang.',
+    en: 'The invitation was just sent. Wait {seconds} seconds before sending it again.',
+  },
+  'error.INVITATION_RESEND_LIMIT': {
+    id: 'Undangan ini sudah dikirim ulang sebanyak yang diizinkan. Cabut, lalu undang lagi jika perlu.',
+    en: 'This invitation has been resent as many times as allowed. Revoke it and invite the person again if needed.',
+  },
+  'error.INVITATION_RATE_LIMITED': {
+    id: 'Terlalu banyak undangan dalam waktu singkat. Coba lagi dalam {seconds} detik.',
+    en: 'Too many invitations in a short time. Try again in {seconds} seconds.',
+  },
 })

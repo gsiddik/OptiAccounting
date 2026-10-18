@@ -8,7 +8,6 @@ import { renderApp, tenantCaps, tenantMe } from '../../../test/render'
 
 const ADMIN = '11111111-1111-4111-8111-111111111111'
 const SARI = '22222222-2222-4222-8222-222222222222'
-const NEW = '33333333-3333-4333-8333-333333333333'
 
 const role = (id: string, name: string, over: Record<string, unknown> = {}) => ({ id, code: name.toLowerCase(), name, description: null, template: false, editable: true, permissions: [], permission_count: 0, ...over })
 const accountant = role('r-acc', 'Accountant', { template: true, editable: false, description: 'Day-to-day bookkeeping', permissions: ['accounting.journal.view'], permission_count: 1 })
@@ -62,62 +61,6 @@ describe('Settings > Users through OptiNexus delegation', () => {
     expect(within(admin).queryByRole('button', { name: 'Peran' })).not.toBeInTheDocument()
   })
 
-  it('creates a person in OptiNexus: sends what was typed, never a tenant, and says which outcome happened', async () => {
-    const calls = mockApi(usersRoutes({ 'POST /app/delegation/users': { status: 201, data: { ...user(NEW, 'Rina Baru', { local: null }), outcome: 'created', projection: 'CREATED' } } }))
-    setToken('t')
-    renderApp('/app/pengguna')
-
-    await userEvent.click(await screen.findByRole('button', { name: 'Tambah pengguna' }))
-    const dialog = await screen.findByRole('dialog')
-    await userEvent.type(within(dialog).getByLabelText('Nama'), 'Rina Baru')
-    await userEvent.type(within(dialog).getByLabelText('E-mail'), 'rina@majujaya.test')
-    await userEvent.type(within(dialog).getByLabelText(/Kata sandi awal/), 'Str0ng!Passw0rd#1')
-    await userEvent.click(await within(dialog).findByLabelText(/Accountant/))
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Tambah' }))
-
-    expect(await screen.findByText('Pengguna dibuat di OptiNexus dan diberi akses.')).toBeInTheDocument()
-    const post = calls.find((c) => c.method === 'POST')!
-    expect(post.url).toBe('/app/delegation/users')
-    expect(post.data).toMatchObject({ name: 'Rina Baru', email: 'rina@majujaya.test', initial_password: 'Str0ng!Passw0rd#1', role_ids: ['r-acc'], data_scopes: [{ scope_type: 'OWN' }] })
-    expect(JSON.stringify(post.data)).not.toMatch(/tenant|acting_user/)
-  })
-
-  it.each([
-    ['linked', 'CREATED', 'Akun OptiNexus yang sudah ada dihubungkan ke organisasi ini.'],
-    ['existing', 'EXISTING', 'Pengguna ini sudah punya akses. Tidak ada yang berubah.'],
-    ['linked', 'DEFERRED', 'Pengguna ditambahkan di OptiNexus. E-mail ini dipakai akun lokal, jadi penghubungan terjadi saat pengguna pertama kali masuk lewat OptiNexus.'],
-  ])('reports the outcome %s / %s in words', async (outcome, projection, text) => {
-    mockApi(usersRoutes({ 'POST /app/delegation/users': { status: outcome === 'existing' ? 200 : 201, data: { ...user(NEW, 'Rina Baru'), outcome, projection } } }))
-    setToken('t')
-    renderApp('/app/pengguna')
-
-    await userEvent.click(await screen.findByRole('button', { name: 'Tambah pengguna' }))
-    const dialog = await screen.findByRole('dialog')
-    await userEvent.type(within(dialog).getByLabelText('Nama'), 'Rina Baru')
-    await userEvent.type(within(dialog).getByLabelText('E-mail'), 'rina@majujaya.test')
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Tambah' }))
-
-    expect(await screen.findByText(text)).toBeInTheDocument()
-  })
-
-  it('shows the refusal inside the dialog, with the reference to quote, and keeps what was typed', async () => {
-    mockApi(usersRoutes({
-      'POST /app/delegation/users': { status: 409, headers: { 'x-request-id': 'req-77' }, data: { message: 'full', code: 'CAPACITY_EXCEEDED', details: { limit_code: 'USER_LIMIT', limit: 5, used: 5 } } },
-    }))
-    setToken('t')
-    renderApp('/app/pengguna')
-
-    await userEvent.click(await screen.findByRole('button', { name: 'Tambah pengguna' }))
-    const dialog = await screen.findByRole('dialog')
-    await userEvent.type(within(dialog).getByLabelText('Nama'), 'Rina Baru')
-    await userEvent.type(within(dialog).getByLabelText('E-mail'), 'rina@majujaya.test')
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Tambah' }))
-
-    expect(await within(dialog).findByText(/Batas pengguna tercapai \(5 dari 5\)/)).toBeInTheDocument()
-    expect(within(dialog).getByText('Kode referensi: req-77')).toBeInTheDocument()
-    expect(within(dialog).getByLabelText('Nama')).toHaveValue('Rina Baru')
-  })
-
   it('changes roles and removes access through OptiNexus', async () => {
     const calls = mockApi(usersRoutes({
       'PUT /app/delegation/users/22222222-2222-4222-8222-222222222222/roles': { data: user(SARI, 'Sari Keuangan', { roles: [accountant, cashier] }) },
@@ -150,7 +93,7 @@ describe('Settings > Users through OptiNexus delegation', () => {
     renderApp('/app/pengguna')
 
     await screen.findByRole('table', { name: 'Daftar pengguna' })
-    expect(screen.queryByRole('button', { name: 'Tambah pengguna' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Undang pengguna' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Cabut akses' })).not.toBeInTheDocument()
   })
 
@@ -207,7 +150,8 @@ describe('Settings > Users through OptiNexus delegation', () => {
     expect(await screen.findByRole('heading', { name: 'Users' })).toBeInTheDocument()
     expect(screen.getByRole('table', { name: 'Users' })).toBeInTheDocument()
     expect(screen.getByText('User seats: 2 of 5 used')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Add user' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Invite user' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Add user' })).not.toBeInTheDocument()
     expect(document.documentElement.lang).toBe('en')
   })
 })

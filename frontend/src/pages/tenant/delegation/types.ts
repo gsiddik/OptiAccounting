@@ -41,7 +41,32 @@ export type DelegatedUserPage = {
   meta: { pagination: { current_page: number; per_page: number; total: number; last_page: number }; seats: Seats }
 }
 
-export type CreateOutcome = DelegatedUser & { outcome: 'created' | 'linked' | 'existing'; projection: 'CREATED' | 'REACTIVATED' | 'EXISTING' | 'DEFERRED' }
+/** An invitation exactly as OptiNexus describes it (contract 2b). The token never reaches this application, let alone the browser. */
+export type InvitationStatus = 'PENDING' | 'ACCEPTED' | 'REVOKED' | 'EXPIRED'
+export type DeliveryStatus = 'QUEUED' | 'SENT' | 'FAILED'
+export type InvitationLocale = 'en' | 'id'
+
+export type Invitation = {
+  id: string
+  email: string
+  name: string
+  status: InvitationStatus
+  locale: InvitationLocale | null
+  role_ids: string[]
+  roles: { id: string; code: string; name: string }[]
+  invited_by: { id: string; name: string } | null
+  created_at: string | null
+  expires_at: string | null
+  last_sent_at: string | null
+  send_count: number
+  delivery: { status: DeliveryStatus | null; attempted_at: string | null; error_code: string | null }
+  accepted_at: string | null
+  revoked_at: string | null
+  can_resend: boolean
+  can_revoke: boolean
+}
+
+export type InvitationPage = { data: Invitation[]; meta: { pagination: { current_page: number; per_page: number; total: number; last_page: number } } }
 
 export type PermissionState = 'AVAILABLE' | 'NOT_ENTITLED' | 'NOT_DELEGABLE'
 export type CatalogPermission = { code: string; group: string; description: string; state: PermissionState; capability: string | null }
