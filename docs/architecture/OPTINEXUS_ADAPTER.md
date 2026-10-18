@@ -53,8 +53,9 @@ only when registered on the OIDC client; otherwise OptiNexus shows its own
   OptiNexus grants (`TENANT`/`APPLICATION`/`CUSTOMER`/`GLOBAL` → `TENANT`,
   `OWN` → `OWN`); a local administrator may narrow it later (data scope stays
   local, later sign-ins never overwrite it).
-- Capacity (`USER_LIMIT`) is enforced by the same `CapacityService`; a full
-  tenant refuses the new member with `CAPACITY_EXCEEDED`.
+- Seats are not counted here. OptiNexus alone counts and enforces them per tenant and application (`GOVERNANCE_CONTRACTS.md` §2d); it lets a
+  person sign in only when it has given them the access, so the sign-in does no local `USER_LIMIT` reserve (it used to answer `capacity_exceeded`).
+  The legacy `standalone` mode keeps its local `CapacityService`.
 
 ## 4. Permissions
 
@@ -188,10 +189,14 @@ Rules the code keeps:
   `delegation.projection_deferred`); only a verified sign-in links accounts. Roles are not copied: the permissions of the person are
   whatever OptiNexus answers. Removing a person ends the local membership (`INACTIVE` + `optinexus_deactivated_at`, tokens revoked, seat
   freed) so that adding them again undoes exactly that.
-- **Seats.** `CapacityService::reserve(USER_LIMIT)` runs before OptiNexus is asked and again when the projection is written; if the
-  second check fails (a concurrent creation took the last seat) the access just granted is withdrawn in OptiNexus (`delegation.user_withdrawn`)
-  and `CAPACITY_EXCEEDED` is answered. A person who already holds a seat takes no second one. A read-only or inactive subscription refuses
-  every change (`SUBSCRIPTION_READ_ONLY` / `SUBSCRIPTION_INACTIVE`).
+- **Seats (OptiNexus contract §2d).** OptiEntry keeps no seat counter and does no pre-check or compensation. Every addition (add user, invite,
+  resend of an expired invitation) goes to OptiNexus, which counts per tenant and application under a lock and refuses with `SEAT_LIMIT_REACHED`,
+  `SEAT_OVER_LIMIT`, `SEAT_ENTITLEMENT_MISSING|INVALID` (409) or `SEAT_ENTITLEMENT_UNAVAILABLE`, `SEAT_CONTENTION` (503, `retry_after`). The refusal is passed on
+  with OptiNexus' own `limit`, `used`, `reserved`, `available`, `over_limit` and `recovery` (whole numbers, booleans and a code only); nothing was
+  granted, so nothing is withdrawn. The users and invitations lists carry `meta.seats` (state, limit, used, reserved by open invitations, available, over-limit,
+  `can_add`), shown on both tabs; a limit below usage is "over limit" (never a negative number), and a missing, invalid or unreadable limit blocks additions
+  and is never shown as unlimited. An older OptiNexus without figures shows nothing. `GET /app/account/usage` omits the `USER_LIMIT` row in this mode.
+  A read-only or inactive subscription refuses every change (`SUBSCRIPTION_READ_ONLY` / `SUBSCRIPTION_INACTIVE`).
 - **Retry safety.** A read is repeated once on a transient failure; a write is never repeated by the transport (only 401 token renewal and
   429, where OptiNexus certainly did not process it). A write whose answer is lost is reported with `details.outcome_unknown = true`, so
   the UI tells the person to refresh before repeating. Creating a person is idempotent in OptiNexus (same e-mail, one identity); creating a
@@ -204,7 +209,7 @@ Rules the code keeps:
   scope, inactive account) become `DELEGATION_NOT_CONFIGURED` (503); an unknown tenant `DELEGATION_TENANT_UNKNOWN` (409); 429 and 5xx
   `IDENTITY_PROVIDER_UNAVAILABLE` (503, `retry_after`); validation `422` with field errors; anything else `DELEGATION_UNEXPECTED_RESPONSE`
   (502). Local codes: `DELEGATION_NOT_AVAILABLE` (409, standalone), `TENANT_NOT_LINKED`, `ACTOR_NOT_LINKED`, `UNKNOWN_PERMISSION`,
-  `ROLE_NAME_TAKEN`, `DELEGATION_IN_PROGRESS`, `CAPACITY_EXCEEDED`.
+  `ROLE_NAME_TAKEN`, `DELEGATION_IN_PROGRESS`. The `SEAT_*` codes of §2d are passed through (see Seats below); `CAPACITY_EXCEEDED` is the legacy local code.
 - **Audit.** Entry audit actions: `delegation.user_added|user_roles_set|user_removed|user_withdrawn|user_withdraw_failed|role_created|
   role_updated|role_deleted|projection_deferred` and `delegation.refused` (every refusal OptiNexus decided, with its code and the
   permissions or roles it named). OptiNexus audits the same calls as `delegation.*` with the Admin Tenant as actor.
@@ -221,7 +226,7 @@ the answer is whitelisted field by field (`TenantDelegation::invitationView`), a
 
 - Routes: `GET|POST /app/delegation/invitations`, `POST .../invitations/{id}/resend|revoke` (`access.user.view` to list, `access.user.manage`
   to change; tenant and acting user from the session as in §10; the id is a UUID that is only ever sent under the session's tenant, so another
-  tenant's id answers `INVITATION_NOT_FOUND`). Read-only subscription refuses every change; the seat pre-check of §10 applies to a new invitation.
+  tenant's id answers `INVITATION_NOT_FOUND`). Read-only subscription refuses every change; a new invitation reserves a seat in OptiNexus (§10 Seats).
 - No copy: nothing is stored locally (no user, membership or seat until acceptance + first sign-in); the list is OptiNexus' answer (status
   PENDING/ACCEPTED/REVOKED/EXPIRED, delivery QUEUED/SENT/FAILED + `error_code`, expiry, inviter, `can_resend`, `can_revoke`).
 - Errors pass through: `INVITATION_PENDING` (`details.invitation_id`), `ALREADY_MEMBER`, `ROLE_NOT_ASSIGNABLE`, `INVITATION_NOT_FOUND`,

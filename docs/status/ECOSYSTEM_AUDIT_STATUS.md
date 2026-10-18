@@ -62,6 +62,12 @@ A28) and its OA6 UI (A26); A12/A15 (error boundaries, lazy loading, bundle) are 
 - Tests: `DelegationInvitationTest` 33 (fake Nexus 2b in `FakesNexusDelegation`), `tests/Feature/Optinexus` 253 passed; full frontend suite 56 files / 1222 passed (`Invitations.test.tsx` new), `tsc -b`, `oxlint`, `npm run build` clean.
   Browser check against a mocked API only (not end-to-end against a real OptiNexus: the Nexus side was being built in parallel); screenshots kept outside the repository.
 
+## Seat limit consumer (OptiNexus contract 2d, owner decision 2026-10-18 09:11Z)
+- OptiNexus counts and enforces seats; OptiEntry is a pure consumer: the local pre-check, the compensation (`delegation.user_withdrawn`) and the sign-in `USER_LIMIT`
+  reserve are gone in `optinexus` mode (legacy `standalone` keeps `CapacityService`). Lists carry `meta.seats`; `SEAT_*` refusals pass through with OptiNexus' figures;
+  `account/usage` omits `USER_LIMIT`. UI: seats banner on Users and Invitations (used, reserved, available, limit, over-limit, undecided), `SEAT_*` texts EN-ID.
+- Tests: `tests/Feature/Optinexus` 260 passed (fake Nexus emits `meta.seats` and the refusals); frontend 57 files / 1237 passed, `tsc -b`, `oxlint` clean.
+
 ## Not done yet / NOT RUN
 - Production image build (Alpine) and a Windows Podman run: NOT RUN here (Alpine mirror blocked, no Podman).
 - Live two-backend Fleet->Entry pull against a real OptiNexus: NOT RUN (no OptiNexus/OptiFleet stack reachable for the Entry worker); wire and contract
