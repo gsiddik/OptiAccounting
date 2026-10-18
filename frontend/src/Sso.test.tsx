@@ -2,6 +2,7 @@ import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { currentToken, setToken } from './lib/api'
+import { setLocale } from './i18n'
 import { navigation } from './lib/navigation'
 import { mockApi, page } from './test/fakeApi'
 import { platformCaps, platformMe, renderApp, tenantCaps, tenantMe } from './test/render'
@@ -89,6 +90,20 @@ describe('login page doors', () => {
 
     expect(await screen.findByText('Masuk melalui OptiNexus gagal. Silakan coba lagi.')).toBeInTheDocument()
     expect(document.body.innerHTML).not.toContain('<script>')
+  })
+
+  it.each([
+    ['id', 'E-mail akun OptiNexus Anda belum diverifikasi. Selesaikan verifikasi melalui undangan OptiNexus atau hubungi operator ecosystem untuk verifikasi manual, lalu masuk kembali.'],
+    ['en', 'Your OptiNexus email is not verified. Complete verification through your OptiNexus invitation or contact an ecosystem operator for manual verification, then sign in again.'],
+  ] as const)('explains email verification recovery in %s without issuing a session', async (locale, message) => {
+    setLocale(locale)
+    const calls = mockApi({ 'GET /auth/sso/status': status() })
+    renderApp('/login?sso_error=email_not_verified')
+
+    expect(await screen.findByText(message)).toBeInTheDocument()
+    expect(currentToken()).toBeNull()
+    expect(calls.some((call) => call.url === '/auth/sso/exchange')).toBe(false)
+    expect(screen.queryByRole('link', { name: /verify email/i })).not.toBeInTheDocument()
   })
 })
 

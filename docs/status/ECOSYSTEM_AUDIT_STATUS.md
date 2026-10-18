@@ -1,5 +1,10 @@
 # Ecosystem audit hardening (OptiEntry side)
 
+Separate Codex follow-up (2026-10-18, base Entry `8f10478`): decision 11 now requires boolean-true signed email verification
+before any Nexus SSO provisioning/ticket. Implementation, test evidence and remaining gates are in
+`SSO_EMAIL_VERIFICATION_REVIEW.md` on `codex/entry-verified-email-20261018`; original Claude branch is not overwritten.
+PGlite checks are supplemental, not native-PG16 or live evidence. Full CI and external auto-deploy confirmation remain separate.
+
 Branch `claude/project-thread-0cf20u` (from `main` 20ee792). Owner brief 2026-10-12: fix A01-A29 / R01-R08 of the ecosystem audit across the five
 repositories. The central traceability matrix and checkpoint live in the OptiNexus repository (`docs/ecosystem/`); this file covers only what
 changed in OptiEntry. Merge only on owner request. Scope update 2026-10-17: the active batch is the Fleet->Entry financial feed (A01, A17-A22, A27,

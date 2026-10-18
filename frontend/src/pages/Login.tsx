@@ -44,7 +44,9 @@ export default function Login() {
   const hint = tenantHintOf(`?${params.toString()}`)
   const ended = state.status === 'anonymous' ? state.ended : undefined
   const sso = status.data
-  const ssoError = describeSsoError(params.get('sso_error'))
+  const ssoError = params.get('sso_error') === 'email_not_verified'
+    ? t('auth.sso.email_not_verified')
+    : describeSsoError(params.get('sso_error'))
   const viaNexus = sso?.sso_enabled === true
   const startUrl = `${api.defaults.baseURL ?? ''}/auth/sso/redirect${hint ? `?tenant_hint=${encodeURIComponent(hint)}` : ''}`
 
