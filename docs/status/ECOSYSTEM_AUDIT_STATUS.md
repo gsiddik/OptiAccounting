@@ -54,6 +54,14 @@ A28) and its OA6 UI (A26); A12/A15 (error boundaries, lazy loading, bundle) are 
 - Container package (sandbox): `docker compose config` OK; bootstrap -> api/worker/scheduler/web/ui healthy; bootstrap re-run "Nothing to migrate";
   runtime role refuses an unmigrated database; SPA served through the real nginx template.
 
+## Invitations consumer (OptiNexus contract 2b, owner decision 2026-10-18)
+- Settings > Users: **Invite user** (name, e-mail, roles, language of the invitation = UI language by default) replaces "Add user"; new **Invitations**
+  tab (status chips Pending/Accepted/Revoked/Expired, delivery Queued/Sent/Failed with recovery hint, expiry, inviter, Resend/Revoke by `can_resend`/`can_revoke`).
+  Backend `/app/delegation/invitations[/{id}/resend|revoke]`; the 8 new Nexus codes mapped (429 keeps `Retry-After`); no password/token in answers, audit or logs;
+  no local copy. `POST /delegation/users` + `initial_password` stays accepted, marked deprecated. Design: `OPTINEXUS_ADAPTER.md` section 10a.
+- Tests: `DelegationInvitationTest` 33 (fake Nexus 2b in `FakesNexusDelegation`), `tests/Feature/Optinexus` 253 passed; full frontend suite 56 files / 1222 passed (`Invitations.test.tsx` new), `tsc -b`, `oxlint`, `npm run build` clean.
+  Browser check against a mocked API only (not end-to-end against a real OptiNexus: the Nexus side was being built in parallel); screenshots kept outside the repository.
+
 ## Not done yet / NOT RUN
 - Production image build (Alpine) and a Windows Podman run: NOT RUN here (Alpine mirror blocked, no Podman).
 - Live two-backend Fleet->Entry pull against a real OptiNexus: NOT RUN (no OptiNexus/OptiFleet stack reachable for the Entry worker); wire and contract

@@ -211,6 +211,24 @@ Rules the code keeps:
 - **Not reachable from OptiEntry, by design:** Admin Tenant accounts (`TENANT_ADMIN_PROTECTED`), other tenants and applications, ecosystem
   roles, plans, entitlements, subscriptions, tenant-wide membership. `optientry:nexus:check` verifies the scope and the endpoint.
 
+### 10a. Invitations: the way to add a NEW person (OptiNexus contract section 2b)
+
+`POST /delegation/.../users` (with `initial_password`) is deprecated by OptiNexus and kept here only for compatibility; the console no longer
+offers it. Settings > Users > **Invite user** sends `POST /invitations` (`email`, `name`, `role_ids[]`, `locale` = `en`|`id`, default the UI
+language); OptiNexus e-mails the link and the invitee sets their own password on a OptiNexus page, then signs in here through the normal OIDC
+flow (first sign-in creates the local membership, section 3). **No password and no token passes through OptiEntry**: the request has none,
+the answer is whitelisted field by field (`TenantDelegation::invitationView`), audit and logs never see one.
+
+- Routes: `GET|POST /app/delegation/invitations`, `POST .../invitations/{id}/resend|revoke` (`access.user.view` to list, `access.user.manage`
+  to change; tenant and acting user from the session as in §10; the id is a UUID that is only ever sent under the session's tenant, so another
+  tenant's id answers `INVITATION_NOT_FOUND`). Read-only subscription refuses every change; the seat pre-check of §10 applies to a new invitation.
+- No copy: nothing is stored locally (no user, membership or seat until acceptance + first sign-in); the list is OptiNexus' answer (status
+  PENDING/ACCEPTED/REVOKED/EXPIRED, delivery QUEUED/SENT/FAILED + `error_code`, expiry, inviter, `can_resend`, `can_revoke`).
+- Errors pass through: `INVITATION_PENDING` (`details.invitation_id`), `ALREADY_MEMBER`, `ROLE_NOT_ASSIGNABLE`, `INVITATION_NOT_FOUND`,
+  `INVITATION_NOT_PENDING` (`details.status`), `INVITATION_RESEND_LIMIT`, and the two throttles `INVITATION_RESEND_COOLDOWN` / `INVITATION_RATE_LIMITED`
+  (429 with `details.retry_after` and the HTTP `Retry-After` header). A change is never repeated after a lost connection (`outcome_unknown`).
+- Audit: `delegation.invitation_created|resent|revoked` (e-mail, roles, reason; never a token) and `delegation.refused`.
+
 ## 11. Product switcher and session revalidation (audit A29)
 
 `GET /api/v1/app/product-context` (every signed-in user, ungated; the question is about the session's own user and tenant, never a request
