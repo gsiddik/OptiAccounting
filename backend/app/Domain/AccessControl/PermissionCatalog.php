@@ -64,6 +64,10 @@ final class PermissionCatalog
                     'platform.role.manage' => 'Manage platform roles',
                     'platform.permission.view' => 'View platform permissions',
                 ],
+                'Service identities' => [
+                    'platform.service_principal.view' => 'View the service identities (machine accounts) of tenants',
+                    'platform.service_principal.manage' => 'Issue and revoke service identities of tenants',
+                ],
                 'Audit' => [
                     'platform.audit.view' => 'View the platform audit log',
                 ],

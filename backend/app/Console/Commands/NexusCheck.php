@@ -61,17 +61,60 @@ class NexusCheck extends Command
         });
         $step('Service account token and scopes', function () use ($api) {
             Cache::forget('optinexus.service.token');
-            // A harmless authorization question for an unknown user: proves the token and the authorization.check scope.
-            $response = $api->send('POST', '/authorization/check', [
-                'user_id' => '00000000-0000-0000-0000-000000000000', 'application_code' => OptinexusSettings::applicationCode(), 'permission' => OptinexusSettings::applicationCode().'.check',
-            ]);
+            // A harmless question for an unknown user: proves the token, the authorization.check scope, that this service account is
+            // bound to the application and that OptiNexus offers the bulk endpoint this release needs.
+            $response = $api->send('POST', '/authorization/effective-permissions', [
+                'user_id' => '00000000-0000-0000-0000-000000000000', 'tenant_id' => '00000000-0000-0000-0000-000000000000', 'application_code' => OptinexusSettings::applicationCode(),
+            ], repeatable: true);
+            $code = $response->json('error.code');
             if ($response->status() === 404) {
-                throw new \RuntimeException('application "'.OptinexusSettings::applicationCode().'" is not registered in OptiNexus');
+                throw new \RuntimeException('OptiNexus lacks /authorization/effective-permissions (upgrade it)');
+            }
+            if ($response->status() === 403 && $code === 'APPLICATION_MISMATCH') {
+                throw new \RuntimeException('application "'.OptinexusSettings::applicationCode().'" is not bound to the account');
+            }
+            if ($response->status() === 403 && in_array($code, ['SERVICE_ACCOUNT_NOT_BOUND', 'TENANT_MISMATCH'], true)) {
+                throw new \RuntimeException("{$code}: bind the account to the application");
             }
             if ($response->status() === 403) {
                 throw new \RuntimeException('the service account lacks a required scope ('.NexusApi::SCOPES.')');
             }
             $api->data($response);
+        });
+
+        $step('Delegation of users and roles (scope tenant.delegate)', function () use ($api) {
+            // A harmless question about an unknown tenant: OptiNexus answers 404 RESOURCE_NOT_FOUND only when it has the delegation API
+            // and the token carries tenant.delegate for an account bound to this application.
+            $nil = '00000000-0000-0000-0000-000000000000';
+            $response = $api->send('GET', "/delegation/tenants/{$nil}/catalog", ['acting_user_id' => $nil], repeatable: true, scopes: NexusApi::DELEGATION_SCOPES);
+            $code = $response->json('error.code');
+            if ($response->status() === 404 && $code === 'RESOURCE_NOT_FOUND') {
+                return 'ready';
+            }
+            if ($response->status() === 404) {
+                throw new \RuntimeException('OptiNexus lacks the delegation API (upgrade it)');
+            }
+            if (in_array($response->status(), [401, 403], true)) {
+                throw new \RuntimeException(($code ?: 'refused').': allow the scope tenant.delegate for the service account and bind it to the application; users and roles cannot be managed from OptiEntry until then');
+            }
+            throw new \RuntimeException('unexpected answer HTTP '.$response->status());
+        });
+
+        $step('Product switcher and session revalidation (POST /authorization/product-context)', function () use ($api) {
+            // Unknown user and tenant: a supporting OptiNexus answers 200 with allowed=false (user_not_found); one without the endpoint answers 404.
+            $nil = '00000000-0000-0000-0000-000000000000';
+            $response = $api->send('POST', '/authorization/product-context', ['user_id' => $nil, 'tenant_id' => $nil], repeatable: true);
+            if ($response->status() === 404) {
+                throw new \RuntimeException('OptiNexus lacks the product-context API (upgrade it); the switcher stays hidden and sessions are not revalidated');
+            }
+            if (in_array($response->status(), [401, 403], true)) {
+                throw new \RuntimeException(($response->json('error.code') ?: 'refused').': the service account needs the scope authorization.check and a binding to this application');
+            }
+            if ($response->status() !== 200 || ! str_starts_with((string) $response->json('data.schema_version'), '1.')) {
+                throw new \RuntimeException('unexpected answer HTTP '.$response->status());
+            }
+
+            return 'ready (schema '.$response->json('data.schema_version').')';
         });
 
         return $ok ? self::SUCCESS : self::FAILURE;

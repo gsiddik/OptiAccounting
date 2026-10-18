@@ -14,7 +14,7 @@ class IntegrationPull extends Command
     public function handle(IntegrationRunner $runner): int
     {
         $totals = $runner->pullDue();
-        $this->components->info("Due {$totals['connections']}, pulled {$totals['pulled']}, new events {$totals['received']}, posted {$totals['posted']}.");
+        $this->components->info("Due {$totals['connections']}, pulled {$totals['pulled']}, new events {$totals['received']}, completed {$totals['posted']}, journals posted {$totals['journals']}.");
 
         return self::SUCCESS;
     }

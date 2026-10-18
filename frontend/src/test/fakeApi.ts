@@ -2,14 +2,16 @@ import { AxiosError } from 'axios'
 import { api } from '../lib/api'
 
 type Request = { method: string; url: string; data: unknown; params: Record<string, unknown> | undefined; headers: Record<string, unknown> }
-type Reply = { status?: number; data?: unknown }
+type Reply = { status?: number; data?: unknown; headers?: Record<string, string> }
 type Handler = Reply | ((request: Request) => Reply)
 
 /**
  * Replace the HTTP transport with an in-memory table of "METHOD /path" → reply.
  * An unmocked request fails the test loudly instead of silently returning nothing.
  */
-export function mockApi(routes: Record<string, Handler>) {
+export function mockApi(given: Record<string, Handler>) {
+  // Every tenant shell asks for the product switcher; unless a test cares, this installation has none (not in OptiNexus mode).
+  const routes: Record<string, Handler> = { 'GET /app/product-context': { data: { available: false, reason: 'NOT_OPTINEXUS', session_ended: false } }, ...given }
   const calls: Request[] = []
   api.defaults.adapter = async (config) => {
     const method = (config.method ?? 'get').toUpperCase()
@@ -22,7 +24,7 @@ export function mockApi(routes: Record<string, Handler>) {
 
     const reply = typeof route === 'function' ? route(request) : route
     const status = reply.status ?? 200
-    const response = { data: reply.data ?? {}, status, statusText: String(status), headers: {}, config }
+    const response = { data: reply.data ?? {}, status, statusText: String(status), headers: reply.headers ?? {}, config }
     if (status >= 400) throw new AxiosError(`HTTP ${status}`, 'ERR_BAD_REQUEST', config, null, response)
     return response
   }

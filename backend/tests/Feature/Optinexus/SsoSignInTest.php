@@ -6,6 +6,8 @@ use App\Domain\AccessControl\Models\DataScope;
 use App\Domain\Identity\Models\Tenant;
 use App\Domain\Identity\Models\TenantUser;
 use App\Domain\Identity\Models\User;
+use App\Domain\Identity\Services\ServicePrincipalKinds;
+use App\Domain\Identity\Services\ServicePrincipalRegistry;
 use Firebase\JWT\JWT;
 use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -239,19 +241,20 @@ class SsoSignInTest extends TestCase
         $this->assertSame(0, TenantUser::withoutGlobalScopes()->count());
     }
 
-    public function test_a_full_tenant_refuses_a_new_member_but_not_an_existing_one(): void
+    public function test_entry_counts_no_seat_of_its_own_so_a_member_optinexus_let_in_always_signs_in(): void
     {
+        // The old local figure (projected from the user_limit entitlement) is exhausted; since OptiNexus alone counts seats (contract 2d) it must not matter.
         $this->nexus['tenants'][self::NEXUS_TENANT]['entitlements'] = array_values(array_filter(
             $this->nexus['tenants'][self::NEXUS_TENANT]['entitlements'], fn ($e) => $e['entitlement_key'] !== 'user_limit',
         ));
         $this->nexus['tenants'][self::NEXUS_TENANT]['entitlements'][] = ['entitlement_type' => 'LIMIT', 'entitlement_key' => 'user_limit', 'value' => 1.0, 'source' => 'PLAN'];
 
-        $this->nexusSignIn()->assertOk(); // seat 1 of 1
+        $this->nexusSignIn()->assertOk();
 
         $other = '8c2d6e1f-3a66-4a4f-9b69-1e4e3b7d3333';
         $this->nexusGrant($other);
-        $this->nexusCallback(['sub' => $other, 'email' => 'budi@example.test'])->assertRedirectContains('sso_error=capacity_exceeded');
-        $this->assertNull(User::query()->where('optinexus_subject', $other)->first(), 'a refused member leaves nothing behind');
+        $this->nexusSignIn(['sub' => $other, 'email' => 'budi@example.test'])->assertOk();
+        $this->assertNotNull(User::query()->where('optinexus_subject', $other)->first());
 
         $this->nexusSignIn()->assertOk(); // the existing member still enters
     }
@@ -304,6 +307,19 @@ class SsoSignInTest extends TestCase
 
         $this->nexusCallback()->assertRedirectContains('sso_error=account_conflict');
         $this->assertSame('someone-else', $local->fresh()->optinexus_subject);
+    }
+
+    public function test_an_identity_with_an_address_of_the_reserved_range_never_links_to_a_service_principal(): void
+    {
+        $tenant = $this->tenant('other');
+        $principal = app(ServicePrincipalRegistry::class)->issue($tenant, ServicePrincipalKinds::OPTIFLEET_INTEGRATION, 'test', 'CLI', null, 'phpunit')['principal'];
+        $address = User::query()->findOrFail($principal->user_id)->email;
+
+        $this->nexusCallback(['email' => $address, 'email_verified' => true])->assertRedirectContains('sso_error=email_reserved');
+        $this->nexusCallback(['email' => 'brand.new@anything.optientry.invalid', 'email_verified' => true])->assertRedirectContains('sso_error=email_reserved');
+
+        $this->assertNull(User::query()->findOrFail($principal->user_id)->optinexus_subject);
+        $this->assertSame(0, User::query()->where('email', 'brand.new@anything.optientry.invalid')->count());
     }
 
     public function test_a_platform_operator_account_is_never_linked_by_email(): void

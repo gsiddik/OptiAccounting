@@ -139,6 +139,8 @@ export type Member = {
   roles: { id: string; name: string }[]
   data_scopes?: (DataScopeRow & { id: string })[]
   dataScopes?: (DataScopeRow & { id: string })[]
+  /** Set for a machine identity issued by the platform operator (no seat, no sign-in, no role). */
+  service_principal?: { id: string; kind: string; revoked_at: string | null } | null
 }
 
 export type PlatformUser = {

@@ -4,6 +4,7 @@ namespace Tests\Feature\Integration;
 
 use App\Domain\Integration\Models\IntegrationConnection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Tests\Support\AccountingFixtures;
 use Tests\Support\Fixtures;
 use Tests\Support\IntegrationFixtures;
@@ -61,6 +62,8 @@ class ConnectionTest extends TestCase
         $tenant = $this->tenant();
         $this->as($this->memberToken($tenant));
         $id = $this->create()['id'];
+        // switching a paused connection on again asks the source where its feed stands (nothing has happened there: head 0)
+        Http::fake(['fleet.example.test/*' => Http::response(['data' => [], 'next_cursor' => null, 'has_more' => false, 'high_water' => '0'])]);
 
         $this->postJson(self::IT."/connections/{$id}/activate")->assertStatus(422)->assertJsonPath('code', 'CONNECTION_INCOMPLETE')
             ->assertJsonPath('details.missing', ['credential', 'base_url', 'source_tenant_reference', 'cutover_date']);

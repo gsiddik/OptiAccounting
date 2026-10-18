@@ -88,6 +88,7 @@ class TenantService
 
     private function addInitialAdministrator(Tenant $tenant, array $admin): void
     {
+        ReservedAddress::assertHuman($admin['email']);
         $user = User::query()->whereRaw('lower(email) = ?', [strtolower($admin['email'])])->first();
 
         if (! $user) {

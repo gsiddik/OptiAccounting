@@ -50,12 +50,19 @@ class IntegrationConnection extends Model
     {
         return [
             'credential' => 'encrypted', 'cutover_date' => 'date:Y-m-d', 'last_pulled_at' => 'datetime',
-            'pull_interval_minutes' => 'integer', 'consecutive_failures' => 'integer', 'settings' => 'array',
+            'pull_interval_minutes' => 'integer', 'consecutive_failures' => 'integer', 'settings' => 'array', 'lifecycle_version' => 'integer',
+            'feed_access_since' => 'datetime', 'feed_checked_at' => 'datetime', 'feed_next_attempt_at' => 'datetime',
+            'source_high_water' => 'integer', 'source_high_water_at' => 'datetime',
         ];
     }
 
     public function events(): HasMany
     {
         return $this->hasMany(ExternalEvent::class, 'connection_id');
+    }
+
+    public function gaps(): HasMany
+    {
+        return $this->hasMany(IntegrationGap::class, 'connection_id');
     }
 }

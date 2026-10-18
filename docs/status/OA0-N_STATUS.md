@@ -7,7 +7,7 @@ Design: `docs/architecture/OPTINEXUS_ADAPTER.md`. Operations: `docs/integration/
 ## Completed batches
 - A OIDC sign-in (code + PKCE S256, JWKS RS256, userinfo cross-check, one-time ticket → Sanctum token)
 - B linking: tenant `optinexus_tenant_id` (JIT only when OptiNexus confirms ACTIVE + app enabled), user `optinexus_subject`, membership under capacity reserve
-- C `PermissionSource` seam: permissions pulled per tenant+user through `POST /authorization/check`, cached ≤ 300 s, fail closed (503)
+- C `PermissionSource` seam: permissions pulled per tenant+user through one `POST /authorization/effective-permissions` (was one `/authorization/check` per permission before A03), cached ≤ 300 s, fail closed (503)
 - D `EntitlementProjector`: subscription, modules, features, capacity limits → local tables with `source = OPTINEXUS`
 - E Back-Channel Logout receiver (logout + access-revoked), deactivation markers, reactivation on next sign-in
 - F transactional outbox + relay (`optiaccounting.*` events, security audit events), backoff, `--retry-failed`
@@ -21,7 +21,7 @@ Design: `docs/architecture/OPTINEXUS_ADAPTER.md`. Operations: `docs/integration/
 - Subscription = most restrictive live OptiNexus subscription (the machine API does not say which product a subscription belongs to).
 - No live subscription ends module access but keeps the last known capacity limits (found in E2E: it used to become "unlimited").
 - Sign-out ends the OptiNexus session too and returns to `/login` (`post_logout_redirect_uris` is part of the manifest).
-- No batch permission endpoint: one `authorization/check` per catalog permission per active user per ≤ 5 min (a batch endpoint would be an OptiNexus change; not requested).
+- Superseded by the ecosystem audit (A03): permissions are pulled with one `POST /authorization/effective-permissions` per user per ≤ 5 min (see `ECOSYSTEM_AUDIT_STATUS.md`).
 
 ## Migrations (additive)
 `2026_10_08_200001_add_optinexus_adapter`: `optinexus_deactivated_at` (users, tenant_users, tenants), `optinexus_synced_at` (tenants), `outbox_events` (CHECKs on kind/status).

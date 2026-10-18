@@ -1,0 +1,25 @@
+# Rendered by the nginx image at start (envsubst): LISTEN_PORT, BACKEND_HOST, CLIENT_MAX_BODY_SIZE.
+# The container listens on the same port the host publishes, so one URL (alias:port) reaches it from the browser and from other containers.
+server {
+    listen ${LISTEN_PORT};
+    server_name _;
+    client_max_body_size ${CLIENT_MAX_BODY_SIZE};
+
+    location = /nginx-health {
+        access_log off;
+        default_type text/plain;
+        return 200 "ok";
+    }
+
+    # Every request goes to Laravel's front controller; the files live in the backend image, not here.
+    location / {
+        fastcgi_pass ${BACKEND_HOST}:9000;
+        include fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME /var/www/html/public/index.php;
+        fastcgi_param SCRIPT_NAME /index.php;
+        fastcgi_param REQUEST_URI $request_uri;
+        fastcgi_read_timeout 60s;
+        fastcgi_send_timeout 60s;
+        fastcgi_connect_timeout 5s;
+    }
+}

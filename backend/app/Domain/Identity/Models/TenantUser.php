@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 /** A user's membership of one tenant (status, roles and data scope are tenant-specific). */
 class TenantUser extends Model
@@ -41,6 +42,12 @@ class TenantUser extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    /** Set when this member is a machine identity issued by the platform operator (no seat, no sign-in, no role). */
+    public function servicePrincipal(): HasOne
+    {
+        return $this->hasOne(ServicePrincipal::class, 'user_id', 'user_id')->select(['id', 'user_id', 'kind', 'revoked_at']);
     }
 
     public function roles(): BelongsToMany

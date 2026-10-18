@@ -9,6 +9,7 @@ use App\Domain\Integration\Optinexus\OidcClient;
 use App\Domain\Integration\Optinexus\OptinexusSettings;
 use App\Domain\Integration\Optinexus\SsoException;
 use App\Domain\Integration\Optinexus\SsoLoginService;
+use App\Domain\Integration\Optinexus\TenantHint;
 use App\Http\Controllers\Controller;
 use App\Support\IdentityMode;
 use Illuminate\Http\JsonResponse;
@@ -47,7 +48,8 @@ class SsoController extends Controller
         }
 
         try {
-            return redirect()->away($this->oidc->authorizationUrl($request->query('tenant_hint') ? (string) $request->query('tenant_hint') : null));
+            // `tenant_hint` comes from another product's switcher: forwarded only when it is a tenant id or code (docs/architecture/OPTINEXUS_ADAPTER.md §11).
+            return redirect()->away($this->oidc->authorizationUrl(TenantHint::sanitize($request->query('tenant_hint'))));
         } catch (IdentityProviderUnavailable) {
             return $this->failure('sso_unavailable');
         }

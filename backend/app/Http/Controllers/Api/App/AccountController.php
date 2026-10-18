@@ -9,6 +9,7 @@ use App\Domain\Entitlement\Models\TenantModuleEntitlement;
 use App\Domain\Entitlement\Services\CapacityService;
 use App\Domain\Entitlement\Services\EntitlementSnapshot;
 use App\Domain\Identity\Models\Tenant;
+use App\Domain\Integration\Optinexus\OptinexusSettings;
 use App\Support\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -77,7 +78,15 @@ class AccountController extends AppController
 
     public function usage(): JsonResponse
     {
-        return response()->json(['data' => $this->capacity->usage($this->tenantId())]);
+        $rows = $this->capacity->usage($this->tenantId());
+
+        // When OptiNexus is the identity authority it alone counts seats (contract §2d, shown on the Users screen); a count made here would
+        // be a second figure that can disagree with it. The other limits (branches, business units) are this application's own.
+        if (OptinexusSettings::active()) {
+            $rows = array_values(array_filter($rows, fn (array $row): bool => $row['code'] !== CapacityService::USER_LIMIT));
+        }
+
+        return response()->json(['data' => $rows]);
     }
 
     public function audit(Request $request): JsonResponse

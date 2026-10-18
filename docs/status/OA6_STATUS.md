@@ -31,6 +31,8 @@ Owner started OA6 on 2026-10-11 (option C: lean, checkpointed because the weekly
 - `processDue` (batch of 200) could be starved by stuck unentitled events if more source systems exist.
 - Demo: the integration user appears in the tenant's user list; "Sync now" on the demo connection fails on purpose (placeholder URL).
 
+- **Pre-merge review fix (audit PR #10, 2026-10-18):** `corrected` and `cancelled` wait (`EARLIER_EVENT_UNRESOLVED`, NEEDS_REVIEW) while an earlier recorded/corrected/cancelled event of the same source invoice is undecided, so an older correction can no longer re-book an invoice the source cancelled. Tests: `OptiFleetAdapterTest` (two cases).
+
 ## Remaining after merge (deployment)
 Re-register the manifest in OptiNexus (3 new permissions; `php artisan optientry:sync-permissions` on existing environments). In OptiFleet-v2: merge PR #35, run `accounting-feed:backfill` once and `accounting-feed:issue-credential` per tenant. In OptiEntry per tenant: create the OptiFleet connection, map the cash/bank account and expense category, activate.
 

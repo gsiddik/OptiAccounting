@@ -25,6 +25,12 @@ Route::prefix('integration')->group(function () use ($gate) {
     Route::get('events', [Integration\EventController::class, 'index'])->middleware($gate('accounting.integration.view'));
     Route::get('events/{event}', [Integration\EventController::class, 'show'])->middleware($gate('accounting.integration.view'));
     Route::post('events/{event}/retry', [Integration\EventController::class, 'retry'])->middleware($gate('accounting.integration.retry'));
+    Route::post('events/{event}/dismiss', [Integration\EventController::class, 'dismiss'])->middleware($gate('accounting.integration.retry'));
+    Route::post('events/{event}/conflict-resolution', [Integration\EventController::class, 'resolveConflict'])->middleware($gate('accounting.integration.manage'));
+
+    Route::get('gaps', [Integration\GapController::class, 'index'])->middleware($gate('accounting.integration.view'));
+    Route::get('gaps/{gap}', [Integration\GapController::class, 'show'])->middleware($gate('accounting.integration.view'));
+    Route::post('gaps/{gap}/resolution', [Integration\GapController::class, 'resolve'])->middleware($gate('accounting.integration.manage'));
 
     Route::get('dimensions', [Integration\ReferenceController::class, 'dimensions'])->middleware($gate('accounting.integration.view'));
     Route::get('source-links', [Integration\ReferenceController::class, 'sourceLinks'])->middleware($gate('accounting.integration.view'));

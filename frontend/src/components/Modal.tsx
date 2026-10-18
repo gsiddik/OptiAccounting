@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react'
-import { describeError } from '../lib/labels'
-import { Banner, Button, Field } from './ui'
+import { useI18n } from '../i18n'
+import { Button, ErrorBanner, Field } from './ui'
 
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
 
@@ -8,6 +8,7 @@ const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), selec
 export function Modal({ title, onClose, children, footer, wide }: { title: string; onClose: () => void; children: ReactNode; footer?: ReactNode; wide?: boolean }) {
   const titleId = useId()
   const ref = useRef<HTMLDivElement>(null)
+  const { t } = useI18n()
 
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null
@@ -40,7 +41,7 @@ export function Modal({ title, onClose, children, footer, wide }: { title: strin
       <div ref={ref} className={`modal${wide ? ' wide' : ''}`} role="dialog" aria-modal="true" aria-labelledby={titleId} onKeyDown={onKeyDown}>
         <div className="modal-head">
           <h2 id={titleId}>{title}</h2>
-          <Button variant="ghost" size="sm" onClick={onClose} aria-label="Tutup">
+          <Button variant="ghost" size="sm" onClick={onClose} aria-label={t('common.close')}>
             ✕
           </Button>
         </div>
@@ -54,7 +55,7 @@ export function Modal({ title, onClose, children, footer, wide }: { title: strin
 /** A dialog that is also a form: Enter submits, errors from the last attempt are shown inside. */
 export function FormModal({
   title,
-  submitLabel = 'Simpan',
+  submitLabel,
   busy,
   error,
   onSubmit,
@@ -73,6 +74,7 @@ export function FormModal({
   wide?: boolean
   danger?: boolean
 }) {
+  const { t } = useI18n()
   function submit(event: FormEvent) {
     event.preventDefault()
     onSubmit()
@@ -82,13 +84,13 @@ export function FormModal({
     <Modal title={title} onClose={onClose} wide={wide}>
       <form onSubmit={submit} noValidate>
         <div className="modal-body">
-          {error != null && <Banner tone="bad">{describeError(error)}</Banner>}
+          {error != null && <ErrorBanner error={error} />}
           {children}
         </div>
         <div className="modal-foot">
-          <Button onClick={onClose}>Batal</Button>
+          <Button onClick={onClose}>{t('common.cancel')}</Button>
           <Button type="submit" variant={danger ? 'danger' : 'primary'} loading={busy}>
-            {submitLabel}
+            {submitLabel ?? t('common.save')}
           </Button>
         </div>
       </form>
@@ -118,6 +120,7 @@ export function ConfirmDialog({
   onConfirm: (reason: string) => void
   onClose: () => void
 }) {
+  const { t } = useI18n()
   const [reason, setReason] = useState('')
   const tooShort = reasonRequired && reason.trim().length < 3
 
@@ -125,7 +128,7 @@ export function ConfirmDialog({
     <FormModal title={title} submitLabel={confirmLabel} busy={busy} error={error} danger={danger} onClose={onClose} onSubmit={() => !tooShort && onConfirm(reason.trim())}>
       <div>{message}</div>
       {reasonRequired && (
-        <Field label="Alasan (dicatat di audit)" hint="Minimal 3 karakter.">
+        <Field label={t('common.reason')} hint={t('common.reason_hint')}>
           {(p) => <textarea className="textarea" value={reason} onChange={(e) => setReason(e.target.value)} {...p} />}
         </Field>
       )}

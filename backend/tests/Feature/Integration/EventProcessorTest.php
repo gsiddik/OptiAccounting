@@ -190,13 +190,13 @@ class EventProcessorTest extends TestCase
 
         $totals = app(IntegrationRunner::class)->processDue();
 
-        $this->assertSame(['events' => 2, 'posted' => 2], $totals);
+        $this->assertSame(['events' => 2, 'posted' => 2, 'journals' => 0, 'held' => 0], $totals);
         $this->assertSame(2, $adapter->calls);
         $status = fn (ExternalEvent $e) => DB::table('external_events')->where('id', $e->id)->value('status');
         $this->assertSame(['POSTED', 'POSTED', 'FAILED', 'RECEIVED', 'RECEIVED'], array_map($status, [$a, $b, $failedLater, $onPaused, $foreign]));
 
         Carbon::setTestNow(now()->addMinutes(31));
-        $this->assertSame(['events' => 1, 'posted' => 1], app(IntegrationRunner::class)->processDue());
+        $this->assertSame(['events' => 1, 'posted' => 1, 'journals' => 0, 'held' => 0], app(IntegrationRunner::class)->processDue());
         $this->artisan('integration:process')->assertSuccessful();
     }
 }

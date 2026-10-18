@@ -37,7 +37,7 @@ class ManifestAndCommandsTest extends OptinexusTestCase
         }
 
         $this->assertSame(['user_limit', 'branch_limit', 'business_unit_limit'], $manifest['entitlement_limit_keys']);
-        $this->assertEqualsCanonicalizing(['authorization.check', 'commercial.read', 'event.write', 'audit.write'], $manifest['service_account']['scopes']);
+        $this->assertEqualsCanonicalizing(['authorization.check', 'commercial.read', 'event.write', 'audit.write', 'tenant.delegate'], $manifest['service_account']['scopes']);
         $this->assertSame(['https://api.test/api/v1/auth/sso/callback'], $manifest['oidc_client']['redirect_uris']);
         $this->assertStringEndsWith('/api/v1/integration/optinexus/backchannel-logout', $manifest['oidc_client']['backchannel_logout_uri']);
         $this->assertSame(self::FRONTEND, $manifest['oidc_client']['launch_url']);
@@ -60,7 +60,7 @@ class ManifestAndCommandsTest extends OptinexusTestCase
     public function test_the_check_command_passes_against_a_healthy_optinexus(): void
     {
         $this->artisan('optientry:nexus:check')->assertSuccessful()
-            ->expectsOutputToContain('Discovery document')->expectsOutputToContain('Service account token and scopes');
+            ->expectsOutputToContain('Discovery document')->expectsOutputToContain('Service account token and scopes')->expectsOutputToContain('Delegation of users and roles')->expectsOutputToContain('Product switcher and session revalidation');
     }
 
     public function test_the_check_command_names_what_is_wrong(): void
@@ -71,6 +71,18 @@ class ManifestAndCommandsTest extends OptinexusTestCase
         $this->nexus['service_scopes_ok'] = true;
         config(['optientry.optinexus.service.client_secret' => '']);
         $this->artisan('optientry:nexus:check')->assertFailed()->expectsOutputToContain('OPTINEXUS_SERVICE_CLIENT_SECRET');
+        config(['optientry.optinexus.service.client_secret' => 'svc-secret']);
+
+        // The basic calls work but the service account may not delegate: users and roles cannot be managed from here.
+        $this->nexus['delegation']['scope_revoked'] = true;
+        $this->artisan('optientry:nexus:check')->assertFailed()->expectsOutputToContain('tenant.delegate');
+        $this->nexus['delegation']['scope_revoked'] = false;
+        $this->artisan('optientry:nexus:check')->assertSuccessful();
+
+        // An OptiNexus without the product-context API: the switcher cannot work, and the check says so.
+        $this->nexus['pc']['missing'] = true;
+        $this->artisan('optientry:nexus:check')->assertFailed()->expectsOutputToContain('lacks the product-context API');
+        $this->nexus['pc']['missing'] = false;
 
         config(['optientry.optinexus.service.client_secret' => 'svc-secret', 'optientry.optinexus.sso.client_id' => '']);
         $this->artisan('optientry:nexus:check')->assertFailed()->expectsOutputToContain('OPTINEXUS_SSO_CLIENT_ID');
@@ -80,11 +92,21 @@ class ManifestAndCommandsTest extends OptinexusTestCase
         $this->artisan('optientry:nexus:check')->assertFailed();
     }
 
-    public function test_the_check_command_reports_an_unregistered_application(): void
+    public function test_the_check_command_reports_an_application_the_service_account_is_not_bound_to(): void
     {
         config(['optientry.optinexus.application_code' => 'not-registered']);
 
-        $this->artisan('optientry:nexus:check')->assertFailed()->expectsOutputToContain('is not registered in OptiNexus');
+        $this->artisan('optientry:nexus:check')->assertFailed()->expectsOutputToContain('is not bound to the account');
+    }
+
+    public function test_the_check_command_reports_an_unbound_service_account_and_an_optinexus_without_the_bulk_endpoint(): void
+    {
+        $this->nexus['service_unbound'] = true;
+        $this->artisan('optientry:nexus:check')->assertFailed()->expectsOutputToContain('SERVICE_ACCOUNT_NOT_BOUND');
+
+        $this->nexus['service_unbound'] = false;
+        $this->nexus['bulk_missing'] = true;
+        $this->artisan('optientry:nexus:check')->assertFailed()->expectsOutputToContain('lacks /authorization/effective-permissions');
     }
 
     public function test_the_check_command_is_a_no_op_in_standalone_mode(): void

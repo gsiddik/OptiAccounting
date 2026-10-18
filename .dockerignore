@@ -1,0 +1,23 @@
+# Build context is the repository root. Nothing from a developer's working copy may reach an image:
+# environment files, installed dependencies, caches, logs, uploads, tests and VCS data.
+.git
+.github
+**/.env
+**/.env.*
+!**/.env.example
+**/node_modules
+**/vendor
+**/dist
+**/coverage
+backend/tests
+backend/.phpunit.cache
+backend/.phpunit.result.cache
+backend/storage/app
+backend/storage/logs
+backend/storage/framework
+backend/bootstrap/cache
+backend/database/*.sqlite
+frontend/dist
+**/*.log
+**/.DS_Store
+docs

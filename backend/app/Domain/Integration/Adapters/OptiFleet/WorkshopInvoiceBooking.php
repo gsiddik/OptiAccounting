@@ -48,6 +48,9 @@ class WorkshopInvoiceBooking
 
     public const PAYMENT = 'workshop_invoice_payment';
 
+    /** The events that create, replace or retire the document of a source invoice. */
+    private const DOCUMENT_EVENTS = ['optifleet.workshop_invoice.recorded', 'optifleet.workshop_invoice.corrected', 'optifleet.workshop_invoice.cancelled'];
+
     public function __construct(
         private readonly ApInvoiceService $invoices,
         private readonly VendorPaymentService $payments,
@@ -63,6 +66,7 @@ class WorkshopInvoiceBooking
 
     public function corrected(ExternalEvent $event, User $actor): ProcessOutcome
     {
+        $this->assertEarlierEventsDecided($event, $this->source($event)['id']);
         $this->retire($event, $actor, $this->currentInvoice($this->source($event)['id']), 'correction', 'Corrected in OptiFleet');
 
         return $this->book($event, $actor);
@@ -70,9 +74,11 @@ class WorkshopInvoiceBooking
 
     public function cancelled(ExternalEvent $event, User $actor): ProcessOutcome
     {
+        $this->assertEarlierEventsDecided($event, $this->source($event)['id']);
         $invoice = $this->retire($event, $actor, $this->currentInvoice($this->source($event)['id']), 'cancellation', 'Cancelled in OptiFleet');
 
-        return new ProcessOutcome($invoice->reversal_journal_id, [$this->link(self::INVOICE, $this->source($event), ApInvoice::DOCUMENT_TYPE, $invoice)]);
+        // a reversal journal means the books changed; an invoice that never posted is simply cancelled (no journal, nothing to undo in the GL)
+        return new ProcessOutcome($invoice->reversal_journal_id, [$this->link(self::INVOICE, $this->source($event), ApInvoice::DOCUMENT_TYPE, $invoice)], documentStatus: $invoice->status);
     }
 
     public function paid(ExternalEvent $event, User $actor): ProcessOutcome
@@ -105,7 +111,7 @@ class WorkshopInvoiceBooking
         ], $actor);
         $document = $this->advance($created, $actor, fn ($p) => $this->payments->submit($p, $actor), fn ($p) => $this->payments->post($p, $actor));
 
-        return new ProcessOutcome($document->journal_entry_id, [[
+        return $this->outcome($document, [[
             'source_type' => self::PAYMENT, 'source_id' => $payment['id'], 'source_document_number' => $reference, 'document_type' => VendorPayment::DOCUMENT_TYPE, 'document_id' => $document->id,
         ]]);
     }
@@ -123,7 +129,24 @@ class WorkshopInvoiceBooking
         $created = $this->invoices->create($this->invoiceData($event, $payload, $vendor, $settings), $actor);
         $invoice = $this->advance($created, $actor, fn ($i) => $this->invoices->submit($i, $actor), fn ($i) => $this->invoices->post($i, $actor));
 
-        return new ProcessOutcome($invoice->journal_entry_id, [$this->link(self::INVOICE, $source, ApInvoice::DOCUMENT_TYPE, $invoice, $invoice->vendor_invoice_number)]);
+        return $this->outcome($invoice, [$this->link(self::INVOICE, $source, ApInvoice::DOCUMENT_TYPE, $invoice, $invoice->vendor_invoice_number)]);
+    }
+
+    /**
+     * What reached the books (ecosystem audit A27): a posted document is a journal; a submitted one waits for an approver; a draft waits for
+     * somebody allowed to post it (approval and segregation of duties are never bypassed here). The event is "processed" in all three cases.
+     *
+     * @param  list<array<string,?string>>  $links
+     */
+    private function outcome(Model $document, array $links): ProcessOutcome
+    {
+        $outcome = match ($document->status) {
+            ApInvoice::POSTED => ProcessOutcome::JOURNAL_POSTED,
+            ApInvoice::SUBMITTED => ProcessOutcome::AWAITING_APPROVAL,
+            default => ProcessOutcome::DRAFT_DOCUMENT,
+        };
+
+        return new ProcessOutcome($document->journal_entry_id, $links, $outcome, $document->status);
     }
 
     /**
@@ -194,6 +217,30 @@ class WorkshopInvoiceBooking
 
         // An invoice stated by totals only becomes one line for the whole net amount.
         return $lines !== [] ? $lines : [['description' => $description, 'amount' => Money::str($whole), 'expense_category_id' => $categoryId]];
+    }
+
+    /**
+     * A correction or cancellation replaces the document the source's earlier events produced, so it is applied only once every earlier
+     * event that records, corrects or cancels the same source invoice has been decided (POSTED, or REJECTED by review). Otherwise a later
+     * cancellation could be followed by an older correction that books the cancelled invoice again, or an older correction could overwrite a
+     * newer one. Payments neither wait for nor hold back other events: a payment that arrives before its invoice has its own wait
+     * (INVOICE_NOT_FOUND). The held event is retried by a person once the earlier one is settled.
+     */
+    private function assertEarlierEventsDecided(ExternalEvent $event, string $sourceId): void
+    {
+        if ($event->sequence === null) {
+            return; // only feed events are ordered, and the feed always numbers them
+        }
+        $earlier = ExternalEvent::query()->where('connection_id', $event->connection_id)->where('sequence', '<', $event->sequence)
+            ->whereIn('event_type', self::DOCUMENT_EVENTS)
+            ->whereIn('status', [ExternalEvent::RECEIVED, ExternalEvent::VALIDATED, ExternalEvent::FAILED, ExternalEvent::NEEDS_REVIEW, ExternalEvent::DEAD_LETTER])
+            ->whereRaw("envelope->'source'->>'id' = ?", [$sourceId])->orderBy('sequence')->first();
+        if ($earlier !== null) {
+            throw new DomainException(
+                "An earlier event of this workshop invoice (sequence {$earlier->sequence}) is not decided yet; it has to be applied or dismissed first, then retry this one.",
+                'EARLIER_EVENT_UNRESOLVED', 409, ['earlier_event_id' => $earlier->event_id, 'earlier_sequence' => $earlier->sequence, 'earlier_status' => $earlier->status],
+            );
+        }
     }
 
     /** Our latest document of a source invoice (a corrected invoice replaces the one it reversed). */

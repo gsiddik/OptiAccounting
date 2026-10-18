@@ -8,6 +8,8 @@ import { formatDate } from '../lib/format'
 import { describeError } from '../lib/labels'
 import { BrandLogo } from './BrandLogo'
 import { CrumbLabelProvider } from './CrumbLabels'
+import { LocaleSwitcher } from './LocaleSwitcher'
+import { ProductSwitcher } from './ProductSwitcher'
 import { Breadcrumbs, BackButton } from './PageNav'
 import { SidebarNav } from './SidebarNav'
 import { useToast } from './Toast'
@@ -93,6 +95,8 @@ function ShellFrame({ scope, items }: { scope: 'platform' | 'tenant'; items: Nav
               </select>
             </>
           )}
+          {scope === 'tenant' && <ProductSwitcher />}
+          <LocaleSwitcher />
           <div className="context-chip right" style={{ maxWidth: 180 }}>
             <strong>{me.user.name}</strong>
             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{me.user.email}</span>

@@ -63,7 +63,7 @@ class OptiFleetAdapter implements ConnectorRequirements, IntegrationAdapter
     public function process(ExternalEvent $event): ProcessOutcome
     {
         if (in_array($event->event_type, self::MEMOS, true)) {
-            return new ProcessOutcome;
+            return new ProcessOutcome(outcome: ProcessOutcome::INFORMATIONAL); // recorded as a fact; deliberately books nothing
         }
 
         $method = self::INVOICE_EVENTS[$event->event_type] ?? throw new DomainException("Unsupported event {$event->event_type}.", 'UNSUPPORTED_EVENT', 422);
@@ -123,6 +123,7 @@ class OptiFleetAdapter implements ConnectorRequirements, IntegrationAdapter
             $modules->featureEnabled(self::FEATURE) ? null : 'feature '.self::FEATURE.' is not enabled',
             $modules->writable('ACCOUNTING_INTEGRATION') ? null : 'module ACCOUNTING_INTEGRATION is not available for writing',
             $modules->writable('ACCOUNTING_AP') ? null : 'module ACCOUNTING_AP is not available for writing',
+            app(OptiFleetActor::class)->issued((string) app(TenantContext::class)->tenantId()) ? null : 'the platform operator has not issued the integration service identity of this organization',
         ]));
     }
 }

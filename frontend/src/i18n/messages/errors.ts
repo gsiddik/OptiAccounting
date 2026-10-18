@@ -1,0 +1,123 @@
+import { defineMessages } from '../core'
+
+/**
+ * Refusals the API (or the transport) can give, by `error.<CODE>`; `error.status.*` are the fallbacks by HTTP status.
+ * Codes that are not listed here keep the Indonesian text from lib/labels.ts until their screen moves over.
+ */
+export const errors = defineMessages({
+  'error.status.network': { id: 'Tidak dapat terhubung ke server. Periksa koneksi Anda.', en: 'Cannot reach the server. Check your connection.' },
+  'error.status.rate_limited': { id: 'Terlalu banyak percobaan. Coba lagi sebentar lagi.', en: 'Too many attempts. Try again in a moment.' },
+  'error.status.server': { id: 'Terjadi kesalahan pada server. Coba lagi nanti.', en: 'Something went wrong on the server. Try again later.' },
+  'error.status.forbidden': { id: 'Anda tidak memiliki izin untuk tindakan ini.', en: 'You do not have permission for this action.' },
+  'error.status.not_found': { id: 'Data tidak ditemukan.', en: 'The record was not found.' },
+  'error.status.unexpected': { id: 'Terjadi kesalahan.', en: 'Something went wrong.' },
+
+  'error.PERMISSION_DENIED': { id: 'Anda tidak memiliki izin untuk tindakan ini.', en: 'You do not have permission for this action.' },
+  'error.SUBSCRIPTION_READ_ONLY': { id: 'Langganan menunggak: hanya dapat membaca data.', en: 'The subscription is overdue: data can be read but not changed.' },
+  'error.SUBSCRIPTION_INACTIVE': { id: 'Langganan tidak aktif.', en: 'The subscription is not active.' },
+  'error.MODULE_NOT_ENTITLED': { id: 'Modul ini tidak termasuk dalam langganan.', en: 'This module is not part of the subscription.' },
+  'error.FEATURE_NOT_ENTITLED': { id: 'Fitur ini tidak termasuk dalam langganan.', en: 'This feature is not part of the subscription.' },
+  'error.CAPACITY_EXCEEDED': {
+    id: 'Batas {what} tercapai ({used} dari {limit}). Hubungi administrator platform untuk menambah kapasitas.',
+    en: 'The {what} limit has been reached ({used} of {limit}). Ask the platform administrator to raise it.',
+  },
+  'error.MANAGED_BY_OPTINEXUS': { id: 'Data ini dikelola di OptiNexus dan tidak dapat diubah di sini.', en: 'This is managed in OptiNexus and cannot be changed here.' },
+  'error.IDENTITY_PROVIDER_UNAVAILABLE': {
+    id: 'OptiNexus sedang tidak dapat dihubungi. Coba lagi sebentar lagi.',
+    en: 'OptiNexus cannot be reached right now. Try again shortly.',
+  },
+  'error.IDENTITY_PROVIDER_UNAVAILABLE.write': {
+    id: 'OptiNexus tidak menjawab. Perubahan ini mungkin sudah diterapkan: muat ulang daftar sebelum mengulang.',
+    en: 'OptiNexus did not answer. The change may already have been applied: reload the list before repeating it.',
+  },
+  'error.ROLE_NAME_TAKEN': { id: 'Nama peran sudah dipakai.', en: 'A role with this name already exists.' },
+  'error.UNKNOWN_PERMISSION': { id: 'Kode izin tidak dikenal: {permissions}.', en: 'Unknown permission code: {permissions}.' },
+  'error.PRIVILEGE_ESCALATION': { id: 'Anda tidak dapat memberikan izin yang tidak Anda miliki.', en: 'You cannot grant permissions you do not hold yourself.' },
+
+  // OptiNexus delegation: the refusals are decisions of OptiNexus and are shown as such.
+  'error.ACTOR_NOT_TENANT_ADMIN': {
+    id: 'Hanya Admin Tenant di OptiNexus yang dapat mengelola pengguna dan peran. Minta Admin Tenant organisasi Anda.',
+    en: 'Only an Admin Tenant in OptiNexus can manage users and roles. Ask your organization\'s Admin Tenant.',
+  },
+  'error.TENANT_NOT_ACTIVE': { id: 'Organisasi ini tidak aktif di OptiNexus.', en: 'This organization is not active in OptiNexus.' },
+  'error.APPLICATION_NOT_ACTIVE': { id: 'OptiEntry tidak aktif di OptiNexus.', en: 'OptiEntry is not active in OptiNexus.' },
+  'error.APPLICATION_NOT_SUBSCRIBED': { id: 'Organisasi ini belum berlangganan OptiEntry di OptiNexus.', en: 'This organization has no OptiEntry subscription in OptiNexus.' },
+  'error.PERMISSION_NOT_DELEGABLE': {
+    id: 'OptiNexus menolak izin yang tidak dapat didelegasikan: {permissions}.',
+    en: 'OptiNexus refused permissions that cannot be delegated: {permissions}.',
+  },
+  'error.ROLE_NOT_ASSIGNABLE': { id: 'OptiNexus menolak peran yang tidak dapat diberikan ke pengguna ini.', en: 'OptiNexus refused a role that cannot be assigned to this user.' },
+  'error.ROLE_NOT_EDITABLE': { id: 'Peran ini tidak dapat diubah atau dihapus (peran bawaan atau tidak ditemukan).', en: 'This role cannot be changed or deleted (built-in role or not found).' },
+  'error.ROLE_IN_USE': { id: 'Peran masih dipakai pengguna. Lepaskan dulu dari pengguna.', en: 'The role is still assigned to users. Remove it from them first.' },
+  'error.USER_NOT_IN_TENANT': { id: 'Pengguna ini bukan anggota organisasi. Muat ulang daftar.', en: 'This user is not a member of the organization. Reload the list.' },
+  'error.TENANT_ADMIN_PROTECTED': { id: 'Admin Tenant tidak dapat diubah atau dicabut dari sini. Kelola di OptiNexus.', en: 'An Admin Tenant cannot be changed or removed from here. Manage them in OptiNexus.' },
+  'error.IDENTITY_NOT_LINKABLE': {
+    id: 'Akun dengan e-mail ini tidak dapat dihubungkan ke organisasi. Hubungi administrator OptiNexus.',
+    en: 'The account with this e-mail cannot be linked to the organization. Contact the OptiNexus administrator.',
+  },
+  'error.MEMBERSHIP_NOT_ACTIVE': { id: 'Keanggotaan pengguna ini tidak aktif di OptiNexus.', en: 'This user\'s membership is not active in OptiNexus.' },
+  'error.SELF_REVOCATION_DENIED': { id: 'Anda tidak dapat mencabut akses Anda sendiri.', en: 'You cannot remove your own access.' },
+  'error.DELEGATION_NOT_CONFIGURED': {
+    id: 'Pengelolaan pengguna belum disiapkan untuk instalasi ini di OptiNexus. Hubungi administrator platform.',
+    en: 'User management is not set up for this installation in OptiNexus. Contact the platform administrator.',
+  },
+  'error.DELEGATION_NOT_AVAILABLE': { id: 'Pengelolaan pengguna melalui OptiNexus tidak aktif pada instalasi ini.', en: 'User management through OptiNexus is not enabled on this installation.' },
+  'error.TENANT_NOT_LINKED': { id: 'Organisasi ini belum terhubung ke OptiNexus.', en: 'This organization is not linked to OptiNexus yet.' },
+  'error.ACTOR_NOT_LINKED': { id: 'Akun Anda belum terhubung ke OptiNexus. Masuk melalui OptiNexus terlebih dahulu.', en: 'Your account is not linked to OptiNexus yet. Sign in through OptiNexus first.' },
+  'error.DELEGATION_TENANT_UNKNOWN': { id: 'OptiNexus tidak mengenal organisasi ini. Hubungi administrator platform.', en: 'OptiNexus does not know this organization. Contact the platform administrator.' },
+  'error.DELEGATION_UNEXPECTED_RESPONSE': { id: 'OptiNexus memberi jawaban yang tidak dikenali. Coba lagi atau hubungi dukungan dengan kode referensi.', en: 'OptiNexus gave an answer this application does not understand. Try again or contact support with the reference.' },
+  'error.DELEGATION_IN_PROGRESS': { id: 'Peran dengan nama ini sedang dibuat. Tunggu sebentar lalu muat ulang.', en: 'A role with this name is already being created. Wait a moment, then reload.' },
+  // Seats (OptiNexus contract 2d): OptiNexus counts them and refuses an addition that does not fit; nothing was granted or reserved.
+  'error.SEAT_LIMIT_REACHED': {
+    id: 'Tidak ada kursi tersisa ({used} terpakai dan {reserved} dicadangkan dari batas {limit}). Cabut undangan terbuka atau hapus akses seseorang, atau minta administrator platform menambah batas.',
+    en: 'No seat is left ({used} used and {reserved} reserved of a limit of {limit}). Revoke an open invitation or remove someone\'s access, or ask the platform administrator to raise the limit.',
+  },
+  'error.SEAT_OVER_LIMIT': {
+    id: 'Organisasi ini melebihi batas kursi ({used} terpakai dan {reserved} dicadangkan terhadap batas {limit}). Tidak ada akses yang dicabut. Kurangi pemakaian atau minta administrator platform menaikkan batas.',
+    en: 'This organization is over its seat limit ({used} used and {reserved} reserved against a limit of {limit}). No access was removed. Reduce usage or ask the platform administrator to raise the limit.',
+  },
+  'error.SEAT_ENTITLEMENT_MISSING': {
+    id: 'Langganan belum menetapkan batas kursi untuk produk ini, jadi tidak ada yang dapat ditambahkan. Hubungi administrator platform.',
+    en: 'The subscription does not set a seat limit for this product, so nobody can be added. Contact the platform administrator.',
+  },
+  'error.SEAT_ENTITLEMENT_INVALID': {
+    id: 'Batas kursi pada langganan tidak valid, jadi tidak ada yang dapat ditambahkan. Hubungi administrator platform.',
+    en: 'The seat limit on the subscription is not valid, so nobody can be added. Contact the platform administrator.',
+  },
+  'error.SEAT_ENTITLEMENT_UNAVAILABLE': {
+    id: 'Batas kursi tidak dapat dibaca saat ini. Tidak ada yang ditambahkan. Coba lagi dalam {seconds} detik.',
+    en: 'The seat limit cannot be read right now. Nothing was added. Try again in {seconds} seconds.',
+  },
+  'error.SEAT_CONTENTION': {
+    id: 'Perubahan kursi lain sedang berjalan. Tidak ada yang ditambahkan. Coba lagi dalam {seconds} detik.',
+    en: 'Another change to the seats is in progress. Nothing was added. Try again in {seconds} seconds.',
+  },
+  // Invitations (OptiNexus contract 2b)
+  'error.INVITATION_PENDING': {
+    id: 'Sudah ada undangan terbuka untuk e-mail ini. Buka tab Undangan dan pilih Kirim ulang.',
+    en: 'There is already an open invitation for this e-mail. Open the Invitations tab and choose Resend.',
+  },
+  'error.ALREADY_MEMBER': { id: 'Orang ini sudah menjadi anggota dan punya akses ke OptiEntry.', en: 'This person is already a member with access to OptiEntry.' },
+  'error.INVITATION_NOT_FOUND': { id: 'Undangan tidak ditemukan. Muat ulang daftar.', en: 'The invitation was not found. Reload the list.' },
+  'error.INVITATION_NOT_PENDING': { id: 'Undangan ini tidak lagi terbuka. Muat ulang daftar.', en: 'This invitation is no longer open. Reload the list.' },
+  'error.INVITATION_NOT_PENDING.ACCEPTED': {
+    id: 'Undangan ini sudah diterima dan tautannya sudah terpakai. Tidak ada yang perlu dikirim ulang atau dicabut.',
+    en: 'This invitation has already been accepted and its link has been used. There is nothing to resend or revoke.',
+  },
+  'error.INVITATION_NOT_PENDING.REVOKED': {
+    id: 'Undangan ini sudah dicabut dan tautannya tidak berlaku. Undang lagi jika orang ini tetap perlu akses.',
+    en: 'This invitation was revoked and its link no longer works. Invite the person again if they still need access.',
+  },
+  'error.INVITATION_RESEND_COOLDOWN': {
+    id: 'Undangan baru saja dikirim. Tunggu {seconds} detik sebelum mengirim ulang.',
+    en: 'The invitation was just sent. Wait {seconds} seconds before sending it again.',
+  },
+  'error.INVITATION_RESEND_LIMIT': {
+    id: 'Undangan ini sudah dikirim ulang sebanyak yang diizinkan. Cabut, lalu undang lagi jika perlu.',
+    en: 'This invitation has been resent as many times as allowed. Revoke it and invite the person again if needed.',
+  },
+  'error.INVITATION_RATE_LIMITED': {
+    id: 'Terlalu banyak undangan dalam waktu singkat. Coba lagi dalam {seconds} detik.',
+    en: 'Too many invitations in a short time. Try again in {seconds} seconds.',
+  },
+})

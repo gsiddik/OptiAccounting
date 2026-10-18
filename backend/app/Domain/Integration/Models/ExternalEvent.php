@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
  * One canonical event in the inbox. EventInbox is the only writer of the row; the envelope and its hash are evidence and the database refuses
@@ -51,17 +52,30 @@ class ExternalEvent extends Model
         return $this->belongsTo(IntegrationConnection::class, 'connection_id');
     }
 
-    /** Events the processor may pick up now: RECEIVED, or FAILED once its backoff has elapsed. Keep in step with `isDue`. */
+    public function gap(): BelongsTo
+    {
+        return $this->belongsTo(IntegrationGap::class, 'gap_id');
+    }
+
+    public function conflicts(): HasMany
+    {
+        return $this->hasMany(ExternalEventConflict::class, 'external_event_id');
+    }
+
+    /**
+     * Events the processor may pick up now: RECEIVED, or FAILED once its backoff has elapsed, and never one whose content is disputed (an open
+     * conflict holds it until a person decides). Keep in step with `isDue`.
+     */
     public function scopeDue(Builder $query): Builder
     {
-        return $query->where(fn ($q) => $q->where('status', self::RECEIVED)
+        return $query->where('conflict', false)->where(fn ($q) => $q->where('status', self::RECEIVED)
             ->orWhere(fn ($failed) => $failed->where('status', self::FAILED)->where(fn ($at) => $at->whereNull('next_attempt_at')->orWhere('next_attempt_at', '<=', now()))));
     }
 
     public function isDue(): bool
     {
-        return $this->status === self::RECEIVED
-            || ($this->status === self::FAILED && ($this->next_attempt_at === null || $this->next_attempt_at->lte(now())));
+        return ! $this->conflict && ($this->status === self::RECEIVED
+            || ($this->status === self::FAILED && ($this->next_attempt_at === null || $this->next_attempt_at->lte(now()))));
     }
 
     /** The major version of `schema_version` ("1.2" => 1). */

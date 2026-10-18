@@ -4,6 +4,7 @@ namespace App\Domain\Entitlement\Services;
 
 use App\Domain\Identity\Models\Tenant;
 use App\Domain\Identity\Models\TenantUser;
+use App\Domain\Identity\Services\ServicePrincipalRegistry;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -53,10 +54,11 @@ class CapacityService
     public function used(string $tenantId, string $limitCode): int
     {
         return match ($limitCode) {
-            // A service identity of an integration (address `*.optientry.invalid`, no sign-in) is not a person and takes no seat.
+            // Only a machine identity in the service-principal registry (issued by the platform operator, never by a tenant) takes no seat. An
+            // address on the reserved range proves nothing: a person who holds one counts like everybody else.
             self::USER_LIMIT => DB::table('tenant_users')->where('tenant_id', $tenantId)
                 ->where('status', '<>', TenantUser::INACTIVE)
-                ->whereNotIn('user_id', fn ($users) => $users->select('id')->from('users')->where('email', 'like', '%.optientry.invalid'))->count(),
+                ->whereNotIn('user_id', app(ServicePrincipalRegistry::class)->seatExemptUserIds($tenantId))->count(),
             self::BRANCH_LIMIT => DB::table('branches')->where('tenant_id', $tenantId)->where('status', 'ACTIVE')->count(),
             self::BUSINESS_UNIT_LIMIT => DB::table('business_units')->where('tenant_id', $tenantId)->where('status', 'ACTIVE')->count(),
             default => 0,

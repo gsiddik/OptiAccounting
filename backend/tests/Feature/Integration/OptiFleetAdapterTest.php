@@ -75,10 +75,10 @@ class OptiFleetAdapterTest extends TestCase
 
         $summary = $this->pullFleet($tenant, $connection, [$event]);
 
-        $this->assertSame([1, 1, null], [$summary['received'], $summary['posted'], $summary['error']]);
+        $this->assertSame([1, 1, 1, null], [$summary['received'], $summary['posted'], $summary['journals'], $summary['error']]);
         $row = $this->eventRow($event);
         $invoice = $this->invoiceOf('INV-001');
-        $this->assertSame(['POSTED', $invoice->journal_entry_id], [$row->status, $row->resulting_journal_id]);
+        $this->assertSame(['POSTED', $invoice->journal_entry_id, 'JOURNAL_POSTED', 'POSTED'], [$row->status, $row->resulting_journal_id, $row->accounting_outcome, $row->document_status]);
         $this->assertSame(['POSTED', 'INVOICE', '2026-03-10', '2026-03-10', '2026-04-09', 'REF-9', '1110000.0000', '110000.0000', '0.0000'],
             [$invoice->status, $invoice->origin, $invoice->document_date, $invoice->posting_date, $invoice->due_date, $invoice->reference, $invoice->total_amount, $invoice->tax_amount, $invoice->discount_amount]);
         $this->assertStringContainsString('WO-001', $invoice->description);
@@ -117,7 +117,7 @@ class OptiFleetAdapterTest extends TestCase
         $this->assertSame(0, DB::table('tenant_user_roles')->where('tenant_user_id', $membership[0]->id)->count());
         $this->assertSame(['TENANT'], DB::table('data_scopes')->where('tenant_user_id', $membership[0]->id)->pluck('scope_type')->all());
         $this->assertSame($user->id, DB::table('audit_logs')->where('action', 'payables.ap_invoice.posted')->value('actor_user_id'));
-        $this->assertSame(1, DB::table('audit_logs')->where('action', 'accounting.integration.actor.created')->count());
+        $this->assertSame(1, DB::table('audit_logs')->where('action', 'service_principal.issued')->where('tenant_id', $tenant->id)->count());
         $this->assertSame(DB::table('tenant_users')->where('tenant_id', $tenant->id)->count() - 1, app(CapacityService::class)->used($tenant->id, CapacityService::USER_LIMIT));
 
         $this->assertNull(app(AuthService::class)->attempt($email, self::PASSWORD));
@@ -245,6 +245,57 @@ class OptiFleetAdapterTest extends TestCase
         $unknown = $cancel('wi-9', 'INV-009');
         $this->pullFleet($tenant, $connection, [$unknown]);
         $this->assertSame(['NEEDS_REVIEW', 'INVOICE_NOT_FOUND'], $this->outcomeOf($unknown));
+    }
+
+    public function test_a_later_cancellation_waits_for_an_undecided_correction_and_never_lets_the_older_one_book_a_cancelled_invoice_again(): void
+    {
+        [$tenant, $connection] = $this->fleetTenant();
+        $badCorrection = $this->fleetEvent('optifleet.workshop_invoice.corrected', $this->fleetPayload(['total_amount' => '1110001.0000']) + ['correction' => ['id' => 'cor-1', 'reason' => 'Salah ketik']]);
+        $cancelled = $this->fleetEvent('optifleet.workshop_invoice.cancelled', $this->fleetPayload() + ['cancellation' => ['id' => 'can-1', 'reason' => 'Dibatalkan bengkel']]);
+        $other = $this->recordedEvent(['invoice_number' => 'INV-002'], ['id' => 'wi-2', 'number' => 'INV-002']);
+
+        // The correction cannot be booked as stated, so it is undecided when the cancellation of the same invoice arrives in the same page.
+        $this->pullFleet($tenant, $connection, [$this->recordedEvent(), $badCorrection, $cancelled, $other]);
+        $this->assertSame(['NEEDS_REVIEW', 'TOTAL_MISMATCH'], $this->outcomeOf($badCorrection));
+        $this->assertSame(['NEEDS_REVIEW', 'EARLIER_EVENT_UNRESOLVED'], $this->outcomeOf($cancelled));
+        $this->assertSame('POSTED', $this->eventRow($other)->status); // another source invoice is not held back
+        $this->assertSame('POSTED', $this->invoiceOf('INV-001')->status);
+        $books = fn () => array_diff_key($this->footprint(), array_flip(['users', 'audit_logs'])); // the reviewer's own user and the audit trail may grow
+        $before = $books();
+
+        // Retrying the cancellation does not skip the queue.
+        $this->retry($tenant, $cancelled)->assertOk()->assertJsonPath('last_error_code', 'EARLIER_EVENT_UNRESOLVED');
+        $this->assertSame($before, $books());
+
+        // A person decides the older event (here: it is never to be booked); then the cancellation goes through and nothing is booked twice.
+        $this->as($this->memberToken($tenant))->postJson(self::IT.'/events/'.$this->eventRow($badCorrection)->id.'/dismiss', ['reason' => 'Superseded by the cancellation'])->assertOk()->assertJsonPath('status', 'REJECTED');
+        $this->retry($tenant, $cancelled)->assertOk()->assertJsonPath('status', 'POSTED');
+        $invoice = $this->invoiceOf('INV-001');
+        $this->assertSame(['REVERSED', 1], [$invoice->status, DB::table('ap_invoices')->where('vendor_invoice_number', 'INV-001')->count()]);
+        $this->assertSame($invoice->reversal_journal_id, $this->eventRow($cancelled)->resulting_journal_id);
+        // INV-002 (the other source invoice) is the only one left in the books
+        $this->assertSame(['1000000.0000', '110000.0000', '-1110000.0000'], [$this->glBalance($tenant, '6400'), $this->glBalance($tenant, '1150'), $this->glBalance($tenant, '2110')]);
+    }
+
+    public function test_an_older_correction_is_never_applied_on_top_of_a_newer_one(): void
+    {
+        [$tenant, $connection] = $this->fleetTenant();
+        $correction = fn (string $id, array $payload) => $this->fleetEvent('optifleet.workshop_invoice.corrected', $this->fleetPayload($payload) + ['correction' => ['id' => $id, 'reason' => "Koreksi {$id}"]]);
+        $newTotals = ['subtotal' => '2000000.0000', 'tax_total' => '220000.0000', 'total_amount' => '2220000.0000',
+            'lines' => [['description' => 'Overhaul mesin', 'quantity' => '1.0000', 'unit_price' => '2000000.0000', 'line_total' => '2000000.0000']]];
+        $older = $correction('cor-1', ['total_amount' => '1110001.0000']); // undecided: the total does not add up
+        $newer = $correction('cor-2', $newTotals);
+
+        $this->pullFleet($tenant, $connection, [$this->recordedEvent(), $older, $newer]);
+        $this->assertSame(['NEEDS_REVIEW', 'TOTAL_MISMATCH'], $this->outcomeOf($older));
+        $this->assertSame(['NEEDS_REVIEW', 'EARLIER_EVENT_UNRESOLVED'], $this->outcomeOf($newer));
+        $this->assertSame(['POSTED', '1110000.0000'], [$this->invoiceOf('INV-001')->status, $this->invoiceOf('INV-001')->total_amount]);
+
+        $this->as($this->memberToken($tenant))->postJson(self::IT.'/events/'.$this->eventRow($older)->id.'/dismiss', ['reason' => 'Wrong total'])->assertOk();
+        $this->retry($tenant, $newer)->assertOk()->assertJsonPath('status', 'POSTED');
+        $this->assertSame(['2220000.0000', 2], [DB::table('ap_invoices')->where('status', 'POSTED')->value('total_amount'), DB::table('ap_invoices')->where('vendor_invoice_number', 'INV-001')->count()]);
+        $this->assertSame(['REVERSED', 'POSTED'], DB::table('ap_invoices')->orderBy('status', 'desc')->pluck('status')->all());
+        $this->assertSame(['2000000.0000', '220000.0000', '-2220000.0000'], [$this->glBalance($tenant, '6400'), $this->glBalance($tenant, '1150'), $this->glBalance($tenant, '2110')]);
     }
 
     public function test_replaying_a_page_changes_nothing_and_changed_content_under_one_event_id_is_a_conflict(): void
@@ -379,7 +430,7 @@ class OptiFleetAdapterTest extends TestCase
         $this->assertSame([2, 2], [$summary['received'], $summary['posted']]);
         foreach ($events as $event) {
             $row = $this->eventRow($event);
-            $this->assertSame(['POSTED', null, null], [$row->status, $row->resulting_journal_id, $row->last_error_code]);
+            $this->assertSame(['POSTED', null, null, 'INFORMATIONAL', null], [$row->status, $row->resulting_journal_id, $row->last_error_code, $row->accounting_outcome, $row->document_status]);
         }
         $this->assertSame(array_diff_key($before, ['audit_logs' => 1]), array_diff_key($this->footprint(), ['audit_logs' => 1]));
         $this->assertSame(0, DB::table('external_source_links')->count());
@@ -425,8 +476,12 @@ class OptiFleetAdapterTest extends TestCase
         $invoice = $this->invoiceOf('INV-001');
         $this->assertSame(['SUBMITTED', null, null, null], [$invoice->status, $invoice->document_number, $invoice->journal_entry_id, $invoice->approved_by]);
         $row = $this->eventRow($recorded);
-        $this->assertSame(['POSTED', null], [$row->status, $row->resulting_journal_id]);
+        $this->assertSame(['POSTED', null, 'AWAITING_APPROVAL', 'SUBMITTED'], [$row->status, $row->resulting_journal_id, $row->accounting_outcome, $row->document_status]);
         $this->assertSame($invoice->id, DB::table('external_source_links')->where('source_id', 'wi-1')->value('document_id'));
+
+        // "processed" is not "in the ledger": the connection's figures keep them apart (audit A27)
+        $summary = $this->as($this->memberToken($tenant))->getJson(self::IT."/connections/{$connection->id}/summary")->assertOk()->json();
+        $this->assertSame([1, 1, 1, 0], [$summary['processed'], $summary['outcomes']['AWAITING_APPROVAL'], $summary['counts']['NEEDS_REVIEW'], $summary['outcomes']['JOURNAL_POSTED']]);
         $this->assertSame(['NEEDS_REVIEW', 'INVOICE_NOT_POSTED'], $this->outcomeOf($payment));
 
         $person = $this->memberToken($tenant);
@@ -435,6 +490,7 @@ class OptiFleetAdapterTest extends TestCase
         $this->retry($tenant, $payment)->assertOk()->assertJsonPath('status', 'POSTED');
         $settlement = DB::table('vendor_payments')->first();
         $this->assertSame(['SUBMITTED', null], [$settlement->status, $settlement->journal_entry_id]);
+        $this->assertSame(['AWAITING_APPROVAL', 'SUBMITTED'], [$this->eventRow($payment)->accounting_outcome, $this->eventRow($payment)->document_status]);
         $this->as($person)->postJson(self::AP."/vendor-payments/{$settlement->id}/approve")->assertOk();
         $this->postJson(self::AP."/vendor-payments/{$settlement->id}/post")->assertOk();
         $this->assertSame(['PAID', '0.0000'], [$this->getJson(self::AP."/ap-invoices/{$invoice->id}")->json('payment_status'), $this->reconciliation($tenant)['subledger_balance']]);
@@ -445,7 +501,7 @@ class OptiFleetAdapterTest extends TestCase
             ['id' => 'wi-2', 'number' => 'INV-002']);
         $this->pullFleet($tenant, $connection, [$waiting, $cancelled]);
         $this->assertSame('CANCELLED', $this->invoiceOf('INV-002')->status);
-        $this->assertSame(['POSTED', null], [$this->eventRow($cancelled)->status, $this->eventRow($cancelled)->resulting_journal_id]);
+        $this->assertSame(['POSTED', null, 'NO_EFFECT', 'CANCELLED'], [$this->eventRow($cancelled)->status, $this->eventRow($cancelled)->resulting_journal_id, $this->eventRow($cancelled)->accounting_outcome, $this->eventRow($cancelled)->document_status]);
     }
 
     public function test_when_the_policy_forbids_the_preparer_to_post_the_invoice_stays_a_draft_for_a_person(): void
@@ -456,7 +512,9 @@ class OptiFleetAdapterTest extends TestCase
         $this->pullFleet($tenant, $connection, [$event]);
 
         $invoice = $this->invoiceOf('INV-001');
-        $this->assertSame(['POSTED', 'DRAFT', null], [$this->eventRow($event)->status, $invoice->status, $invoice->journal_entry_id]);
+        $this->assertSame(['POSTED', 'DRAFT', null, 'DRAFT_DOCUMENT'], [$this->eventRow($event)->status, $invoice->status, $invoice->journal_entry_id, $this->eventRow($event)->accounting_outcome]);
+        $detail = $this->as($this->memberToken($tenant))->getJson(self::IT.'/events/'.$this->eventRow($event)->id)->assertOk();
+        $detail->assertJsonPath('accounting_outcome', 'DRAFT_DOCUMENT')->assertJsonPath('document_status', 'DRAFT');
         $this->as($this->memberToken($tenant))->postJson(self::AP."/ap-invoices/{$invoice->id}/post")->assertOk()->assertJsonPath('status', 'POSTED');
     }
 
@@ -471,7 +529,11 @@ class OptiFleetAdapterTest extends TestCase
         $this->pullFleet($alpha, $alphaConnection, [$this->recordedEvent(), $this->paymentEvent()]);
 
         $this->assertSame($bravoBefore, $ownedBy($bravo));
-        $this->assertSame(0, DB::table('users')->where('email', 'optifleet.integration@bravo.optientry.invalid')->count());
+        // Bravo's own integration identity was issued with its tenant and stayed idle: it prepared nothing and appears in no audit trail.
+        $bravoUser = DB::table('users')->where('email', 'optifleet.integration@bravo.optientry.invalid')->value('id');
+        $this->assertNotNull($bravoUser);
+        $this->assertSame(0, DB::table('audit_logs')->where('actor_user_id', $bravoUser)->count());
+        $this->assertSame(0, DB::table('ap_invoices')->where('created_by', $bravoUser)->count());
         $this->assertSame(1, DB::table('ap_invoices')->count());
 
         // Another tenant's cash account is "not found": by the API when it is configured, and by the adapter if it got into the settings anyway.
@@ -514,6 +576,7 @@ class OptiFleetAdapterTest extends TestCase
             $summary = $this->pullFleet($tenant, $connection, [$event]);
             $this->assertSame([1, 0, 'RECEIVED', null], [$summary['received'], $summary['posted'], $this->eventRow($event)->status, $this->eventRow($event)->last_error_code]);
             $this->assertSame($before, $this->footprint());
+            $this->fleetPage = ['data' => [], 'has_more' => false]; // the source has nothing newer than the cursor when the connection is switched on again
 
             // The connection cannot be switched on again while the tenant is not entitled, whichever way it comes back.
             $this->as($token)->postJson("{$url}/pause")->assertOk();

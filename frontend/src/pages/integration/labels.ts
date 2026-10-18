@@ -1,129 +1,153 @@
-import { ApiError } from '../../lib/api'
+import { currentLocale, hasMessage, translate, type MessageKey, type Params } from '../../i18n'
 import { ACCOUNTING_ERRORS } from '../../lib/accountingLabels'
+import { ApiError } from '../../lib/api'
+import { WordedError } from '../../lib/errors'
 import { OA4_ERRORS } from '../../lib/oa4Labels'
 import { OPERATIONAL_ERRORS } from '../../lib/operationalLabels'
+import type { HealthAlert } from './types'
 
-// Indonesian wording of the integration pages: statuses, event types, processing error codes and the refusals of the integration API.
+// Wording of the integration pages in the language chosen at the top: statuses, event types, processing error codes, what the source said
+// and the refusals of the integration API. Every text lives in i18n/messages/integration.ts (one entry carries both languages).
 
 export type Tone = 'ok' | 'warn' | 'bad' | 'info' | 'neutral'
 type Text = [string, Tone]
 
-const pick = (table: Record<string, Text>, key: string | null | undefined): Text => (key && table[key]) || [key ?? '—', 'neutral']
-
-const CONNECTION: Record<string, Text> = {
-  DRAFT: ['Draf', 'neutral'],
-  CONFIGURING: ['Sedang dikonfigurasi', 'info'],
-  READY: ['Siap diaktifkan', 'info'],
-  ACTIVE: ['Aktif', 'ok'],
-  PAUSED: ['Dijeda', 'warn'],
-  ERROR: ['Galat', 'bad'],
-  DISCONNECTED: ['Terputus', 'neutral'],
+/** The catalog text `<prefix>.<key>` with a tone; a key the catalog does not know is shown as it was sent. */
+function pick(prefix: string, tones: Record<string, Tone>, key: string | null | undefined): Text {
+  const full = `${prefix}.${key ?? ''}`
+  return key && hasMessage(full) ? [translate(full), tones[key] ?? 'neutral'] : [key ?? '—', 'neutral']
 }
-export const connectionText = (status: string | null | undefined): Text => pick(CONNECTION, status)
 
-const EVENT: Record<string, Text> = {
-  RECEIVED: ['Diterima', 'info'],
-  VALIDATED: ['Tervalidasi', 'info'],
-  POSTED: ['Diposting', 'ok'],
-  NEEDS_REVIEW: ['Perlu ditinjau', 'warn'],
-  REJECTED: ['Ditolak', 'bad'],
-  FAILED: ['Gagal, dicoba lagi', 'bad'],
-  DEAD_LETTER: ['Gagal permanen', 'bad'],
+/** Plain text of a catalog key built at run time (a server code); the code itself when there is no text for it. */
+function lookup(prefix: string, key: string | null | undefined, params?: Params): string {
+  const full = `${prefix}.${key ?? ''}`
+  return key && hasMessage(full) ? translate(full, params) : (key ?? '—')
 }
-export const eventStatusText = (status: string | null | undefined): Text => pick(EVENT, status)
+
+const CONNECTION_TONES: Record<string, Tone> = { DRAFT: 'neutral', CONFIGURING: 'info', READY: 'info', ACTIVE: 'ok', PAUSED: 'warn', ERROR: 'bad', DISCONNECTED: 'neutral' }
+export const connectionText = (status: string | null | undefined): Text => pick('it.conn', CONNECTION_TONES, status)
+
+const EVENT_TONES: Record<string, Tone> = { RECEIVED: 'info', VALIDATED: 'info', POSTED: 'ok', NEEDS_REVIEW: 'warn', REJECTED: 'bad', FAILED: 'bad', DEAD_LETTER: 'bad' }
+export const eventStatusText = (status: string | null | undefined): Text => pick('it.event', EVENT_TONES, status)
+
+/** The short explanation of an event status on the detail page, if the status has one. */
+export function statusHint(status: string): string | undefined {
+  const key = `it.hint.${status}`
+  return hasMessage(key) ? translate(key) : undefined
+}
+
+// What processing decided for the books (`accounting_outcome`) and where the books stand now (`books_state`, read live). Two different
+// questions, never merged into the processing status (ecosystem audit A27).
+const OUTCOME_TONES: Record<string, Tone> = { JOURNAL_POSTED: 'ok', AWAITING_APPROVAL: 'warn', DRAFT_DOCUMENT: 'warn', INFORMATIONAL: 'info', NO_EFFECT: 'neutral', UNCLASSIFIED: 'neutral', PENDING: 'neutral' }
+export const outcomeText = (outcome: string | null | undefined): Text => pick('it.outcome', OUTCOME_TONES, outcome ?? 'UNCLASSIFIED')
+
+const BOOK_TONES: Record<string, Tone> = { IN_LEDGER: 'ok', AWAITING_APPROVAL: 'warn', DRAFT: 'warn', REVERSED: 'neutral', VOID: 'neutral', INFORMATIONAL: 'info', NO_EFFECT: 'neutral', UNCLASSIFIED: 'neutral' }
+export const bookText = (state: string | null | undefined): Text => pick('it.books', BOOK_TONES, state)
+export const bookHint = (state: string | null | undefined): string | undefined => {
+  const key = `it.books.hint.${state ?? ''}`
+  return state && hasMessage(key) ? translate(key) : undefined
+}
+
+export const documentStatusText = (status: string | null | undefined): string => lookup('it.doc', status)
+export const documentTypeText = (type: string | null | undefined): string => lookup('it.doc', type)
+
+const ACCESS_TONES: Record<string, Tone> = { UNKNOWN: 'neutral', OK: 'ok', REFUSED: 'bad', UNAVAILABLE: 'warn', INVALID: 'bad' }
+export const accessText = (state: string | null | undefined): Text => pick('it.access', ACCESS_TONES, state)
+
+const HEALTH_TONES: Record<string, Tone> = { OK: 'ok', WARN: 'warn', ALERT: 'bad' }
+export const healthText = (level: string | null | undefined): Text => (level ? pick('it.health', HEALTH_TONES, level) : [translate('it.health.unknown'), 'neutral'])
+
+/** What the source (or this application's check of its answer) said, by its FEED_* / SOURCE_* code; the code itself when unknown. */
+export const feedCodeText = (code: string | null | undefined): string => (code ? lookup('it.feed', code) : '')
+
+/** Why OptiEntry itself holds a connection. */
+export const entryReasonText = (code: string | null | undefined): string => lookup('it.entry', code)
 
 export const sourceSystemLabels: Record<string, string> = { optifleet: 'OptiFleet' }
 export const sourceLabel = (system: string): string => sourceSystemLabels[system] ?? system
 
-const EVENT_TYPES: Record<string, string> = {
-  'optifleet.workshop_invoice.recorded': 'Faktur bengkel dicatat',
-  'optifleet.workshop_invoice.corrected': 'Faktur bengkel dikoreksi',
-  'optifleet.workshop_invoice.cancelled': 'Faktur bengkel dibatalkan',
-  'optifleet.workshop_invoice.payment_recorded': 'Pembayaran faktur bengkel',
-  'optifleet.maintenance_memo.billed': 'Memo perawatan (informasi)',
-  'optifleet.maintenance_memo.paid': 'Memo perawatan (informasi)',
-}
-export const KNOWN_EVENT_TYPES = Object.keys(EVENT_TYPES)
+const EVENT_TYPES = [
+  'optifleet.workshop_invoice.recorded',
+  'optifleet.workshop_invoice.corrected',
+  'optifleet.workshop_invoice.cancelled',
+  'optifleet.workshop_invoice.payment_recorded',
+  'optifleet.maintenance_memo.billed',
+  'optifleet.maintenance_memo.paid',
+]
+export const KNOWN_EVENT_TYPES: readonly string[] = EVENT_TYPES
 /** The readable name of an event type; an unknown type is shown as it was sent. */
-export const eventTypeLabel = (type: string): string => EVENT_TYPES[type] ?? EVENT_TYPES[`optifleet.${type}`] ?? type
-
-export const cutoverPolicyLabels: Record<string, string> = {
-  OPENING_BALANCE_ONLY: 'Saldo awal saja, lalu kejadian sejak tanggal cutover',
-  START_FROM_CUTOVER_DATE: 'Mulai dari tanggal cutover',
-  HISTORICAL_BACKFILL: 'Isi ulang riwayat',
-}
-export const gapPolicyLabels: Record<string, string> = {
-  REQUIRES_REVIEW: 'Perlu ditinjau',
-  IGNORE_GAP: 'Abaikan jeda',
-  BACKFILL_GAP: 'Isi jeda',
-  START_NEW_CUTOVER: 'Mulai cutover baru',
+export function eventTypeLabel(type: string): string {
+  for (const candidate of [type, `optifleet.${type}`]) {
+    const key = `it.type.${candidate}`
+    if (hasMessage(key)) return translate(key)
+  }
+  return type
 }
 
-const FIELDS: Record<string, string> = {
-  credential: 'kredensial',
-  base_url: 'URL sumber',
-  source_tenant_reference: 'referensi tenant sumber',
-  cutover_date: 'tanggal cutover',
-  cutover_policy: 'kebijakan cutover',
-  payables_cash_bank_account_id: 'akun kas/bank pembayaran utang',
-  expense_category_id: 'kategori beban',
+export const cutoverPolicyLabel = (policy: string): string => lookup('it.cutover', policy)
+export const gapPolicyLabel = (policy: string): string => lookup('it.gappolicy', policy)
+export const gapPolicyHint = (policy: string): string | undefined => {
+  const key = `it.gappolicy.hint.${policy}`
+  return hasMessage(key) ? translate(key) : undefined
 }
+export const gapReasonLabel = (reason: string): string => lookup('it.gap.reason', reason)
+
 /** Field names the API lists (`missing`, `fields`); a setting is listed as `settings.<key>`. */
-const fieldNames = (list: unknown): string => (Array.isArray(list) ? list.map((f) => FIELDS[String(f).replace(/^settings\./, '')] ?? String(f)).join(', ') : '')
-
-/** How the processing of an event ended (`last_error_code`) and what to do about it. The API's own message is the fallback for any other code. */
-const PROCESSING: Record<string, string> = {
-  CURRENCY_NOT_SUPPORTED: 'Mata uang kejadian ini belum didukung; hanya mata uang fungsional yang dibukukan. Tidak ada jurnal yang dibuat.',
-  INVOICE_NOT_FOUND: 'Faktur yang dirujuk belum ada di OptiEntry (misalnya pembayaran tiba sebelum fakturnya). Ulangi setelah faktur dibukukan.',
-  PAYMENT_ALREADY_APPLIED: 'Faktur ini sudah punya pembayaran di OptiEntry, jadi koreksi atau pembatalan tidak dijalankan otomatis. Tinjau pembayarannya lebih dulu.',
-  NO_ADAPTER: 'Belum ada adaptor untuk sistem sumber ini, jadi kejadian disimpan tanpa diproses.',
-  UNSUPPORTED_EVENT: 'Jenis kejadian atau versi skema ini belum didukung adaptor.',
-  BEFORE_CUTOVER: 'Kejadian terjadi sebelum tanggal cutover, sehingga tidak dibukukan (riwayat tidak pernah diposting otomatis).',
-  MONEY_NOT_DECIMAL_STRING: 'Nilai uang dikirim sebagai angka JSON, bukan teks desimal, sehingga kejadian ditolak.',
-  CONNECTION_SETTINGS_MISSING: 'Pengaturan koneksi OptiFleet belum lengkap (akun kas/bank pembayaran dan kategori beban). Lengkapi di halaman koneksi, lalu ulangi.',
-  VENDOR_MISSING: 'Faktur dari sumber tidak menyebut vendor, jadi tidak dapat dibukukan.',
-  VENDOR_AMBIGUOUS: 'Lebih dari satu vendor di OptiEntry memakai NPWP yang sama. Petakan vendor OptiFleet secara manual, lalu ulangi.',
-  INVOICE_NOT_POSTED: 'Faktur yang dibayar belum diposting, sehingga pembayaran belum dapat diterapkan. Posting fakturnya lalu ulangi.',
-  TOTAL_MISMATCH: 'Baris, diskon dan pajak pada faktur sumber tidak menjumlah ke totalnya, sehingga tidak dibukukan.',
-  LINE_AMOUNT_INVALID: 'Ada baris faktur tanpa jumlah yang dapat dihitung (tanpa total, atau tanpa kuantitas dan harga satuan).',
-  INVALID_PAYLOAD: 'Isi kejadian tidak memuat data yang dibutuhkan untuk dibukukan. Periksa muatan di bawah.',
-  INTEGRATION_ACTOR_INVALID: 'Pengguna layanan integrasi organisasi ini tidak valid. Hubungi administrator.',
-  INTEGRATION_ACTOR_DISABLED: 'Pengguna layanan integrasi organisasi ini dinonaktifkan. Hubungi administrator.',
+function fieldNames(list: unknown): string {
+  return Array.isArray(list) ? list.map((f) => lookup('it.field', String(f).replace(/^settings\./, ''))).join(', ') : ''
 }
+
+/**
+ * How the processing of an event ended (`last_error_code`) and what to do about it. In Indonesian the accounting tables of the other
+ * screens fill in the codes this catalog does not list; in English the API's own message does, so no Indonesian shows in English.
+ */
 export function processingText(code: string | null | undefined, message?: string | null): string {
   if (!code) return message ?? '—'
-  return PROCESSING[code] ?? ACCOUNTING_ERRORS[code] ?? OPERATIONAL_ERRORS[code] ?? OA4_ERRORS[code] ?? message ?? code
+  const key = `it.code.${code}`
+  if (hasMessage(key)) return translate(key)
+  if (currentLocale() === 'id') return ACCOUNTING_ERRORS[code] ?? OPERATIONAL_ERRORS[code] ?? OA4_ERRORS[code] ?? message ?? code
+  return message ?? code
 }
 
-/** Event states with a short explanation on the detail page. */
-export const statusHints: Record<string, string> = {
-  RECEIVED: 'Tersimpan dan menunggu diproses.',
-  POSTED: 'Sudah diproses; dokumen atau jurnal hasilnya tertaut di bawah (kejadian informasi tidak membuat jurnal).',
-  NEEDS_REVIEW: 'Tidak bisa diproses otomatis. Perbaiki penyebabnya (misalnya buka periode atau lengkapi pemetaan), lalu ulangi.',
-  REJECTED: 'Isi kejadian ditolak dan tidak dapat diulang.',
-  FAILED: 'Pemrosesan gagal; sistem mencoba lagi otomatis dengan jeda yang makin panjang.',
-  DEAD_LETTER: 'Sudah gagal berulang kali dan berhenti dicoba otomatis. Ulangi secara manual setelah penyebabnya diperbaiki.',
+/** The title and explanation of one health alert, with the figures it carries. */
+export function alertCopy(alert: HealthAlert): { title: string; body: string } {
+  const titleKey = `it.alert.${alert.code}.title`
+  if (!hasMessage(titleKey)) return { title: translate('it.alert.unknown.title'), body: alert.code }
+  const reason = alert.code === 'ENTRY_HELD' ? entryReasonText(alert.reason) : feedCodeText(alert.reason)
+  const params: Params = { reason, count: alert.count ?? 0, minutes: alert.minutes ?? 0, cursor: alert.cursor, high_water: alert.high_water, due: alert.due ?? 0 }
+  const bodyKey = `it.alert.${alert.code}.body`
+  return { title: translate(titleKey), body: hasMessage(bodyKey) ? translate(bodyKey, params).trim() : '' }
 }
 
-const REFUSALS: Record<string, (d: Record<string, unknown>) => string> = {
-  CONNECTION_NOT_FOUND: () => 'Koneksi tidak ditemukan.',
-  EVENT_NOT_FOUND: () => 'Kejadian tidak ditemukan.',
-  CONNECTION_INCOMPLETE: (d) => `Koneksi belum lengkap: ${fieldNames(d.missing) || 'ada isian yang kosong'} harus diisi.`,
-  CONNECTION_INVALID_TRANSITION: () => 'Status koneksi saat ini tidak mengizinkan tindakan itu. Muat ulang halaman untuk melihat status terbaru.',
-  CONNECTION_LOCKED: (d) => `Kejadian sudah diterima pada koneksi ini, jadi ${fieldNames(d.fields) || 'referensi tenant sumber dan tanggal cutover'} tidak dapat diubah lagi.`,
-  CONNECTION_EXISTS: () => 'Tenant sumber ini sudah terhubung. Satu tenant sumber hanya punya satu koneksi; ubah koneksi yang ada.',
-  CONNECTION_NOT_ACTIVE: () => 'Hanya koneksi yang aktif yang dapat disinkronkan.',
-  PULL_IN_PROGRESS: () => 'Sinkronisasi lain untuk koneksi ini sedang berjalan. Coba lagi sebentar lagi.',
-  HISTORICAL_BACKFILL_NOT_SUPPORTED: () => 'Isi ulang riwayat belum tersedia; koneksi dimulai dari tanggal cutover.',
-  EVENT_NOT_RETRYABLE: () => 'Kejadian dengan status ini tidak dapat diulang.',
-  CONNECTION_SETTINGS_INVALID: () => 'Pengaturan koneksi tidak valid: akun kas/bank dan kategori beban harus milik organisasi ini dan masih aktif.',
-  CONNECTION_SETTINGS_UNSUPPORTED: () => 'Sistem sumber ini tidak memiliki pengaturan khusus.',
-  CONNECTOR_NOT_ENTITLED: (d) => `Konektor ini tidak tersedia untuk organisasi Anda: fitur konektornya dan modul Utang usaha harus aktif dan tidak dalam mode hanya baca.${Array.isArray(d.reasons) ? ` Rincian dari server: ${d.reasons.join('; ')}.` : ''}`,
+/** The inbox filter an alert points at, when there is one. */
+export function alertEventFilter(alert: HealthAlert): { status?: string; conflict?: boolean } | null {
+  switch (alert.code) {
+    case 'MISSING_RECORDED_EVENT':
+    case 'QUARANTINED_EVENTS':
+      return { status: 'NEEDS_REVIEW' }
+    case 'DEAD_LETTERS':
+      return { status: 'DEAD_LETTER' }
+    case 'OPEN_CONFLICTS':
+      return { conflict: true }
+    default:
+      return null
+  }
 }
 
-/** The refusals of the integration API in Indonesian; any other error passes through unchanged (describeError shows the API's own message). */
+/**
+ * The refusals of the integration API in the language chosen at the top. The result keeps the request id of the original refusal;
+ * any other error passes through unchanged (describeError then shows the API's own message).
+ */
 export function integrationError(error: unknown): unknown {
   if (!(error instanceof ApiError) || !error.code) return error
-  const text = REFUSALS[error.code]
-  return text ? new Error(text(error.details)) : error
+  const key = `it.refusal.${error.code}`
+  if (!hasMessage(key)) return error
+  const d = error.details
+  const params: Params = {
+    missing: fieldNames(d.missing) || translate('it.field.some_empty'),
+    fields: fieldNames(d.fields) || translate('it.field.locked_default'),
+    reason: feedCodeText(typeof d.feed_code === 'string' ? d.feed_code : null),
+  }
+  const reasons = ['CONNECTOR_NOT_ENTITLED', 'TENANT_NOT_LINKED', 'CONNECTION_HELD'].includes(error.code) && Array.isArray(d.reasons) ? translate('it.refusal.reasons', { reasons: d.reasons.join('; ') }) : ''
+  return new WordedError(translate(key as MessageKey, params).trim() + reasons, error)
 }
