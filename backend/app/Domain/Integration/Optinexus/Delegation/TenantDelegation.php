@@ -5,8 +5,6 @@ namespace App\Domain\Integration\Optinexus\Delegation;
 use App\Domain\AccessControl\Models\DataScope;
 use App\Domain\AccessControl\Services\AccessCache;
 use App\Domain\Audit\Services\AuditService;
-use App\Domain\Entitlement\Services\CapacityException;
-use App\Domain\Entitlement\Services\CapacityService;
 use App\Domain\Entitlement\Services\EntitlementSnapshot;
 use App\Domain\Identity\Models\Tenant;
 use App\Domain\Identity\Models\TenantUser;
@@ -16,10 +14,8 @@ use App\Domain\Identity\Services\ReservedAddress;
 use App\Domain\Integration\Optinexus\DelegableSet;
 use App\Domain\Integration\Optinexus\OptinexusSettings;
 use App\Domain\Integration\Services\OutboxPublisher;
-use App\Domain\Shared\DomainException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -29,14 +25,14 @@ use Illuminate\Validation\ValidationException;
  *  - a local user and membership per person OptiNexus lists (so seats are counted, data scopes can be set and audit has a name);
  *  - the data scope, which OptiEntry owns;
  *  - an Entry audit record of every change and of every refusal.
- * Seats are checked here before a person is created (CapacityService) and again when the projection is written; if the second check
- * fails, the access just granted in OptiNexus is withdrawn again so the two never disagree.
+ * Seats are OptiNexus' alone (contract §2d): it counts used and reserved seats against the tenant's user limit and refuses an addition
+ * that does not fit (SEAT_* codes, passed on unchanged). Nothing here counts or reserves a seat; the figures shown are OptiNexus' answer,
+ * and a person it let in is never refused again by a second local counter.
  */
 class TenantDelegation
 {
     public function __construct(
         private readonly NexusDelegationClient $nexus,
-        private readonly CapacityService $capacity,
         private readonly MembershipService $memberships,
         private readonly EntitlementSnapshot $entitlements,
         private readonly AccessCache $cache,
@@ -80,7 +76,7 @@ class TenantDelegation
         }
         unset($item);
 
-        return ['data' => $items, 'meta' => ['pagination' => $answer['pagination'], 'seats' => $this->seats($tenantId)]];
+        return ['data' => $items, 'meta' => ['pagination' => $answer['pagination'], 'seats' => $answer['seats']]];
     }
 
     /**
@@ -99,11 +95,6 @@ class TenantDelegation
         ReservedAddress::assertHuman($input['email']); // before OptiNexus is asked to create anybody
         [$nexusTenant, $subject] = $this->link($tenantId, $actor, write: true);
 
-        // Cheap refusal before anything is created anywhere. The authoritative check is repeated when the projection is written.
-        if ($this->takesNewSeat($tenantId, null, $input['email'])) {
-            $this->assertSeat($tenantId);
-        }
-
         $payload = array_filter([
             'email' => $input['email'], 'name' => $input['name'],
             'initial_password' => $input['initial_password'] ?? null,
@@ -114,23 +105,16 @@ class TenantDelegation
         $outcome = (string) ($answer['outcome'] ?? 'existing');
         $view = $this->userView($answer);
 
-        try {
-            $local = DB::transaction(function () use ($tenantId, $actor, $view, $outcome, $input) {
-                $local = $this->project($tenantId, $actor, $view, $input['data_scopes'] ?? null);
-                $this->cache->touchTenant($tenantId);
-                $this->audit->record('delegation.user_added', 'user', $view['id'], null, [
-                    'outcome' => $outcome, 'email' => $view['email'], 'nexus_user_id' => $view['id'],
-                    'roles' => array_column($view['roles'], 'code'), 'projection' => $local['projection'],
-                ], $tenantId);
+        $local = DB::transaction(function () use ($tenantId, $actor, $view, $outcome, $input) {
+            $local = $this->project($tenantId, $actor, $view, $input['data_scopes'] ?? null);
+            $this->cache->touchTenant($tenantId);
+            $this->audit->record('delegation.user_added', 'user', $view['id'], null, [
+                'outcome' => $outcome, 'email' => $view['email'], 'nexus_user_id' => $view['id'],
+                'roles' => array_column($view['roles'], 'code'), 'projection' => $local['projection'],
+            ], $tenantId);
 
-                return $local;
-            });
-        } catch (DomainException $e) {
-            if ($e->errorCode === 'CAPACITY_EXCEEDED') {
-                $this->withdrawAfterSeatRace($tenantId, $nexusTenant, $subject, $view['id'], $outcome);
-            }
-            throw $e;
-        }
+            return $local;
+        });
 
         return $view + ['outcome' => $outcome, 'projection' => $local['projection'], 'local' => $local['row']];
     }
@@ -195,7 +179,7 @@ class TenantDelegation
         [$nexusTenant, $subject] = $this->link($tenantId, $actor);
         $answer = $this->guarded('delegation.invitation_list', $tenantId, fn () => $this->nexus->invitations($nexusTenant, $subject, $status, $search, max(1, $page), max(1, min(100, $perPage))));
 
-        return ['data' => array_map(fn (array $row) => $this->invitationView($row), $answer['data']), 'meta' => ['pagination' => $answer['pagination']]];
+        return ['data' => array_map(fn (array $row) => $this->invitationView($row), $answer['data']), 'meta' => ['pagination' => $answer['pagination'], 'seats' => $answer['seats']]];
     }
 
     /**
@@ -210,11 +194,6 @@ class TenantDelegation
     {
         ReservedAddress::assertHuman($input['email']); // before OptiNexus is asked to invite anybody
         [$nexusTenant, $subject] = $this->link($tenantId, $actor, write: true);
-
-        // The invitee needs a seat at their first sign-in (AccountLinker); say so now rather than after they accepted. A person who already holds one needs none.
-        if ($this->takesNewSeat($tenantId, null, $input['email'])) {
-            $this->assertSeat($tenantId);
-        }
 
         $payload = [
             'email' => $input['email'], 'name' => $input['name'],
@@ -396,8 +375,6 @@ class TenantDelegation
         $projection = 'EXISTING';
 
         if (! $membership) {
-            $this->reserveSeat($tenantId);
-
             $membership = new TenantUser;
             $membership->tenant_id = $tenantId;
             $membership->user_id = $user->id;
@@ -408,7 +385,6 @@ class TenantDelegation
             $projection = 'CREATED';
         } elseif ($membership->status === TenantUser::INACTIVE && $membership->optinexus_deactivated_at !== null) {
             // Removed earlier through OptiNexus and now added again: undo exactly that.
-            $this->reserveSeat($tenantId);
             $membership->forceFill(['status' => $membership->joined_at ? TenantUser::ACTIVE : TenantUser::INVITED, 'optinexus_deactivated_at' => null])->save();
             $projection = 'REACTIVATED';
         }
@@ -441,57 +417,6 @@ class TenantDelegation
         }
 
         return $out;
-    }
-
-    // ------------------------------------------------------------------ seats
-
-    /** @return array{limit:?int,used:int,remaining:?int} */
-    private function seats(string $tenantId): array
-    {
-        $limit = $this->capacity->limit($tenantId, CapacityService::USER_LIMIT);
-        $used = $this->capacity->used($tenantId, CapacityService::USER_LIMIT);
-
-        return ['limit' => $limit, 'used' => $used, 'remaining' => $limit === null ? null : max(0, $limit - $used)];
-    }
-
-    /** True unless the person already holds a seat (an existing, not deactivated membership) in this tenant. */
-    private function takesNewSeat(string $tenantId, ?string $subject, string $email): bool
-    {
-        return ! DB::table('tenant_users as tu')->join('users as u', 'u.id', '=', 'tu.user_id')
-            ->where('tu.tenant_id', $tenantId)->where('tu.status', '<>', TenantUser::INACTIVE)
-            ->where(fn ($q) => $q->whereRaw('lower(u.email) = ?', [mb_strtolower($email)])->when($subject, fn ($w) => $w->orWhere('u.optinexus_subject', $subject)))
-            ->exists();
-    }
-
-    private function assertSeat(string $tenantId): void
-    {
-        DB::transaction(fn () => $this->reserveSeat($tenantId));
-    }
-
-    /** Call inside a transaction: locks the tenant row, so two concurrent creations near the limit cannot both pass. */
-    private function reserveSeat(string $tenantId): void
-    {
-        try {
-            $this->capacity->reserve($tenantId, CapacityService::USER_LIMIT);
-        } catch (CapacityException $e) {
-            throw new DomainException('The user limit of this subscription has been reached.', 'CAPACITY_EXCEEDED', 409, ['limit_code' => $e->limitCode, 'limit' => $e->limit, 'used' => $e->used]);
-        }
-    }
-
-    /** The seat ran out between the check and the write: take the access just granted back, so OptiNexus and OptiEntry agree. */
-    private function withdrawAfterSeatRace(string $tenantId, string $nexusTenant, string $actorSubject, string $nexusUserId, string $outcome): void
-    {
-        if ($outcome === 'existing') {
-            return; // the person had access before this request; nothing was granted
-        }
-
-        try {
-            $this->nexus->revokeUser($nexusTenant, $actorSubject, $nexusUserId);
-            $this->audit->record('delegation.user_withdrawn', 'user', $nexusUserId, null, ['reason' => 'user_limit_reached', 'outcome' => $outcome], $tenantId);
-        } catch (\Throwable $e) {
-            Log::warning('Delegation: could not withdraw access after the user limit was reached.', ['tenant_id' => $tenantId, 'nexus_user_id' => $nexusUserId, 'error' => $e->getMessage()]);
-            $this->audit->record('delegation.user_withdraw_failed', 'user', $nexusUserId, null, ['reason' => 'user_limit_reached', 'outcome' => $outcome], $tenantId);
-        }
     }
 
     // ------------------------------------------------------------------ helpers

@@ -32,7 +32,6 @@ class DelegationInvitationTest extends OptinexusTestCase
     {
         parent::setUp();
         $this->session = $this->signedIn();
-        DB::table('tenant_capacity_limits')->where('tenant_id', $this->session['tenant']->id)->where('limit_code', 'USER_LIMIT')->update(['limit_value' => 5]);
         Log::listen(function ($event) {
             $this->logged[] = $event->message.' '.json_encode($event->context);
         });
@@ -177,15 +176,41 @@ class DelegationInvitationTest extends OptinexusTestCase
         $this->api('post', '/invitations', $this->person())->assertStatus(422)->assertJsonValidationErrors(['email']);
     }
 
-    public function test_the_seat_limit_refuses_before_optinexus_is_asked_and_a_person_with_a_seat_needs_none(): void
+    public function test_an_invitation_reserves_a_seat_in_optinexus_and_the_last_one_cannot_be_taken_twice(): void
     {
-        DB::table('tenant_capacity_limits')->where('limit_code', 'USER_LIMIT')->update(['limit_value' => 1]);
+        $this->nexus['delegation']['seat']['limit'] = 2;
 
-        $this->api('post', '/invitations', $this->person())->assertStatus(409)->assertJsonPath('code', 'CAPACITY_EXCEEDED')->assertJsonPath('details.limit', 1);
-        $this->assertSame([], $this->invitationCalls('POST'));
+        $first = $this->api('post', '/invitations', $this->person())->assertCreated()->json('id');
+        $this->api('get', '/invitations')->assertOk()->assertJsonPath('meta.seats.used', 1)->assertJsonPath('meta.seats.reserved', 1)->assertJsonPath('meta.seats.available', 0);
+
+        // OptiNexus counted the reservation, OptiEntry only shows it: the next invitation is refused with OptiNexus' figures.
+        $this->api('post', '/invitations', $this->person(['email' => 'second@example.test']))->assertStatus(409)
+            ->assertJsonPath('code', 'SEAT_LIMIT_REACHED')->assertJsonPath('details.used', 1)->assertJsonPath('details.reserved', 1)->assertJsonPath('details.available', 0);
+
+        // Resending adds no reservation; revoking releases it.
+        $this->api('get', '/invitations')->assertJsonPath('meta.seats.reserved', 1);
+        $this->api('post', "/invitations/{$first}/revoke")->assertOk();
+        $this->api('get', '/invitations')->assertJsonPath('meta.seats.reserved', 0)->assertJsonPath('meta.seats.available', 1);
+        $this->api('post', '/invitations', $this->person(['email' => 'second@example.test']))->assertCreated();
+    }
+
+    public function test_a_person_with_a_seat_needs_none_and_a_full_tenant_still_lets_optinexus_say_already_member(): void
+    {
+        $this->nexus['delegation']['seat']['limit'] = 1;
 
         // The signed-in Admin already holds the seat; OptiNexus then decides (ALREADY_MEMBER).
         $this->api('post', '/invitations', $this->person(['email' => 'siti@example.test']))->assertStatus(409)->assertJsonPath('code', 'ALREADY_MEMBER');
+    }
+
+    public function test_reopening_an_expired_invitation_needs_a_free_seat_again(): void
+    {
+        $expired = $this->nexusSeedInvitation(['email' => 'late@example.test', 'expires_at' => now()->subHour(), 'send_count' => 1, 'last_sent_at' => now()->subDay()->toIso8601String()]);
+        $this->nexus['delegation']['seat']['limit'] = 1; // the Admin alone fills it; an expired invitation holds nothing
+
+        $this->api('post', "/invitations/{$expired}/resend")->assertStatus(409)->assertJsonPath('code', 'SEAT_LIMIT_REACHED');
+
+        $this->nexus['delegation']['seat']['limit'] = 2;
+        $this->api('post', "/invitations/{$expired}/resend")->assertOk();
     }
 
     // ------------------------------------------------------------------ list

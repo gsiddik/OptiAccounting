@@ -39,12 +39,12 @@ class NexusDelegationClient
         return $this->read($nexusTenant, $actor, '/catalog')['data'];
     }
 
-    /** @return array{data:list<array<string,mixed>>,pagination:array<string,mixed>} */
+    /** @return array{data:list<array<string,mixed>>,pagination:array<string,mixed>,seats:?array<string,mixed>} */
     public function users(string $nexusTenant, string $actor, ?string $search, int $page, int $perPage): array
     {
         $answer = $this->read($nexusTenant, $actor, '/users', array_filter(['search' => $search, 'page' => $page, 'per_page' => $perPage], fn ($v) => $v !== null && $v !== ''));
 
-        return ['data' => array_values((array) $answer['data']), 'pagination' => (array) ($answer['meta']['pagination'] ?? [])];
+        return ['data' => array_values((array) $answer['data']), 'pagination' => (array) ($answer['meta']['pagination'] ?? []), 'seats' => $this->seatsOf($answer)];
     }
 
     /**
@@ -59,12 +59,46 @@ class NexusDelegationClient
         return $this->write('POST', $nexusTenant, $actor, '/users', $user)['data'];
     }
 
-    /** @return array{data:list<array<string,mixed>>,pagination:array<string,mixed>} the invitations of this tenant and application, newest first */
+    /** @return array{data:list<array<string,mixed>>,pagination:array<string,mixed>,seats:?array<string,mixed>} the invitations of this tenant and application, newest first */
     public function invitations(string $nexusTenant, string $actor, ?string $status, ?string $search, int $page, int $perPage): array
     {
         $answer = $this->read($nexusTenant, $actor, '/invitations', array_filter(['status' => $status, 'search' => $search, 'page' => $page, 'per_page' => $perPage], fn ($v) => $v !== null && $v !== ''));
 
-        return ['data' => array_values((array) $answer['data']), 'pagination' => (array) ($answer['meta']['pagination'] ?? [])];
+        return ['data' => array_values((array) $answer['data']), 'pagination' => (array) ($answer['meta']['pagination'] ?? []), 'seats' => $this->seatsOf($answer)];
+    }
+
+    /**
+     * The seat picture OptiNexus counted for this tenant and application (contract §2d), reduced to the facts this application shows. It is
+     * an answer, never a count made here: used, reserved, limit and what is left are OptiNexus' figures, and an answer that does not look
+     * like the contract (an older OptiNexus, an unknown state) is reported as absent rather than guessed at.
+     *
+     * @param  array{data:mixed,meta:array<string,mixed>}  $answer
+     * @return ?array<string,mixed>
+     */
+    private function seatsOf(array $answer): ?array
+    {
+        $seats = $answer['meta']['seats'] ?? null;
+        $known = ['NOT_CONTROLLED', 'LIMITED', 'UNLIMITED', 'ENTITLEMENT_MISSING', 'ENTITLEMENT_INVALID', 'ENTITLEMENT_UNAVAILABLE'];
+
+        if (! is_array($seats) || ! in_array($seats['state'] ?? null, $known, true)) {
+            return null;
+        }
+
+        $number = fn (mixed $value): ?int => is_int($value) || (is_string($value) && ctype_digit($value)) ? max(0, (int) $value) : null;
+
+        return [
+            'state' => $seats['state'],
+            'controlled' => (bool) ($seats['controlled'] ?? false),
+            'limit' => $number($seats['limit'] ?? null),
+            'unlimited' => (bool) ($seats['unlimited'] ?? false),
+            'used' => $number($seats['used'] ?? null) ?? 0,
+            'reserved' => $number($seats['reserved'] ?? null) ?? 0,
+            'available' => $number($seats['available'] ?? null),
+            'over_limit' => (bool) ($seats['over_limit'] ?? false),
+            'over_by' => $number($seats['over_by'] ?? null) ?? 0,
+            'can_add' => (bool) ($seats['can_add'] ?? false),
+            'blocked_reason' => is_string($seats['blocked_reason'] ?? null) ? $seats['blocked_reason'] : null,
+        ];
     }
 
     /**

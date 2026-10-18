@@ -40,7 +40,18 @@ final class DelegationErrors
         'INVITATION_RESEND_COOLDOWN' => 429,
         'INVITATION_RESEND_LIMIT' => 409,
         'INVITATION_RATE_LIMITED' => 429,
+        // Seats (contract §2d). OptiNexus counts them and refuses an addition that does not fit; nothing was granted. The two 503 codes are
+        // transient (the seat lock was busy, the limit could not be read) and carry `retry_after`.
+        'SEAT_LIMIT_REACHED' => 409,
+        'SEAT_OVER_LIMIT' => 409,
+        'SEAT_ENTITLEMENT_MISSING' => 409,
+        'SEAT_ENTITLEMENT_INVALID' => 409,
+        'SEAT_ENTITLEMENT_UNAVAILABLE' => 503,
+        'SEAT_CONTENTION' => 503,
     ];
+
+    /** @var list<string> */
+    private const RETRYABLE_SEAT = ['SEAT_ENTITLEMENT_UNAVAILABLE', 'SEAT_CONTENTION'];
 
     /** @var list<string> the states of an invitation (contract §2b); anything else OptiNexus names in `details.status` is not passed on */
     private const INVITATION_STATUSES = ['PENDING', 'ACCEPTED', 'REVOKED', 'EXPIRED'];
@@ -69,7 +80,7 @@ final class DelegationErrors
 
         if (isset(self::PASS_THROUGH[$code])) {
             // A throttle OptiNexus decided says when to come back; the HTTP `Retry-After` of this API's answer is derived from it (bootstrap/app.php).
-            $wait = self::PASS_THROUGH[$code] === 429 ? ['retry_after' => self::retryAfter($response)] : [];
+            $wait = self::PASS_THROUGH[$code] === 429 || in_array($code, self::RETRYABLE_SEAT, true) ? ['retry_after' => self::retryAfter($response)] : [];
 
             throw new DelegationFailure($message !== '' ? $message : $code, $code, self::PASS_THROUGH[$code], $base + $wait + self::refused($details, $toLocalCode), $code);
         }
@@ -103,6 +114,18 @@ final class DelegationErrors
         }
         if (isset($details['role_ids']) && is_array($details['role_ids'])) {
             $out['role_ids'] = array_values(array_map('strval', $details['role_ids']));
+        }
+        // Seats: the figures OptiNexus refused with, for this organisation only, and how to recover. Only whole numbers, booleans and the recovery word.
+        foreach (['limit', 'used', 'reserved', 'available'] as $figure) {
+            if (isset($details[$figure]) && is_int($details[$figure])) {
+                $out[$figure] = max(0, $details[$figure]);
+            }
+        }
+        if (isset($details['over_limit']) && is_bool($details['over_limit'])) {
+            $out['over_limit'] = $details['over_limit'];
+        }
+        if (isset($details['recovery']) && is_string($details['recovery']) && preg_match('/^[A-Z_]{3,40}$/', $details['recovery'])) {
+            $out['recovery'] = $details['recovery'];
         }
         // Invitations: the open invitation that blocks a new one, and the state that blocks resend/revoke. Nothing else of the answer is passed on.
         if (isset($details['invitation_id']) && is_string($details['invitation_id'])) {

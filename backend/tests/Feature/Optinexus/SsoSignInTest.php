@@ -241,19 +241,20 @@ class SsoSignInTest extends TestCase
         $this->assertSame(0, TenantUser::withoutGlobalScopes()->count());
     }
 
-    public function test_a_full_tenant_refuses_a_new_member_but_not_an_existing_one(): void
+    public function test_entry_counts_no_seat_of_its_own_so_a_member_optinexus_let_in_always_signs_in(): void
     {
+        // The old local figure (projected from the user_limit entitlement) is exhausted; since OptiNexus alone counts seats (contract 2d) it must not matter.
         $this->nexus['tenants'][self::NEXUS_TENANT]['entitlements'] = array_values(array_filter(
             $this->nexus['tenants'][self::NEXUS_TENANT]['entitlements'], fn ($e) => $e['entitlement_key'] !== 'user_limit',
         ));
         $this->nexus['tenants'][self::NEXUS_TENANT]['entitlements'][] = ['entitlement_type' => 'LIMIT', 'entitlement_key' => 'user_limit', 'value' => 1.0, 'source' => 'PLAN'];
 
-        $this->nexusSignIn()->assertOk(); // seat 1 of 1
+        $this->nexusSignIn()->assertOk();
 
         $other = '8c2d6e1f-3a66-4a4f-9b69-1e4e3b7d3333';
         $this->nexusGrant($other);
-        $this->nexusCallback(['sub' => $other, 'email' => 'budi@example.test'])->assertRedirectContains('sso_error=capacity_exceeded');
-        $this->assertNull(User::query()->where('optinexus_subject', $other)->first(), 'a refused member leaves nothing behind');
+        $this->nexusSignIn(['sub' => $other, 'email' => 'budi@example.test'])->assertOk();
+        $this->assertNotNull(User::query()->where('optinexus_subject', $other)->first());
 
         $this->nexusSignIn()->assertOk(); // the existing member still enters
     }

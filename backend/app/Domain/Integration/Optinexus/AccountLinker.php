@@ -5,8 +5,6 @@ namespace App\Domain\Integration\Optinexus;
 use App\Domain\AccessControl\Models\DataScope;
 use App\Domain\AccessControl\Services\AccessCache;
 use App\Domain\Audit\Services\AuditService;
-use App\Domain\Entitlement\Services\CapacityException;
-use App\Domain\Entitlement\Services\CapacityService;
 use App\Domain\Identity\Models\Tenant;
 use App\Domain\Identity\Models\TenantUser;
 use App\Domain\Identity\Models\User;
@@ -30,7 +28,6 @@ class AccountLinker
         private readonly NexusPermissionSource $permissions,
         private readonly EntitlementProjector $projector,
         private readonly TenantService $tenants,
-        private readonly CapacityService $capacity,
         private readonly AccessCache $cache,
         private readonly AuditService $audit,
         private readonly OutboxPublisher $outbox,
@@ -190,12 +187,7 @@ class AccountLinker
             $membership = TenantUser::query()->where('user_id', $user->id)->first();
 
             if (! $membership) {
-                try {
-                    $this->capacity->reserve($tenant->id, CapacityService::USER_LIMIT);
-                } catch (CapacityException) {
-                    throw new SsoException('capacity_exceeded');
-                }
-
+                // No seat is counted here: OptiNexus let this person in because it gave them the access, and it alone counts seats (contract §2d).
                 $membership = new TenantUser;
                 $membership->tenant_id = $tenant->id;
                 $membership->user_id = $user->id;

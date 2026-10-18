@@ -18,7 +18,7 @@ use PHPUnit\Framework\Attributes\DataProvider;
 /**
  * Audit R08/A25 on the OptiEntry side: an Admin Tenant manages users and custom roles from OptiEntry through the OptiNexus
  * delegation API (an in-memory service built from the documented JSON, fed with this repository's own manifest). OptiNexus is the
- * only authority; OptiEntry sends the signed-in person as the acting user, projects the answers, counts seats and audits.
+ * only authority; OptiEntry sends the signed-in person as the acting user, projects the answers, shows the seats OptiNexus counted and audits.
  */
 class TenantDelegationTest extends OptinexusTestCase
 {
@@ -31,7 +31,6 @@ class TenantDelegationTest extends OptinexusTestCase
     {
         parent::setUp();
         $this->session = $this->signedIn();
-        DB::table('tenant_capacity_limits')->where('tenant_id', $this->session['tenant']->id)->where('limit_code', 'USER_LIMIT')->update(['limit_value' => 5]);
     }
 
     private function api(string $method, string $path, array $body = [], array $headers = []): TestResponse
@@ -110,7 +109,12 @@ class TenantDelegationTest extends OptinexusTestCase
             ->assertJsonPath('data.0.local.status', 'ACTIVE')
             ->assertJsonPath('data.0.local.member_id', $this->session['membership']->id)
             ->assertJsonPath('data.0.is_self', true)
-            ->assertJsonPath('meta.seats', ['limit' => 5, 'used' => 1, 'remaining' => 4])
+            ->assertJsonPath('meta.seats.state', 'LIMITED')
+            ->assertJsonPath('meta.seats.limit', 5)
+            ->assertJsonPath('meta.seats.used', 1)
+            ->assertJsonPath('meta.seats.reserved', 0)
+            ->assertJsonPath('meta.seats.available', 4)
+            ->assertJsonPath('meta.seats.can_add', true)
             ->assertJsonPath('meta.pagination.total', 1);
 
         $call = $this->delegationCalls()[0];
@@ -208,38 +212,89 @@ class TenantDelegationTest extends OptinexusTestCase
         $this->assertSame(1, DB::table('audit_logs')->where('action', 'delegation.projection_deferred')->count());
     }
 
-    public function test_the_seat_limit_refuses_before_optinexus_is_asked(): void
+    public function test_the_seat_limit_is_decided_by_optinexus_and_nothing_is_projected_when_it_refuses(): void
     {
-        DB::table('tenant_capacity_limits')->where('limit_code', 'USER_LIMIT')->update(['limit_value' => 1]);
+        $this->nexus['delegation']['seat']['limit'] = 1;
 
-        $this->api('post', '/users', $this->newPerson())->assertStatus(409)->assertJsonPath('code', 'CAPACITY_EXCEEDED')->assertJsonPath('details.limit', 1)->assertJsonPath('details.used', 1);
-        $this->assertSame([], array_filter($this->delegationCalls(), fn ($c) => $c['method'] === 'POST'));
+        $this->api('post', '/users', $this->newPerson())->assertStatus(409)
+            ->assertJsonPath('code', 'SEAT_LIMIT_REACHED')
+            ->assertJsonPath('details.limit', 1)->assertJsonPath('details.used', 1)->assertJsonPath('details.reserved', 0)->assertJsonPath('details.available', 0)
+            ->assertJsonPath('details.over_limit', false)->assertJsonPath('details.recovery', 'FREE_SEAT_OR_RAISE_LIMIT');
+
+        // OptiEntry did not count: it asked OptiNexus, which refused, and nothing was created on either side or projected here.
+        $this->assertCount(1, array_filter($this->delegationCalls(), fn ($c) => $c['method'] === 'POST'));
         $this->assertSame(1, collect($this->nexus['delegation']['users'])->count());
+        $this->assertSame(0, User::query()->where('email', 'budi@example.test')->count());
+        $this->assertSame(0, DB::table('audit_logs')->where('action', 'delegation.user_withdrawn')->count());
+        $this->assertSame(1, DB::table('audit_logs')->where('action', 'delegation.refused')->count());
     }
 
     public function test_a_person_who_already_holds_a_seat_can_be_linked_when_the_limit_is_reached(): void
     {
-        DB::table('tenant_capacity_limits')->where('limit_code', 'USER_LIMIT')->update(['limit_value' => 1]);
+        $this->nexus['delegation']['seat']['limit'] = 1;
 
         // The signed-in Admin already counts; adding the same address changes nothing.
         $this->api('post', '/users', $this->newPerson(['name' => 'Siti', 'email' => 'siti@example.test']))->assertOk()->assertJsonPath('outcome', 'existing');
     }
 
-    public function test_when_the_last_seat_is_taken_in_between_the_access_just_granted_is_withdrawn(): void
+    public function test_the_list_shows_what_open_invitations_reserve_and_a_limit_below_usage_as_over_limit(): void
     {
-        DB::table('tenant_capacity_limits')->where('limit_code', 'USER_LIMIT')->update(['limit_value' => 2]);
-        $tenant = $this->session['tenant'];
-        // Another request takes the last seat after the first check and while OptiNexus is still answering.
-        $this->nexus['delegation']['after_add_user'] = function () use ($tenant) {
-            $this->member($tenant);
-        };
+        $this->nexusSeedInvitation(['email' => 'one@example.test']);
+        $this->nexusSeedInvitation(['email' => 'two@example.test']);
+        $this->nexus['delegation']['seat']['limit'] = 3;
 
-        $this->api('post', '/users', $this->newPerson())->assertStatus(409)->assertJsonPath('code', 'CAPACITY_EXCEEDED');
+        $this->api('get', '/users')->assertOk()
+            ->assertJsonPath('meta.seats.used', 1)->assertJsonPath('meta.seats.reserved', 2)->assertJsonPath('meta.seats.available', 0)
+            ->assertJsonPath('meta.seats.can_add', false)->assertJsonPath('meta.seats.blocked_reason', 'SEAT_LIMIT_REACHED')->assertJsonPath('meta.seats.over_limit', false);
 
-        $created = collect($this->nexus['delegation']['users'])->firstWhere('email', 'budi@example.test');
-        $this->assertNull($created['access'], 'access in OptiNexus was taken back');
-        $this->assertSame(0, User::query()->where('email', 'budi@example.test')->count(), 'nothing was projected');
-        $this->assertSame(1, DB::table('audit_logs')->where('action', 'delegation.user_withdrawn')->count());
+        // The limit drops below what is already used and reserved: nothing is removed, availability never goes negative, the overshoot is reported.
+        $this->nexus['delegation']['seat']['limit'] = 1;
+        $this->api('get', '/users')->assertOk()
+            ->assertJsonPath('meta.seats.available', 0)->assertJsonPath('meta.seats.over_limit', true)->assertJsonPath('meta.seats.over_by', 2)
+            ->assertJsonPath('meta.seats.blocked_reason', 'SEAT_OVER_LIMIT');
+        $this->api('post', '/users', $this->newPerson())->assertStatus(409)
+            ->assertJsonPath('code', 'SEAT_OVER_LIMIT')->assertJsonPath('details.over_limit', true)->assertJsonPath('details.recovery', 'REDUCE_USAGE_OR_RAISE_LIMIT');
+    }
+
+    #[DataProvider('undecidedSeatStates')]
+    public function test_an_undecided_limit_never_means_unlimited(string $state, string $code, int $status, string $recovery): void
+    {
+        $this->nexus['delegation']['seat'] = ['state' => $state];
+
+        $this->api('get', '/users')->assertOk()->assertJsonPath('meta.seats.state', $state)->assertJsonPath('meta.seats.can_add', false)->assertJsonPath('meta.seats.blocked_reason', $code)
+            ->assertJsonPath('meta.seats.available', null);
+
+        $response = $this->api('post', '/users', $this->newPerson())->assertStatus($status)->assertJsonPath('code', $code)->assertJsonPath('details.recovery', $recovery);
+        if ($status === 503) {
+            $response->assertJsonPath('details.retry_after', 5)->assertHeader('Retry-After', '5');
+        }
+        $this->assertSame(0, User::query()->where('email', 'budi@example.test')->count());
+    }
+
+    /** @return array<string,array{string,string,int,string}> */
+    public static function undecidedSeatStates(): array
+    {
+        return [
+            'missing' => ['ENTITLEMENT_MISSING', 'SEAT_ENTITLEMENT_MISSING', 409, 'SET_ENTITLEMENT'],
+            'invalid' => ['ENTITLEMENT_INVALID', 'SEAT_ENTITLEMENT_INVALID', 409, 'SET_ENTITLEMENT'],
+            'unavailable' => ['ENTITLEMENT_UNAVAILABLE', 'SEAT_ENTITLEMENT_UNAVAILABLE', 503, 'RETRY'],
+        ];
+    }
+
+    public function test_the_usage_view_carries_no_second_user_count_while_optinexus_counts_seats(): void
+    {
+        $codes = array_column($this->as($this->session['token'])->getJson('/api/v1/app/account/usage')->assertOk()->json('data'), 'code');
+
+        $this->assertNotContains('USER_LIMIT', $codes, 'the seat figure is OptiNexus\' alone');
+        $this->assertContains('BRANCH_LIMIT', $codes, 'the limits that are this application\'s own stay');
+    }
+
+    public function test_an_older_optinexus_without_seat_figures_is_reported_as_unknown_not_as_zero(): void
+    {
+        $this->nexus['delegation']['seat'] = ['state' => 'GARBAGE'];
+
+        // An answer that does not look like the contract is passed on as absent: this application never invents a figure.
+        $this->api('get', '/users')->assertOk()->assertJsonPath('meta.seats', null);
     }
 
     public function test_roles_of_a_person_are_replaced_through_optinexus_and_the_permission_cache_is_dropped(): void
