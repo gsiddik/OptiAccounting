@@ -186,7 +186,11 @@ registry is a singleton and the tenant context is scoped, so every collaborator 
   creates a vendor payment allocated to the linked invoice. Retiring = reversal of a POSTED invoice (reversal date = the later of its
   posting date and the event's local date, so it is never dated before the invoice and a closed period still refuses it), cancellation of an unposted one. An invoice with a
   payment applied in OptiEntry is not touched: `PAYMENT_ALREADY_APPLIED`. A payment for an unknown invoice is `INVOICE_NOT_FOUND`,
-  for an unposted one `INVOICE_NOT_POSTED` (both retry-able once the invoice exists). `maintenance_memo.billed|paid` is accepted POSTED
+  for an unposted one `INVOICE_NOT_POSTED` (both retry-able once the invoice exists). **Order per source invoice:** a `corrected` or `cancelled`
+  event is applied only when every earlier event (lower source sequence) that records, corrects or cancels the same source invoice is decided
+  (POSTED or dismissed); otherwise it waits in NEEDS_REVIEW as `EARLIER_EVENT_UNRESOLVED` and a person retries it after the earlier one, so a
+  cancellation can never be followed by an older correction that books the cancelled invoice again (pre-merge review, 2026-10-18). Payments
+  neither wait for nor hold back these events. `maintenance_memo.billed|paid` is accepted POSTED
   with no journal and no link: the cost is recognised once, at the workshop invoice (a memo is information, never a second expense).
 - **Currency.** Functional currency only; another currency is `CURRENCY_NOT_SUPPORTED` (NEEDS_REVIEW). Amounts are decimal strings.
 - **Settings.** `integration_connections.settings` (jsonb, additive migration `2026_10_17_200001`): `payables_cash_bank_account_id`

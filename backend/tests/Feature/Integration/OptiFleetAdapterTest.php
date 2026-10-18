@@ -247,6 +247,57 @@ class OptiFleetAdapterTest extends TestCase
         $this->assertSame(['NEEDS_REVIEW', 'INVOICE_NOT_FOUND'], $this->outcomeOf($unknown));
     }
 
+    public function test_a_later_cancellation_waits_for_an_undecided_correction_and_never_lets_the_older_one_book_a_cancelled_invoice_again(): void
+    {
+        [$tenant, $connection] = $this->fleetTenant();
+        $badCorrection = $this->fleetEvent('optifleet.workshop_invoice.corrected', $this->fleetPayload(['total_amount' => '1110001.0000']) + ['correction' => ['id' => 'cor-1', 'reason' => 'Salah ketik']]);
+        $cancelled = $this->fleetEvent('optifleet.workshop_invoice.cancelled', $this->fleetPayload() + ['cancellation' => ['id' => 'can-1', 'reason' => 'Dibatalkan bengkel']]);
+        $other = $this->recordedEvent(['invoice_number' => 'INV-002'], ['id' => 'wi-2', 'number' => 'INV-002']);
+
+        // The correction cannot be booked as stated, so it is undecided when the cancellation of the same invoice arrives in the same page.
+        $this->pullFleet($tenant, $connection, [$this->recordedEvent(), $badCorrection, $cancelled, $other]);
+        $this->assertSame(['NEEDS_REVIEW', 'TOTAL_MISMATCH'], $this->outcomeOf($badCorrection));
+        $this->assertSame(['NEEDS_REVIEW', 'EARLIER_EVENT_UNRESOLVED'], $this->outcomeOf($cancelled));
+        $this->assertSame('POSTED', $this->eventRow($other)->status); // another source invoice is not held back
+        $this->assertSame('POSTED', $this->invoiceOf('INV-001')->status);
+        $books = fn () => array_diff_key($this->footprint(), array_flip(['users', 'audit_logs'])); // the reviewer's own user and the audit trail may grow
+        $before = $books();
+
+        // Retrying the cancellation does not skip the queue.
+        $this->retry($tenant, $cancelled)->assertOk()->assertJsonPath('last_error_code', 'EARLIER_EVENT_UNRESOLVED');
+        $this->assertSame($before, $books());
+
+        // A person decides the older event (here: it is never to be booked); then the cancellation goes through and nothing is booked twice.
+        $this->as($this->memberToken($tenant))->postJson(self::IT.'/events/'.$this->eventRow($badCorrection)->id.'/dismiss', ['reason' => 'Superseded by the cancellation'])->assertOk()->assertJsonPath('status', 'REJECTED');
+        $this->retry($tenant, $cancelled)->assertOk()->assertJsonPath('status', 'POSTED');
+        $invoice = $this->invoiceOf('INV-001');
+        $this->assertSame(['REVERSED', 1], [$invoice->status, DB::table('ap_invoices')->where('vendor_invoice_number', 'INV-001')->count()]);
+        $this->assertSame($invoice->reversal_journal_id, $this->eventRow($cancelled)->resulting_journal_id);
+        // INV-002 (the other source invoice) is the only one left in the books
+        $this->assertSame(['1000000.0000', '110000.0000', '-1110000.0000'], [$this->glBalance($tenant, '6400'), $this->glBalance($tenant, '1150'), $this->glBalance($tenant, '2110')]);
+    }
+
+    public function test_an_older_correction_is_never_applied_on_top_of_a_newer_one(): void
+    {
+        [$tenant, $connection] = $this->fleetTenant();
+        $correction = fn (string $id, array $payload) => $this->fleetEvent('optifleet.workshop_invoice.corrected', $this->fleetPayload($payload) + ['correction' => ['id' => $id, 'reason' => "Koreksi {$id}"]]);
+        $newTotals = ['subtotal' => '2000000.0000', 'tax_total' => '220000.0000', 'total_amount' => '2220000.0000',
+            'lines' => [['description' => 'Overhaul mesin', 'quantity' => '1.0000', 'unit_price' => '2000000.0000', 'line_total' => '2000000.0000']]];
+        $older = $correction('cor-1', ['total_amount' => '1110001.0000']); // undecided: the total does not add up
+        $newer = $correction('cor-2', $newTotals);
+
+        $this->pullFleet($tenant, $connection, [$this->recordedEvent(), $older, $newer]);
+        $this->assertSame(['NEEDS_REVIEW', 'TOTAL_MISMATCH'], $this->outcomeOf($older));
+        $this->assertSame(['NEEDS_REVIEW', 'EARLIER_EVENT_UNRESOLVED'], $this->outcomeOf($newer));
+        $this->assertSame(['POSTED', '1110000.0000'], [$this->invoiceOf('INV-001')->status, $this->invoiceOf('INV-001')->total_amount]);
+
+        $this->as($this->memberToken($tenant))->postJson(self::IT.'/events/'.$this->eventRow($older)->id.'/dismiss', ['reason' => 'Wrong total'])->assertOk();
+        $this->retry($tenant, $newer)->assertOk()->assertJsonPath('status', 'POSTED');
+        $this->assertSame(['2220000.0000', 2], [DB::table('ap_invoices')->where('status', 'POSTED')->value('total_amount'), DB::table('ap_invoices')->where('vendor_invoice_number', 'INV-001')->count()]);
+        $this->assertSame(['REVERSED', 'POSTED'], DB::table('ap_invoices')->orderBy('status', 'desc')->pluck('status')->all());
+        $this->assertSame(['2000000.0000', '220000.0000', '-2220000.0000'], [$this->glBalance($tenant, '6400'), $this->glBalance($tenant, '1150'), $this->glBalance($tenant, '2110')]);
+    }
+
     public function test_replaying_a_page_changes_nothing_and_changed_content_under_one_event_id_is_a_conflict(): void
     {
         [$tenant, $connection] = $this->fleetTenant();

@@ -48,6 +48,9 @@ class WorkshopInvoiceBooking
 
     public const PAYMENT = 'workshop_invoice_payment';
 
+    /** The events that create, replace or retire the document of a source invoice. */
+    private const DOCUMENT_EVENTS = ['optifleet.workshop_invoice.recorded', 'optifleet.workshop_invoice.corrected', 'optifleet.workshop_invoice.cancelled'];
+
     public function __construct(
         private readonly ApInvoiceService $invoices,
         private readonly VendorPaymentService $payments,
@@ -63,6 +66,7 @@ class WorkshopInvoiceBooking
 
     public function corrected(ExternalEvent $event, User $actor): ProcessOutcome
     {
+        $this->assertEarlierEventsDecided($event, $this->source($event)['id']);
         $this->retire($event, $actor, $this->currentInvoice($this->source($event)['id']), 'correction', 'Corrected in OptiFleet');
 
         return $this->book($event, $actor);
@@ -70,6 +74,7 @@ class WorkshopInvoiceBooking
 
     public function cancelled(ExternalEvent $event, User $actor): ProcessOutcome
     {
+        $this->assertEarlierEventsDecided($event, $this->source($event)['id']);
         $invoice = $this->retire($event, $actor, $this->currentInvoice($this->source($event)['id']), 'cancellation', 'Cancelled in OptiFleet');
 
         // a reversal journal means the books changed; an invoice that never posted is simply cancelled (no journal, nothing to undo in the GL)
@@ -212,6 +217,30 @@ class WorkshopInvoiceBooking
 
         // An invoice stated by totals only becomes one line for the whole net amount.
         return $lines !== [] ? $lines : [['description' => $description, 'amount' => Money::str($whole), 'expense_category_id' => $categoryId]];
+    }
+
+    /**
+     * A correction or cancellation replaces the document the source's earlier events produced, so it is applied only once every earlier
+     * event that records, corrects or cancels the same source invoice has been decided (POSTED, or REJECTED by review). Otherwise a later
+     * cancellation could be followed by an older correction that books the cancelled invoice again, or an older correction could overwrite a
+     * newer one. Payments neither wait for nor hold back other events: a payment that arrives before its invoice has its own wait
+     * (INVOICE_NOT_FOUND). The held event is retried by a person once the earlier one is settled.
+     */
+    private function assertEarlierEventsDecided(ExternalEvent $event, string $sourceId): void
+    {
+        if ($event->sequence === null) {
+            return; // only feed events are ordered, and the feed always numbers them
+        }
+        $earlier = ExternalEvent::query()->where('connection_id', $event->connection_id)->where('sequence', '<', $event->sequence)
+            ->whereIn('event_type', self::DOCUMENT_EVENTS)
+            ->whereIn('status', [ExternalEvent::RECEIVED, ExternalEvent::VALIDATED, ExternalEvent::FAILED, ExternalEvent::NEEDS_REVIEW, ExternalEvent::DEAD_LETTER])
+            ->whereRaw("envelope->'source'->>'id' = ?", [$sourceId])->orderBy('sequence')->first();
+        if ($earlier !== null) {
+            throw new DomainException(
+                "An earlier event of this workshop invoice (sequence {$earlier->sequence}) is not decided yet; it has to be applied or dismissed first, then retry this one.",
+                'EARLIER_EVENT_UNRESOLVED', 409, ['earlier_event_id' => $earlier->event_id, 'earlier_sequence' => $earlier->sequence, 'earlier_status' => $earlier->status],
+            );
+        }
     }
 
     /** Our latest document of a source invoice (a corrected invoice replaces the one it reversed). */
