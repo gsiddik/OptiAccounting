@@ -150,7 +150,6 @@ const SSO_ERRORS: Record<string, string> = {
   tenant_not_entitled: 'Organisasi Anda belum berlangganan OptiEntry di OptiNexus.',
   tenant_inactive: 'Organisasi ini sedang tidak aktif.',
   no_permissions: 'Anda belum diberi izin apa pun untuk OptiEntry di OptiNexus. Hubungi administrator organisasi Anda.',
-  capacity_exceeded: 'Batas jumlah pengguna organisasi ini tercapai. Hubungi administrator.',
   email_not_verified: 'E-mail akun OptiNexus Anda belum diverifikasi.',
   email_required: 'Akun OptiNexus Anda tidak memiliki e-mail.',
   email_reserved: 'Alamat e-mail ini dicadangkan untuk identitas layanan sistem dan tidak dapat dipakai untuk masuk.',
@@ -202,7 +201,9 @@ export function describeError(error: unknown): string {
       const permissions = Array.isArray(error.details.permissions) ? (error.details.permissions as string[]).join(', ') : ''
       // `retry_after` (seconds) is what OptiNexus' throttles (resend cooldown, invitation rate limit) asked us to wait.
       const seconds = typeof error.details.retry_after === 'number' ? error.details.retry_after : undefined
-      return translate(catalogKey as MessageKey, { permissions, seconds })
+      // Seat refusals carry OptiNexus' own figures (contract 2d); a figure it did not send is shown as "?" rather than guessed.
+      const figure = (key: string) => (typeof error.details[key] === 'number' ? (error.details[key] as number) : '?')
+      return translate(catalogKey as MessageKey, { permissions, seconds, used: figure('used'), reserved: figure('reserved'), limit: figure('limit') })
     }
     if (error.code === 'DEPENDENCY_MISSING' && Array.isArray(error.details.missing)) {
       return `${ERRORS.DEPENDENCY_MISSING} Dibutuhkan: ${(error.details.missing as string[]).join(', ')}.`

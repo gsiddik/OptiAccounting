@@ -26,8 +26,9 @@ const accepted = invitation(5, 'Alya Accepted', { status: 'ACCEPTED', accepted_a
 const revoked = invitation(6, 'Rudi Revoked', { status: 'REVOKED', revoked_at: '2026-10-18T10:00:00+00:00', can_resend: false, can_revoke: false })
 const exhausted = invitation(7, 'Lina Limit', { send_count: 5, can_resend: false })
 
-const list = (data: unknown[]) => ({ data, meta: { pagination: { current_page: 1, per_page: 25, total: data.length, last_page: 1 } } })
-const usersPage = { data: [], meta: { pagination: { current_page: 1, per_page: 25, total: 0, last_page: 1 }, seats: { limit: 5, used: 1, remaining: 4 } } }
+const seats = { state: 'LIMITED', controlled: true, limit: 5, unlimited: false, used: 1, reserved: 2, available: 2, over_limit: false, over_by: 0, can_add: true, blocked_reason: null }
+const list = (data: unknown[]) => ({ data, meta: { pagination: { current_page: 1, per_page: 25, total: data.length, last_page: 1 }, seats } })
+const usersPage = { data: [], meta: { pagination: { current_page: 1, per_page: 25, total: 0, last_page: 1 }, seats } }
 
 const PERMS = ['access.user.view', 'access.user.manage', 'access.scope.manage', 'access.role.view', 'access.role.manage']
 const routes = (extra: Record<string, unknown> = {}, permissions: string[] = PERMS) => ({
@@ -114,6 +115,11 @@ describe('Settings > Users: invite a person', () => {
     ['ROLE_NOT_ASSIGNABLE', 422, {}, /OptiNexus menolak peran/, /OptiNexus refused a role/],
     ['INVITATION_RATE_LIMITED', 429, { retry_after: 120 }, /Coba lagi dalam 120 detik/, /Try again in 120 seconds/],
     ['IDENTITY_PROVIDER_UNAVAILABLE', 503, { outcome_unknown: true }, /mungkin sudah diterapkan/, /may already have been applied/],
+    ['SEAT_LIMIT_REACHED', 409, { limit: 5, used: 3, reserved: 2, available: 0, recovery: 'FREE_SEAT_OR_RAISE_LIMIT' }, /Tidak ada kursi tersisa \(3 terpakai dan 2 dicadangkan dari batas 5\)/, /No seat is left \(3 used and 2 reserved of a limit of 5\)/],
+    ['SEAT_OVER_LIMIT', 409, { limit: 2, used: 3, reserved: 1, over_limit: true, recovery: 'REDUCE_USAGE_OR_RAISE_LIMIT' }, /melebihi batas kursi \(3 terpakai dan 1 dicadangkan terhadap batas 2\)/, /over its seat limit \(3 used and 1 reserved against a limit of 2\)/],
+    ['SEAT_ENTITLEMENT_MISSING', 409, { recovery: 'SET_ENTITLEMENT' }, /belum menetapkan batas kursi/, /does not set a seat limit/],
+    ['SEAT_ENTITLEMENT_UNAVAILABLE', 503, { retry_after: 5, recovery: 'RETRY' }, /Coba lagi dalam 5 detik/, /Try again in 5 seconds/],
+    ['SEAT_CONTENTION', 503, { retry_after: 3 }, /Coba lagi dalam 3 detik/, /Try again in 3 seconds/],
     ['CAPACITY_EXCEEDED', 409, { limit_code: 'USER_LIMIT', limit: 5, used: 5 }, /Batas pengguna tercapai \(5 dari 5\)/, /user limit has been reached \(5 of 5\)/],
   ])('shows the refusal %s inside the dialog, in both languages, with the reference and what was typed', async (code, status, details, indonesian, english) => {
     for (const [locale, expected] of [['id', indonesian], ['en', english]] as const) {

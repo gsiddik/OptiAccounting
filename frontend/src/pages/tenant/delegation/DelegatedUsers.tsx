@@ -14,6 +14,7 @@ import { toDraft, toPayload, type ScopeDraft } from '../../../lib/scopes'
 import type { Branch, BusinessUnit } from '../../../lib/types'
 import { InvitationList, InviteUser } from './Invitations'
 import { RolesField } from './RolesField'
+import { SeatsBanner } from './SeatsBanner'
 import type { DelegatedUser, DelegatedUserPage, DelegationStatus } from './types'
 
 function useOrganizationLists(enabled: boolean) {
@@ -74,9 +75,6 @@ function UserList() {
     return undefined
   }
 
-  const seats = users.data?.meta.seats
-  const full = seats?.remaining === 0
-
   return (
     <>
       <PageHeader
@@ -89,12 +87,7 @@ function UserList() {
       {tab === 'invitations' && <InvitationList canManage={canManage} refreshKey={invitationsTick} />}
       {tab === 'users' && (
         <>
-          {seats && (
-            <Banner tone={full ? 'warn' : 'info'}>
-              {seats.limit === null ? t('users.seats_unlimited', { used: seats.used }) : t('users.seats', { used: seats.used, limit: seats.limit })}
-              {full && <> {t('users.seats_full')}</>}
-            </Banner>
-          )}
+          <SeatsBanner seats={users.data?.meta.seats} />
           <Card flush>
             <div className="card-head">
               <div className="toolbar">

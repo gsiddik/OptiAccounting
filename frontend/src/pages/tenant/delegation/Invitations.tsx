@@ -10,6 +10,7 @@ import { fieldError } from '../../../lib/forms'
 import { formatDateTime } from '../../../lib/format'
 import { useAction, useDebounced, useResource } from '../../../lib/hooks'
 import { RolesField } from './RolesField'
+import { SeatsBanner } from './SeatsBanner'
 import type { DeliveryStatus, Invitation, InvitationPage, InvitationStatus } from './types'
 
 const STATUSES: InvitationStatus[] = ['PENDING', 'ACCEPTED', 'REVOKED', 'EXPIRED']
@@ -82,6 +83,7 @@ export function InvitationList({ canManage, refreshKey }: { canManage: boolean; 
   return (
     <>
       {resend.error != null && <ErrorBanner error={resend.error} />}
+      <SeatsBanner seats={invitations.data?.meta.seats} />
       <Card flush>
         <div className="card-head">
           <div className="toolbar">

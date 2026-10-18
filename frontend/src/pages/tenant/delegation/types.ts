@@ -34,11 +34,29 @@ export type DelegatedUser = {
   is_self: boolean
 }
 
-export type Seats = { limit: number | null; used: number; remaining: number | null }
+/**
+ * The seats of this organization for this product as OptiNexus counted them (contract 2d, `meta.seats`). `available` is never negative:
+ * a limit below usage is `over_limit` (with `over_by`). Anything but NOT_CONTROLLED / LIMITED / UNLIMITED means the limit is not decided
+ * and additions are refused (`blocked_reason`); it never means unlimited. `null` where an older OptiNexus sends no figures.
+ */
+export type SeatState = 'NOT_CONTROLLED' | 'LIMITED' | 'UNLIMITED' | 'ENTITLEMENT_MISSING' | 'ENTITLEMENT_INVALID' | 'ENTITLEMENT_UNAVAILABLE'
+export type Seats = {
+  state: SeatState
+  controlled: boolean
+  limit: number | null
+  unlimited: boolean
+  used: number
+  reserved: number
+  available: number | null
+  over_limit: boolean
+  over_by: number
+  can_add: boolean
+  blocked_reason: string | null
+}
 
 export type DelegatedUserPage = {
   data: DelegatedUser[]
-  meta: { pagination: { current_page: number; per_page: number; total: number; last_page: number }; seats: Seats }
+  meta: { pagination: { current_page: number; per_page: number; total: number; last_page: number }; seats: Seats | null }
 }
 
 /** An invitation exactly as OptiNexus describes it (contract 2b). The token never reaches this application, let alone the browser. */
@@ -66,7 +84,7 @@ export type Invitation = {
   can_revoke: boolean
 }
 
-export type InvitationPage = { data: Invitation[]; meta: { pagination: { current_page: number; per_page: number; total: number; last_page: number } } }
+export type InvitationPage = { data: Invitation[]; meta: { pagination: { current_page: number; per_page: number; total: number; last_page: number }; seats: Seats | null } }
 
 export type PermissionState = 'AVAILABLE' | 'NOT_ENTITLED' | 'NOT_DELEGABLE'
 export type CatalogPermission = { code: string; group: string; description: string; state: PermissionState; capability: string | null }

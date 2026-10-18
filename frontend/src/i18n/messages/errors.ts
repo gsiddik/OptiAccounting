@@ -67,6 +67,31 @@ export const errors = defineMessages({
   'error.DELEGATION_TENANT_UNKNOWN': { id: 'OptiNexus tidak mengenal organisasi ini. Hubungi administrator platform.', en: 'OptiNexus does not know this organization. Contact the platform administrator.' },
   'error.DELEGATION_UNEXPECTED_RESPONSE': { id: 'OptiNexus memberi jawaban yang tidak dikenali. Coba lagi atau hubungi dukungan dengan kode referensi.', en: 'OptiNexus gave an answer this application does not understand. Try again or contact support with the reference.' },
   'error.DELEGATION_IN_PROGRESS': { id: 'Peran dengan nama ini sedang dibuat. Tunggu sebentar lalu muat ulang.', en: 'A role with this name is already being created. Wait a moment, then reload.' },
+  // Seats (OptiNexus contract 2d): OptiNexus counts them and refuses an addition that does not fit; nothing was granted or reserved.
+  'error.SEAT_LIMIT_REACHED': {
+    id: 'Tidak ada kursi tersisa ({used} terpakai dan {reserved} dicadangkan dari batas {limit}). Cabut undangan terbuka atau hapus akses seseorang, atau minta administrator platform menambah batas.',
+    en: 'No seat is left ({used} used and {reserved} reserved of a limit of {limit}). Revoke an open invitation or remove someone\'s access, or ask the platform administrator to raise the limit.',
+  },
+  'error.SEAT_OVER_LIMIT': {
+    id: 'Organisasi ini melebihi batas kursi ({used} terpakai dan {reserved} dicadangkan terhadap batas {limit}). Tidak ada akses yang dicabut. Kurangi pemakaian atau minta administrator platform menaikkan batas.',
+    en: 'This organization is over its seat limit ({used} used and {reserved} reserved against a limit of {limit}). No access was removed. Reduce usage or ask the platform administrator to raise the limit.',
+  },
+  'error.SEAT_ENTITLEMENT_MISSING': {
+    id: 'Langganan belum menetapkan batas kursi untuk produk ini, jadi tidak ada yang dapat ditambahkan. Hubungi administrator platform.',
+    en: 'The subscription does not set a seat limit for this product, so nobody can be added. Contact the platform administrator.',
+  },
+  'error.SEAT_ENTITLEMENT_INVALID': {
+    id: 'Batas kursi pada langganan tidak valid, jadi tidak ada yang dapat ditambahkan. Hubungi administrator platform.',
+    en: 'The seat limit on the subscription is not valid, so nobody can be added. Contact the platform administrator.',
+  },
+  'error.SEAT_ENTITLEMENT_UNAVAILABLE': {
+    id: 'Batas kursi tidak dapat dibaca saat ini. Tidak ada yang ditambahkan. Coba lagi dalam {seconds} detik.',
+    en: 'The seat limit cannot be read right now. Nothing was added. Try again in {seconds} seconds.',
+  },
+  'error.SEAT_CONTENTION': {
+    id: 'Perubahan kursi lain sedang berjalan. Tidak ada yang ditambahkan. Coba lagi dalam {seconds} detik.',
+    en: 'Another change to the seats is in progress. Nothing was added. Try again in {seconds} seconds.',
+  },
   // Invitations (OptiNexus contract 2b)
   'error.INVITATION_PENDING': {
     id: 'Sudah ada undangan terbuka untuk e-mail ini. Buka tab Undangan dan pilih Kirim ulang.',

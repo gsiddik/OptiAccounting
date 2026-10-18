@@ -17,11 +17,40 @@ export const delegation = defineMessages({
   'users.tab.invitations': { id: 'Undangan', en: 'Invitations' },
   'users.search_label': { id: 'Cari pengguna', en: 'Search users' },
   'users.search': { id: 'Cari nama atau e-mail', en: 'Search name or e-mail' },
-  'users.seats': { id: 'Kursi pengguna: {used} dari {limit} terpakai', en: 'User seats: {used} of {limit} used' },
-  'users.seats_unlimited': { id: 'Kursi pengguna: {used} terpakai (tanpa batas)', en: 'User seats: {used} used (no limit)' },
-  'users.seats_full': {
-    id: 'Semua kursi terpakai. Orang yang belum punya akses tidak dapat diundang sebelum kapasitas ditambah.',
-    en: 'All seats are in use. People without access cannot be invited until capacity is raised.',
+  // Seats as OptiNexus counted them (contract 2d). Reserved = open, unexpired invitations; a limit below usage is "over", never a negative number.
+  'seats.summary': {
+    id: 'Kursi pengguna: {used} terpakai, {reserved} dicadangkan undangan terbuka, {available} tersedia dari batas {limit}.',
+    en: 'User seats: {used} used, {reserved} reserved by open invitations, {available} available of a limit of {limit}.',
+  },
+  'seats.full': {
+    id: 'Tidak ada kursi tersisa: orang baru tidak dapat ditambahkan atau diundang. Cabut undangan terbuka atau hapus akses seseorang, atau minta administrator platform menambah batas.',
+    en: 'No seat is left: nobody new can be added or invited. Revoke an open invitation or remove someone\'s access, or ask the platform administrator to raise the limit.',
+  },
+  'seats.over.title': {
+    id: 'Melebihi batas kursi sebanyak {over_by}.',
+    en: 'Over the seat limit by {over_by}.',
+  },
+  'seats.over.body': {
+    id: '{used} terpakai dan {reserved} dicadangkan terhadap batas {limit}. Tidak ada akses yang dicabut otomatis. Orang baru tidak dapat ditambahkan sampai pemakaian turun di bawah batas atau administrator platform menaikkan batas.',
+    en: '{used} used and {reserved} reserved against a limit of {limit}. No access is removed automatically. Nobody new can be added until usage drops below the limit or the platform administrator raises it.',
+  },
+  'seats.unlimited': { id: 'Kursi pengguna: {used} terpakai, {reserved} dicadangkan undangan terbuka (tanpa batas).', en: 'User seats: {used} used, {reserved} reserved by open invitations (no limit).' },
+  'seats.not_controlled': {
+    id: 'OptiNexus tidak menerapkan batas kursi untuk produk ini ({used} pengguna dengan akses).',
+    en: 'OptiNexus does not apply a seat limit to this product ({used} users with access).',
+  },
+  'seats.used_only': { id: 'Kursi pengguna: {used} terpakai, {reserved} dicadangkan.', en: 'User seats: {used} used, {reserved} reserved.' },
+  'seats.undecided.ENTITLEMENT_MISSING': {
+    id: 'Langganan belum menetapkan batas kursi untuk produk ini, jadi orang baru tidak dapat ditambahkan. Akses yang sudah ada tidak terpengaruh. Hubungi administrator platform.',
+    en: 'The subscription does not set a seat limit for this product, so nobody new can be added. Existing access is not affected. Contact the platform administrator.',
+  },
+  'seats.undecided.ENTITLEMENT_INVALID': {
+    id: 'Batas kursi pada langganan tidak valid, jadi orang baru tidak dapat ditambahkan. Akses yang sudah ada tidak terpengaruh. Hubungi administrator platform.',
+    en: 'The seat limit on the subscription is not valid, so nobody new can be added. Existing access is not affected. Contact the platform administrator.',
+  },
+  'seats.undecided.ENTITLEMENT_UNAVAILABLE': {
+    id: 'Batas kursi tidak dapat dibaca saat ini, jadi orang baru tidak dapat ditambahkan. Akses yang sudah ada tidak terpengaruh. Muat ulang sebentar lagi.',
+    en: 'The seat limit cannot be read right now, so nobody new can be added. Existing access is not affected. Reload in a moment.',
   },
   'users.table_caption': { id: 'Daftar pengguna', en: 'Users' },
   'users.col.user': { id: 'Pengguna', en: 'User' },

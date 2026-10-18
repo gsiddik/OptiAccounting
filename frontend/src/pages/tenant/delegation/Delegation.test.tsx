@@ -18,7 +18,11 @@ const user = (id: string, name: string, over: Record<string, unknown> = {}) => (
   roles: [], local: { member_id: `m-${id.slice(0, 2)}`, status: 'ACTIVE', last_login_at: null, data_scopes: [{ id: 's-1', scope_type: 'OWN', branch_id: null, business_unit_id: null }] }, is_self: false, ...over,
 })
 
-const list = (data: unknown[], seats = { limit: 5, used: 2, remaining: 3 }) => ({ data, meta: { pagination: { current_page: 1, per_page: 25, total: data.length, last_page: 1 }, seats } })
+const limited = (used: number, reserved: number, limit: number) => ({
+  state: 'LIMITED', controlled: true, limit, unlimited: false, used, reserved, available: Math.max(0, limit - used - reserved), over_limit: used + reserved > limit,
+  over_by: Math.max(0, used + reserved - limit), can_add: used + reserved < limit, blocked_reason: null,
+})
+const list = (data: unknown[], seats: unknown = limited(2, 1, 5)) => ({ data, meta: { pagination: { current_page: 1, per_page: 25, total: data.length, last_page: 1 }, seats } })
 
 const PERMS = ['access.user.view', 'access.user.manage', 'access.scope.manage', 'access.role.view', 'access.role.manage']
 const base = (permissions: string[] = PERMS) => ({
@@ -48,7 +52,7 @@ describe('Settings > Users through OptiNexus delegation', () => {
 
     const table = await screen.findByRole('table', { name: 'Daftar pengguna' })
     expect(screen.getByText(/dikelola di OptiNexus/)).toBeInTheDocument()
-    expect(screen.getByText('Kursi pengguna: 2 dari 5 terpakai')).toBeInTheDocument()
+    expect(screen.getByText('Kursi pengguna: 2 terpakai, 1 dicadangkan undangan terbuka, 2 tersedia dari batas 5.')).toBeInTheDocument()
 
     const sari = within(table).getByText('Sari Keuangan').closest('tr')!
     expect(within(sari).getByText('Accountant')).toBeInTheDocument()
@@ -98,11 +102,20 @@ describe('Settings > Users through OptiNexus delegation', () => {
   })
 
   it('warns when every seat is used', async () => {
-    mockApi(usersRoutes({ 'GET /app/delegation/users': { data: list(users, { limit: 2, used: 2, remaining: 0 }) } }))
+    mockApi(usersRoutes({ 'GET /app/delegation/users': { data: list(users, limited(2, 0, 2)) } }))
     setToken('t')
     renderApp('/app/pengguna')
 
-    expect(await screen.findByText(/Semua kursi terpakai/)).toBeInTheDocument()
+    expect(await screen.findByText(/Tidak ada kursi tersisa/)).toBeInTheDocument()
+  })
+
+  it('reports a limit below usage as over the limit, with the figures of OptiNexus', async () => {
+    mockApi(usersRoutes({ 'GET /app/delegation/users': { data: list(users, limited(3, 1, 2)) } }))
+    setToken('t')
+    renderApp('/app/pengguna')
+
+    expect(await screen.findByText(/Melebihi batas kursi sebanyak 2/)).toBeInTheDocument()
+    expect(screen.getByText(/3 terpakai dan 1 dicadangkan terhadap batas 2/)).toBeInTheDocument()
   })
 
   it('shows an empty state', async () => {
@@ -149,7 +162,7 @@ describe('Settings > Users through OptiNexus delegation', () => {
 
     expect(await screen.findByRole('heading', { name: 'Users' })).toBeInTheDocument()
     expect(screen.getByRole('table', { name: 'Users' })).toBeInTheDocument()
-    expect(screen.getByText('User seats: 2 of 5 used')).toBeInTheDocument()
+    expect(screen.getByText('User seats: 2 used, 1 reserved by open invitations, 2 available of a limit of 5.')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Invite user' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Add user' })).not.toBeInTheDocument()
     expect(document.documentElement.lang).toBe('en')

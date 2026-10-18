@@ -39,7 +39,7 @@ describe('language', () => {
 
   it('fills placeholders and leaves an unknown one visible rather than printing "undefined"', () => {
     expect(interpolate('{a} of {b}', { a: 1 })).toBe('1 of {b}')
-    expect(translate('users.seats', { used: 2, limit: 5 })).toBe('Kursi pengguna: 2 dari 5 terpakai')
+    expect(translate('seats.used_only', { used: 2 })).toBe('Kursi pengguna: 2 terpakai, {reserved} dicadangkan.')
   })
 
   it('shows refusals and statuses in the chosen language', () => {
