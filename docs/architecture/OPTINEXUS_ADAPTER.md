@@ -27,6 +27,17 @@ Browser flow: `GET /auth/sso/redirect` → OptiNexus → `GET /auth/sso/callback
 ticket → Sanctum token). The token never travels in a URL. A sign-in always
 lands in the one tenant named by the verified `tenant_id` claim.
 
+Owner decision 11 (2026-10-18): **every** Nexus SSO sign-in, including an already-linked user,
+requires the signed ID-token claim `email_verified` to be the boolean `true`. Missing, null,
+false, numeric and string values are refused with `email_not_verified` before tenant projection,
+identity linking, membership writes or one-time ticket issuance. A local profile or callback
+parameter cannot override it. Nexus already emits this boolean for the requested `email` scope;
+invitation verification and audited manual operator verification produce the same claim.
+The refusal is shown in EN/ID with an instruction to complete the Nexus invitation or contact
+an ecosystem operator. There is no tenant-facing link to the governance portal.
+This is a next-login gate, not a new continuous session-revocation policy; existing session
+expiry/revocation enforcement is unchanged. Legacy standalone password login is unchanged.
+
 Local password login stays only for users with platform access (break-glass,
 `OPTINEXUS_BREAK_GLASS_LOGIN`, default on); tenant users cannot use it.
 

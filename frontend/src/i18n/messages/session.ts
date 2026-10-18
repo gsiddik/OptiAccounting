@@ -2,6 +2,10 @@ import { defineMessages } from '../core'
 
 /** The product switcher and the end of a session that OptiNexus no longer allows (audit A29). */
 export const session = defineMessages({
+  'auth.sso.email_not_verified': {
+    id: 'E-mail akun OptiNexus Anda belum diverifikasi. Selesaikan verifikasi melalui undangan OptiNexus atau hubungi operator ecosystem untuk verifikasi manual, lalu masuk kembali.',
+    en: 'Your OptiNexus email is not verified. Complete verification through your OptiNexus invitation or contact an ecosystem operator for manual verification, then sign in again.',
+  },
   'switcher.label': { id: 'Produk', en: 'Products' },
   'switcher.menu': { id: 'Pindah ke produk lain', en: 'Switch to another product' },
   'switcher.current': { id: 'Sedang dibuka', en: 'Open now' },

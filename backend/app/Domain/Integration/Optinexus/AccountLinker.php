@@ -43,6 +43,12 @@ class AccountLinker
      */
     public function link(array $claims): array
     {
+        // These are signature-verified Nexus ID-token claims, never callback parameters or local flags.
+        // Refuse before tenant projection, identity linking, membership changes or ticket issuance.
+        if (($claims['email_verified'] ?? null) !== true) {
+            throw new SsoException('email_not_verified');
+        }
+
         $application = OptinexusSettings::applicationCode();
         if (! in_array($application, array_column((array) ($claims['apps'] ?? []), 'code'), true)) {
             throw new SsoException('access_denied');
