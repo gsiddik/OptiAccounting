@@ -9,7 +9,7 @@ use Illuminate\Http\Client\Response;
 use Illuminate\Support\Str;
 
 /**
- * Thin HTTP client of the OptiNexus tenant delegation API (docs/ecosystem/GOVERNANCE_CONTRACTS.md §2, scope tenant.delegate).
+ * Thin HTTP client of the OptiNexus tenant delegation API (docs/ecosystem/GOVERNANCE_CONTRACTS.md §2 and §2b invitations, scope tenant.delegate).
  * It holds no state and takes no decision: the tenant and the acting user are named on every call, OptiNexus verifies both, and
  * every answer that is not a success is translated by DelegationErrors. Reads may be repeated once on a transient failure; a
  * write is never repeated by the transport (a lost answer to a write is reported as `outcome_unknown`), except for the cases
@@ -48,12 +48,46 @@ class NexusDelegationClient
     }
 
     /**
+     * @deprecated OptiNexus deprecates `POST /users` (contract §2b): a new person is invited with {@see self::invite()}, so that no password is
+     *             ever typed by an Admin Tenant or passes through this application. Kept for compatibility only; the UI no longer calls it.
+     *
      * @param  array{email:string,name:string,initial_password?:?string,role_ids?:list<string>}  $user
      * @return array<string,mixed> the user view with its `outcome` (created, linked, existing)
      */
     public function addUser(string $nexusTenant, string $actor, array $user): array
     {
         return $this->write('POST', $nexusTenant, $actor, '/users', $user)['data'];
+    }
+
+    /** @return array{data:list<array<string,mixed>>,pagination:array<string,mixed>} the invitations of this tenant and application, newest first */
+    public function invitations(string $nexusTenant, string $actor, ?string $status, ?string $search, int $page, int $perPage): array
+    {
+        $answer = $this->read($nexusTenant, $actor, '/invitations', array_filter(['status' => $status, 'search' => $search, 'page' => $page, 'per_page' => $perPage], fn ($v) => $v !== null && $v !== ''));
+
+        return ['data' => array_values((array) $answer['data']), 'pagination' => (array) ($answer['meta']['pagination'] ?? [])];
+    }
+
+    /**
+     * OptiNexus stores the invitation and e-mails the link itself; the answer never carries the token.
+     *
+     * @param  array{email:string,name:string,role_ids:list<string>,locale:string}  $invitation
+     * @return array<string,mixed> the invitation view
+     */
+    public function invite(string $nexusTenant, string $actor, array $invitation): array
+    {
+        return $this->write('POST', $nexusTenant, $actor, '/invitations', $invitation)['data'];
+    }
+
+    /** A new link and expiry, the old link stops working at once. @return array<string,mixed> */
+    public function resendInvitation(string $nexusTenant, string $actor, string $id): array
+    {
+        return $this->write('POST', $nexusTenant, $actor, '/invitations/'.rawurlencode($id).'/resend')['data'];
+    }
+
+    /** @return array<string,mixed> */
+    public function revokeInvitation(string $nexusTenant, string $actor, string $id, ?string $reason): array
+    {
+        return $this->write('POST', $nexusTenant, $actor, '/invitations/'.rawurlencode($id).'/revoke', $reason !== null && $reason !== '' ? ['reason' => $reason] : [])['data'];
     }
 
     /** @param list<string> $roleIds @return array<string,mixed> */

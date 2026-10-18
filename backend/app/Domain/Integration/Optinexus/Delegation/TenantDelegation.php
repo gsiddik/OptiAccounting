@@ -87,6 +87,10 @@ class TenantDelegation
      * Creates or links a person: OptiNexus creates the identity, the tenant membership and the access to this application (or finds
      * them, never a second identity for one e-mail), then the local projection and the data scope follow.
      *
+     * @deprecated Compatibility path (OptiNexus deprecates `POST /users`, contract §2b). The console no longer offers it: a new person is
+     *             invited ({@see self::invite()}) and sets their own password at OptiNexus. `initial_password` is still accepted and passed on
+     *             exactly as before, never stored or logged here; do not build new screens on it.
+     *
      * @param  array{name:string,email:string,initial_password?:?string,role_ids?:list<string>,data_scopes?:list<array<string,mixed>>}  $input
      * @return array<string,mixed>
      */
@@ -176,6 +180,82 @@ class TenantDelegation
             $this->cache->touchTenant($tenantId);
             $this->audit->record('delegation.user_removed', 'user', $nexusUserId, null, ['nexus_user_id' => $nexusUserId, 'local_membership' => $membership?->id], $tenantId);
         });
+    }
+
+    // ------------------------------------------------------------------ invitations (contract §2b)
+
+    /**
+     * The invitations of this organisation and application, newest first: OptiNexus' answer, rendered as it is (status, delivery,
+     * expiry, `can_resend`/`can_revoke`). Nothing is stored here, so there is nothing to keep in step.
+     *
+     * @return array{data:list<array<string,mixed>>,meta:array<string,mixed>}
+     */
+    public function invitations(string $tenantId, User $actor, ?string $status, ?string $search, int $page, int $perPage): array
+    {
+        [$nexusTenant, $subject] = $this->link($tenantId, $actor);
+        $answer = $this->guarded('delegation.invitation_list', $tenantId, fn () => $this->nexus->invitations($nexusTenant, $subject, $status, $search, max(1, $page), max(1, min(100, $perPage))));
+
+        return ['data' => array_map(fn (array $row) => $this->invitationView($row), $answer['data']), 'meta' => ['pagination' => $answer['pagination']]];
+    }
+
+    /**
+     * Invites a NEW person. Nothing is granted now: OptiNexus e-mails the link, the invitee sets their own password there, and identity,
+     * membership, application access and exactly these roles are granted when they accept. No password and no token passes through here;
+     * the first sign-in through OIDC then creates the local membership (AccountLinker), so no local row is written at invitation time.
+     *
+     * @param  array{name:string,email:string,locale:string,role_ids?:list<string>}  $input
+     * @return array<string,mixed> the invitation view
+     */
+    public function invite(string $tenantId, User $actor, array $input): array
+    {
+        ReservedAddress::assertHuman($input['email']); // before OptiNexus is asked to invite anybody
+        [$nexusTenant, $subject] = $this->link($tenantId, $actor, write: true);
+
+        // The invitee needs a seat at their first sign-in (AccountLinker); say so now rather than after they accepted. A person who already holds one needs none.
+        if ($this->takesNewSeat($tenantId, null, $input['email'])) {
+            $this->assertSeat($tenantId);
+        }
+
+        $payload = [
+            'email' => $input['email'], 'name' => $input['name'],
+            'role_ids' => array_values(array_unique($input['role_ids'] ?? [])),
+            'locale' => $input['locale'],
+        ];
+
+        $answer = $this->guarded('delegation.invitation_create', $tenantId, fn () => $this->nexus->invite($nexusTenant, $subject, $payload), ['role_ids' => $payload['role_ids']]);
+        $view = $this->invitationView($answer);
+
+        $this->audit->record('delegation.invitation_created', 'invitation', $view['id'], null, [
+            'email' => $view['email'], 'locale' => $view['locale'], 'roles' => array_column($view['roles'], 'code'), 'expires_at' => $view['expires_at'],
+        ], $tenantId);
+
+        return $view;
+    }
+
+    /** New link and expiry (the old link dies at once) and the e-mail is queued again. @return array<string,mixed> */
+    public function resendInvitation(string $tenantId, User $actor, string $invitationId): array
+    {
+        [$nexusTenant, $subject] = $this->link($tenantId, $actor, write: true);
+
+        $answer = $this->guarded('delegation.invitation_resend', $tenantId, fn () => $this->nexus->resendInvitation($nexusTenant, $subject, $invitationId), ['invitation_id' => $invitationId]);
+        $view = $this->invitationView($answer);
+
+        $this->audit->record('delegation.invitation_resent', 'invitation', $invitationId, null, ['email' => $view['email'], 'send_count' => $view['send_count'], 'expires_at' => $view['expires_at']], $tenantId);
+
+        return $view;
+    }
+
+    /** The link stops working. Revoking an invitation that is already revoked is answered by OptiNexus unchanged. @return array<string,mixed> */
+    public function revokeInvitation(string $tenantId, User $actor, string $invitationId, ?string $reason): array
+    {
+        [$nexusTenant, $subject] = $this->link($tenantId, $actor, write: true);
+
+        $answer = $this->guarded('delegation.invitation_revoke', $tenantId, fn () => $this->nexus->revokeInvitation($nexusTenant, $subject, $invitationId, $reason), ['invitation_id' => $invitationId]);
+        $view = $this->invitationView($answer);
+
+        $this->audit->record('delegation.invitation_revoked', 'invitation', $invitationId, null, ['email' => $view['email'], 'status' => $view['status'], 'reason' => $reason], $tenantId);
+
+        return $view;
     }
 
     // ------------------------------------------------------------------ roles and catalog
@@ -534,6 +614,35 @@ class TenantDelegation
             'membership_status' => $row['membership_status'] ?? null, 'is_tenant_admin' => (bool) ($row['is_tenant_admin'] ?? false),
             'application_access' => $row['application_access'] ?? null,
             'roles' => array_map(fn (array $role) => $this->roleView($role), array_values((array) ($row['roles'] ?? []))),
+        ];
+    }
+
+    /**
+     * An invitation as OptiNexus describes it, field by field: anything else in the answer (a token or its hash must never be part of it,
+     * contract §2b) is not passed on.
+     *
+     * @param  array<string,mixed>  $row
+     * @return array<string,mixed>
+     */
+    private function invitationView(array $row): array
+    {
+        $delivery = (array) ($row['delivery'] ?? []);
+        $by = $row['invited_by'] ?? null;
+
+        return [
+            'id' => (string) $row['id'], 'email' => (string) ($row['email'] ?? ''), 'name' => (string) ($row['name'] ?? ''),
+            'status' => isset($row['status']) ? strtoupper((string) $row['status']) : null, 'locale' => $row['locale'] ?? null,
+            'role_ids' => array_values(array_map('strval', (array) ($row['role_ids'] ?? []))),
+            'roles' => array_values(array_map(
+                fn (array $role) => ['id' => (string) ($role['id'] ?? ''), 'code' => (string) ($role['code'] ?? ''), 'name' => (string) ($role['name'] ?? '')],
+                array_filter((array) ($row['roles'] ?? []), 'is_array'),
+            )),
+            'invited_by' => is_array($by) ? ['id' => (string) ($by['id'] ?? ''), 'name' => (string) ($by['name'] ?? '')] : null,
+            'created_at' => $row['created_at'] ?? null, 'expires_at' => $row['expires_at'] ?? null, 'last_sent_at' => $row['last_sent_at'] ?? null,
+            'send_count' => (int) ($row['send_count'] ?? 0),
+            'delivery' => ['status' => isset($delivery['status']) ? strtoupper((string) $delivery['status']) : null, 'attempted_at' => $delivery['attempted_at'] ?? null, 'error_code' => $delivery['error_code'] ?? null],
+            'accepted_at' => $row['accepted_at'] ?? null, 'revoked_at' => $row['revoked_at'] ?? null,
+            'can_resend' => (bool) ($row['can_resend'] ?? false), 'can_revoke' => (bool) ($row['can_revoke'] ?? false),
         ];
     }
 }

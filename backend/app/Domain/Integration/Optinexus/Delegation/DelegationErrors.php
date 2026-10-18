@@ -10,8 +10,8 @@ use Illuminate\Validation\ValidationException;
  * validation error), so a screen never has to understand OptiNexus' envelope. Nothing is guessed: a code that is not listed
  * here is reported as an unexpected answer with its HTTP status and the correlation reference, never as success.
  *
- * Codes OptiNexus defines (docs/ecosystem/GOVERNANCE_CONTRACTS.md §2) pass through unchanged, because they are already stable
- * and meaningful to a person: the refusal is a decision of OptiNexus and is shown as one. Installation problems (service
+ * Codes OptiNexus defines (docs/ecosystem/GOVERNANCE_CONTRACTS.md §2 and §2b, invitations) pass through unchanged, because they are
+ * already stable and meaningful to a person: the refusal is a decision of OptiNexus and is shown as one. Installation problems (service
  * account not bound, not allowed to delegate, application not delegable, tenant of another binding) become
  * DELEGATION_NOT_CONFIGURED, because only an operator can cure them.
  */
@@ -32,7 +32,18 @@ final class DelegationErrors
         'IDENTITY_NOT_LINKABLE' => 409,
         'MEMBERSHIP_NOT_ACTIVE' => 409,
         'SELF_REVOCATION_DENIED' => 409,
+        // Invitations (contract §2b). The two 429 codes are OptiNexus' own throttles: they keep their status and carry `retry_after`.
+        'INVITATION_PENDING' => 409,
+        'ALREADY_MEMBER' => 409,
+        'INVITATION_NOT_FOUND' => 404,
+        'INVITATION_NOT_PENDING' => 409,
+        'INVITATION_RESEND_COOLDOWN' => 429,
+        'INVITATION_RESEND_LIMIT' => 409,
+        'INVITATION_RATE_LIMITED' => 429,
     ];
+
+    /** @var list<string> the states of an invitation (contract §2b); anything else OptiNexus names in `details.status` is not passed on */
+    private const INVITATION_STATUSES = ['PENDING', 'ACCEPTED', 'REVOKED', 'EXPIRED'];
 
     /** @var list<string> */
     private const NOT_CONFIGURED = ['SERVICE_ACCOUNT_NOT_BOUND', 'APPLICATION_NOT_DELEGABLE', 'TENANT_MISMATCH', 'UNAUTHORIZED', 'UNAUTHENTICATED', 'FORBIDDEN'];
@@ -57,7 +68,10 @@ final class DelegationErrors
         }
 
         if (isset(self::PASS_THROUGH[$code])) {
-            throw new DelegationFailure($message !== '' ? $message : $code, $code, self::PASS_THROUGH[$code], $base + self::refused($details, $toLocalCode), $code);
+            // A throttle OptiNexus decided says when to come back; the HTTP `Retry-After` of this API's answer is derived from it (bootstrap/app.php).
+            $wait = self::PASS_THROUGH[$code] === 429 ? ['retry_after' => self::retryAfter($response)] : [];
+
+            throw new DelegationFailure($message !== '' ? $message : $code, $code, self::PASS_THROUGH[$code], $base + $wait + self::refused($details, $toLocalCode), $code);
         }
 
         if (in_array($code, self::NOT_CONFIGURED, true) && in_array($status, [401, 403], true)) {
@@ -89,6 +103,13 @@ final class DelegationErrors
         }
         if (isset($details['role_ids']) && is_array($details['role_ids'])) {
             $out['role_ids'] = array_values(array_map('strval', $details['role_ids']));
+        }
+        // Invitations: the open invitation that blocks a new one, and the state that blocks resend/revoke. Nothing else of the answer is passed on.
+        if (isset($details['invitation_id']) && is_string($details['invitation_id'])) {
+            $out['invitation_id'] = $details['invitation_id'];
+        }
+        if (isset($details['status']) && is_string($details['status']) && in_array(strtoupper($details['status']), self::INVITATION_STATUSES, true)) {
+            $out['status'] = strtoupper($details['status']);
         }
 
         return $out;

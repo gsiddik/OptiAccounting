@@ -4,6 +4,7 @@ namespace Tests\Support;
 
 use App\Domain\Integration\Optinexus\OptinexusManifest;
 use Illuminate\Http\Client\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
@@ -12,7 +13,8 @@ use Illuminate\Support\Str;
  * The tenant delegation API of OptiNexus (docs/ecosystem/GOVERNANCE_CONTRACTS.md §2) as an in-memory service, built from the
  * documented JSON: the same envelope, paths, error codes and checks as the real one, and fed with this repository's own manifest
  * (so the delegable flags and capability codes OptiEntry sends are exactly what the fake enforces). State lives in
- * $this->nexus['delegation'] and tests change it between calls.
+ * $this->nexus['delegation'] and tests change it between calls. Invitations (§2b) are included: the token exists only inside this fake and in
+ * its `mail` outbox (what OptiNexus e-mails), never in an answer, which is what the consumer tests rely on.
  */
 trait FakesNexusDelegation
 {
@@ -45,6 +47,9 @@ trait FakesNexusDelegation
             'identities' => [], // email => user id, for people that exist in OptiNexus without access to this application
             'user_roles' => [], // user id => [role ids] (also roles a delegation cannot manage)
             'audit' => [],
+            'invitations' => [], // id => stored invitation (with its token, as OptiNexus would store only the hash)
+            'mail' => [], // what OptiNexus e-mailed: the one place a token and a link exist
+            'invitation_cooldown' => 60, 'invitation_resend_limit' => 3, 'invitation_ttl_hours' => 72,
         ];
     }
 
@@ -52,6 +57,20 @@ trait FakesNexusDelegation
     protected function nexusRole(string $key): array
     {
         return $this->nexus['delegation']['roles'][$key];
+    }
+
+    /** Puts an invitation straight into the fake (any state, any tenant or application) and returns its id; defaults: open, sent a day ago, of this tenant. */
+    protected function nexusSeedInvitation(array $over = []): string
+    {
+        $id = (string) Str::uuid();
+        $this->nexus['delegation']['invitations'][$id] = array_merge([
+            'id' => $id, 'tenant' => self::NEXUS_TENANT, 'application' => 'optiaccounting', 'email' => 'seed'.substr($id, 0, 6).'@example.test', 'name' => 'Seeded Person', 'locale' => 'en', 'role_ids' => [],
+            'status' => 'PENDING', 'invited_by' => self::ADMIN_USER, 'created_at' => now()->subDay()->toIso8601String(), 'expires_at' => now()->addDay(), 'last_sent_at' => now()->subDay()->toIso8601String(),
+            'send_count' => 1, 'delivery_status' => 'SENT', 'delivery_attempted_at' => now()->subDay()->toIso8601String(), 'delivery_error_code' => null,
+            'accepted_at' => null, 'revoked_at' => null, 'revoke_reason' => null, 'token' => 'tok'.bin2hex(random_bytes(16)),
+        ], $over);
+
+        return $id;
     }
 
     protected function nexusDelegationRespond(Request $request, string $path): mixed
@@ -98,7 +117,7 @@ trait FakesNexusDelegation
         if ($forced = $d['force'] ?? null) {
             unset($d['force']);
 
-            return $this->nexusFail($forced['code'], 'forced', $forced['status'], $forced['details'] ?? null);
+            return $this->nexusFail($forced['code'], 'forced', $forced['status'], $forced['details'] ?? null, $forced['headers'] ?? []);
         }
 
         return match (true) {
@@ -110,6 +129,10 @@ trait FakesNexusDelegation
             $method === 'POST' && $rest === '/roles' => $this->nexusCreateRole($input),
             $method === 'PUT' && preg_match('#^/roles/([^/]+)$#', $rest, $r) === 1 => $this->nexusUpdateRole($r[1], $input),
             $method === 'DELETE' && preg_match('#^/roles/([^/]+)$#', $rest, $r) === 1 => $this->nexusDeleteRole($r[1]),
+            $method === 'GET' && $rest === '/invitations' => $this->nexusInvitations($input),
+            $method === 'POST' && $rest === '/invitations' => $this->nexusInvite($input, $actingId),
+            $method === 'POST' && preg_match('#^/invitations/([^/]+)/resend$#', $rest, $i) === 1 => $this->nexusResendInvitation($i[1]),
+            $method === 'POST' && preg_match('#^/invitations/([^/]+)/revoke$#', $rest, $i) === 1 => $this->nexusRevokeInvitation($i[1], $input),
             default => $this->nexusFail('RESOURCE_NOT_FOUND', 'The requested resource could not be found.', 404),
         };
     }
@@ -293,6 +316,162 @@ trait FakesNexusDelegation
         return $this->nexusOk(null);
     }
 
+    // ---------------------------------------------------------------- invitations (contract §2b)
+
+    /** PENDING past its expiry is reported as EXPIRED, like the real service does. */
+    private function nexusInvitationStatus(array $i): string
+    {
+        return $i['status'] === 'PENDING' && now()->greaterThan($i['expires_at']) ? 'EXPIRED' : $i['status'];
+    }
+
+    /** The invitation view of the contract: no token, no token hash. */
+    private function nexusInvitationView(array $i): array
+    {
+        $d = $this->nexus['delegation'];
+        $status = $this->nexusInvitationStatus($i);
+        $open = in_array($status, ['PENDING', 'EXPIRED'], true);
+        $roles = array_values(array_filter($d['roles'], fn ($r) => in_array($r['id'], $i['role_ids'], true)));
+        $inviter = $d['users'][$i['invited_by']] ?? null;
+
+        return [
+            'id' => $i['id'], 'email' => $i['email'], 'name' => $i['name'], 'status' => $status, 'locale' => $i['locale'], 'role_ids' => $i['role_ids'],
+            'roles' => array_map(fn ($r) => ['id' => $r['id'], 'code' => $r['code'], 'name' => $r['name']], $roles),
+            'invited_by' => $inviter ? ['id' => $inviter['id'], 'name' => $inviter['name']] : null,
+            'created_at' => $i['created_at'], 'expires_at' => $i['expires_at']->toIso8601String(), 'last_sent_at' => $i['last_sent_at'], 'send_count' => $i['send_count'],
+            'delivery' => ['status' => $i['delivery_status'], 'attempted_at' => $i['delivery_attempted_at'], 'error_code' => $i['delivery_error_code']],
+            'accepted_at' => $i['accepted_at'], 'revoked_at' => $i['revoked_at'],
+            'can_resend' => $open && $i['send_count'] < $d['invitation_resend_limit'], 'can_revoke' => $open,
+        ] + ($d['invitation_leak'] ?? false ? ['token' => $i['token'], 'token_hash' => hash('sha256', $i['token'])] : []); // a misbehaving OptiNexus, to prove the consumer drops it
+    }
+
+    /** @return array<string,mixed>|null the invitation of THIS tenant and application, or null (also for another tenant's id) */
+    private function nexusOwnInvitation(string $id): ?array
+    {
+        $i = $this->nexus['delegation']['invitations'][$id] ?? null;
+
+        return $i && $i['tenant'] === self::NEXUS_TENANT && $i['application'] === 'optiaccounting' ? $i : null;
+    }
+
+    private function nexusMail(array $i): void
+    {
+        $this->nexus['delegation']['mail'][] = ['to' => $i['email'], 'locale' => $i['locale'], 'link' => self::NEXUS_URL.'/invitations/'.$i['token']];
+    }
+
+    private function nexusInvite(array $input, string $actingId): mixed
+    {
+        $d = &$this->nexus['delegation'];
+        $errors = [];
+        if (! filter_var($input['email'] ?? null, FILTER_VALIDATE_EMAIL)) {
+            $errors['email'] = ['The email must be a valid email address.'];
+        }
+        if (! is_string($input['name'] ?? null) || $input['name'] === '') {
+            $errors['name'] = ['The name field is required.'];
+        }
+        if (isset($input['locale']) && ! in_array($input['locale'], ['en', 'id'], true)) {
+            $errors['locale'] = ['The selected locale is invalid.'];
+        }
+        if (isset($input['initial_password']) || isset($input['password']) || isset($input['token'])) {
+            $errors['password'] = ['An invitation never carries a password or token.']; // the real service has no such field
+        }
+        if ($errors) {
+            return $this->nexusFail('VALIDATION_ERROR', 'The request contains invalid data.', 422, $errors);
+        }
+
+        $roleIds = array_values(array_unique($input['role_ids'] ?? []));
+        $manageable = $this->nexusManageableRoles();
+        if ($refused = array_values(array_filter($roleIds, fn ($id) => ! isset($manageable[$id])))) {
+            return $this->nexusFail('ROLE_NOT_ASSIGNABLE', 'A role is unknown, belongs to another tenant or application, or carries permissions that are not delegable.', 422, ['role_ids' => $refused]);
+        }
+
+        $email = mb_strtolower(trim($input['email']));
+        if (collect($d['users'])->contains(fn ($u) => $u['email'] === $email && $u['access'] === 'ACTIVE' && $u['membership_status'] === 'ACTIVE')) {
+            return $this->nexusFail('ALREADY_MEMBER', 'This person is already a member with access to this application.', 409);
+        }
+        foreach ($d['invitations'] as $other) {
+            if ($other['tenant'] === self::NEXUS_TENANT && $other['application'] === 'optiaccounting' && $other['email'] === $email && $other['status'] === 'PENDING') {
+                return $this->nexusFail('INVITATION_PENDING', 'An invitation for this e-mail is already open. Resend it instead.', 409, ['invitation_id' => $other['id']]);
+            }
+        }
+
+        $id = (string) Str::uuid();
+        $i = ['id' => $id, 'tenant' => self::NEXUS_TENANT, 'application' => 'optiaccounting', 'email' => $email, 'name' => $input['name'], 'locale' => $input['locale'] ?? 'en', 'role_ids' => $roleIds,
+            'status' => 'PENDING', 'invited_by' => $actingId, 'created_at' => now()->toIso8601String(), 'expires_at' => now()->addHours($d['invitation_ttl_hours']),
+            'last_sent_at' => now()->toIso8601String(), 'send_count' => 1, 'delivery_status' => 'QUEUED', 'delivery_attempted_at' => null, 'delivery_error_code' => null,
+            'accepted_at' => null, 'revoked_at' => null, 'revoke_reason' => null, 'token' => 'tok'.bin2hex(random_bytes(16))];
+        $d['invitations'][$id] = $i;
+        $this->nexusMail($i);
+
+        return $this->nexusOk($this->nexusInvitationView($i), [], 201);
+    }
+
+    private function nexusInvitations(array $input): mixed
+    {
+        $d = $this->nexus['delegation'];
+        $search = mb_strtolower((string) ($input['search'] ?? ''));
+        $status = strtoupper((string) ($input['status'] ?? ''));
+        $rows = array_values(array_filter($d['invitations'], fn ($i) => $i['tenant'] === self::NEXUS_TENANT && $i['application'] === 'optiaccounting'
+            && ($status === '' || $this->nexusInvitationStatus($i) === $status)
+            && ($search === '' || str_contains(mb_strtolower($i['name'].' '.$i['email']), $search))));
+        usort($rows, fn ($a, $b) => strcmp($b['created_at'], $a['created_at']) ?: strcmp($b['id'], $a['id']));
+
+        $per = max(1, min(100, (int) ($input['per_page'] ?? 25)));
+        $page = max(1, (int) ($input['page'] ?? 1));
+        $slice = array_slice($rows, ($page - 1) * $per, $per);
+
+        return $this->nexusOk(array_map(fn ($i) => $this->nexusInvitationView($i), $slice), ['pagination' => ['current_page' => $page, 'per_page' => $per, 'total' => count($rows), 'last_page' => max(1, (int) ceil(count($rows) / $per))]]);
+    }
+
+    private function nexusResendInvitation(string $id): mixed
+    {
+        $d = &$this->nexus['delegation'];
+        if (! $this->nexusOwnInvitation($id)) {
+            return $this->nexusFail('INVITATION_NOT_FOUND', 'The invitation could not be found.', 404);
+        }
+        $i = &$d['invitations'][$id];
+        $status = $this->nexusInvitationStatus($i);
+        if (! in_array($status, ['PENDING', 'EXPIRED'], true)) {
+            return $this->nexusFail('INVITATION_NOT_PENDING', 'The invitation is not open any more.', 409, ['status' => $status]);
+        }
+        $wait = $d['invitation_cooldown'] - (now()->timestamp - Carbon::parse($i['last_sent_at'])->timestamp);
+        if ($wait > 0) {
+            return $this->nexusFail('INVITATION_RESEND_COOLDOWN', 'Please wait before sending again.', 429, null, ['Retry-After' => (string) $wait]);
+        }
+        if ($i['send_count'] >= $d['invitation_resend_limit']) {
+            return $this->nexusFail('INVITATION_RESEND_LIMIT', 'This invitation was sent the maximum number of times.', 409);
+        }
+
+        $i['token'] = 'tok'.bin2hex(random_bytes(16)); // the old link stops working at once
+        $i['status'] = 'PENDING';
+        $i['expires_at'] = now()->addHours($d['invitation_ttl_hours']);
+        $i['last_sent_at'] = now()->toIso8601String();
+        $i['send_count']++;
+        $i['delivery_status'] = 'QUEUED';
+        $i['delivery_error_code'] = null;
+        $this->nexusMail($i);
+
+        return $this->nexusOk($this->nexusInvitationView($i));
+    }
+
+    private function nexusRevokeInvitation(string $id, array $input): mixed
+    {
+        $d = &$this->nexus['delegation'];
+        if (! $this->nexusOwnInvitation($id)) {
+            return $this->nexusFail('INVITATION_NOT_FOUND', 'The invitation could not be found.', 404);
+        }
+        $i = &$d['invitations'][$id];
+        $status = $this->nexusInvitationStatus($i);
+        if ($status === 'ACCEPTED') {
+            return $this->nexusFail('INVITATION_NOT_PENDING', 'The invitation is not open any more.', 409, ['status' => $status]);
+        }
+        if ($status !== 'REVOKED') {
+            $i['status'] = 'REVOKED';
+            $i['revoked_at'] = now()->toIso8601String();
+            $i['revoke_reason'] = $input['reason'] ?? null;
+        }
+
+        return $this->nexusOk($this->nexusInvitationView($i));
+    }
+
     // ---------------------------------------------------------------- roles
 
     private function nexusResolveDelegable(array $keys): mixed
@@ -389,8 +568,8 @@ trait FakesNexusDelegation
         return Http::response(['success' => true, 'data' => $data] + ($meta ? ['meta' => $meta] : []), $status);
     }
 
-    private function nexusFail(string $code, string $message, int $status, mixed $details = null): mixed
+    private function nexusFail(string $code, string $message, int $status, mixed $details = null, array $headers = []): mixed
     {
-        return Http::response(['success' => false, 'error' => ['code' => $code, 'message' => $message, 'details' => $details]], $status);
+        return Http::response(['success' => false, 'error' => ['code' => $code, 'message' => $message, 'details' => $details]], $status, $headers);
     }
 }

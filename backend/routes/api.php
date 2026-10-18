@@ -145,9 +145,15 @@ Route::prefix('v1')->middleware('request.id')->group(function () {
         Route::prefix('delegation')->group(function () {
             Route::get('status', [Delegation\DelegatedUserController::class, 'status'])->middleware('access:access.user.view');
             Route::get('users', [Delegation\DelegatedUserController::class, 'index'])->middleware('access:access.user.view');
+            // Deprecated (OptiNexus deprecates POST /users): kept for compatibility, the console invites instead. Still accepts `initial_password`.
             Route::post('users', [Delegation\DelegatedUserController::class, 'store'])->middleware('access:access.user.manage');
             Route::put('users/{subject}/roles', [Delegation\DelegatedUserController::class, 'roles'])->whereUuid('subject')->middleware('access:access.user.manage');
             Route::delete('users/{subject}', [Delegation\DelegatedUserController::class, 'destroy'])->whereUuid('subject')->middleware('access:access.user.manage');
+            // Invitations (contract §2b): the way to add a NEW person; OptiNexus e-mails the link and the invitee sets their own password there.
+            Route::get('invitations', [Delegation\DelegatedInvitationController::class, 'index'])->middleware('access:access.user.view');
+            Route::post('invitations', [Delegation\DelegatedInvitationController::class, 'store'])->middleware('access:access.user.manage');
+            Route::post('invitations/{invitation}/resend', [Delegation\DelegatedInvitationController::class, 'resend'])->whereUuid('invitation')->middleware('access:access.user.manage');
+            Route::post('invitations/{invitation}/revoke', [Delegation\DelegatedInvitationController::class, 'revoke'])->whereUuid('invitation')->middleware('access:access.user.manage');
             Route::get('assignable-roles', [Delegation\DelegatedRoleController::class, 'assignable'])->middleware('access:access.user.view');
             Route::get('roles', [Delegation\DelegatedRoleController::class, 'index'])->middleware('access:access.role.view');
             Route::post('roles', [Delegation\DelegatedRoleController::class, 'store'])->middleware('access:access.role.manage');
