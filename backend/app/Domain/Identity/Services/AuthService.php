@@ -29,11 +29,11 @@ class AuthService
     }
 
     /** @return array{token:string,expires_at:?string} */
-    public function issueToken(User $user, string $ability): array
+    public function issueToken(User $user, string $ability, array $sessionAbilities = []): array
     {
         $minutes = (int) config('sanctum.expiration');
         $expiresAt = $minutes > 0 ? now()->addMinutes($minutes) : null;
-        $token = $user->createToken($ability === 'identity' ? 'identity' : explode(':', $ability)[0], [$ability], $expiresAt);
+        $token = $user->createToken($ability === 'identity' ? 'identity' : explode(':', $ability)[0], [$ability, ...$sessionAbilities], $expiresAt);
 
         return ['token' => $token->plainTextToken, 'expires_at' => $expiresAt?->toIso8601String()];
     }
@@ -60,7 +60,7 @@ class AuthService
         }
 
         $current?->delete();
-        $issued = $this->issueToken($user, "tenant:{$tenantId}");
+        $issued = $this->issueToken($user, "tenant:{$tenantId}", array_values(array_filter($current?->abilities ?? [], fn ($ability) => str_starts_with($ability, 'oidc-session:'))));
         $this->audit->record('auth.tenant_switched', 'tenant', $tenantId, tenantId: $tenantId);
 
         return $issued;
@@ -74,6 +74,6 @@ class AuthService
 
         $current?->delete();
 
-        return $this->issueToken($user, 'platform');
+        return $this->issueToken($user, 'platform', array_values(array_filter($current?->abilities ?? [], fn ($ability) => str_starts_with($ability, 'oidc-session:'))));
     }
 }

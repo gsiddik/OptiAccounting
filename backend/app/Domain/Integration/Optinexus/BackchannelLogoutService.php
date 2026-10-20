@@ -8,6 +8,7 @@ use App\Domain\Identity\Models\Tenant;
 use App\Domain\Identity\Models\TenantUser;
 use App\Domain\Identity\Models\User;
 use App\Domain\Integration\Services\OutboxPublisher;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -34,8 +35,24 @@ class BackchannelLogoutService
 
         $revoked = $claims['events'][OidcClient::EVENT_ACCESS_REVOKED] ?? null;
 
-        DB::transaction(function () use ($user, $revoked) {
-            DB::table('personal_access_tokens')->where('tokenable_type', $user->getMorphClass())->where('tokenable_id', $user->id)->delete();
+        DB::transaction(function () use ($user, $revoked, $claims) {
+            $tokens = DB::table('personal_access_tokens')->where('tokenable_type', $user->getMorphClass())->where('tokenable_id', $user->id);
+            if (! is_array($revoked) && isset($claims['session_ids'])) {
+                $tokens->where(function ($query) use ($claims): void {
+                    foreach ($claims['session_ids'] as $sid) {
+                        $query->orWhereJsonContains('abilities', 'oidc-session:'.$sid);
+                    }
+                    $query->orWhere(function ($legacy) use ($claims): void {
+                        $legacy->where('abilities', 'not like', '%"oidc-session:%');
+                        if (isset($claims['logout_at'])) {
+                            $legacy->where('created_at', '<=', Carbon::parse($claims['logout_at']));
+                        }
+                    });
+                });
+            } elseif (! is_array($revoked) && isset($claims['logout_at'])) {
+                $tokens->where('created_at', '<=', Carbon::parse($claims['logout_at']));
+            }
+            $tokens->delete();
 
             if (! is_array($revoked)) {
                 $this->audit->record('auth.sso_logout', 'user', $user->id);

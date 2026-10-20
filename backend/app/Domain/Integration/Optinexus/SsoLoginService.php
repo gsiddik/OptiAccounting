@@ -29,7 +29,7 @@ class SsoLoginService
         $ticket = Str::random(48);
         Cache::put(
             'optinexus.sso.ticket.'.hash('sha256', $ticket),
-            ['user_id' => $user->id, 'tenant_id' => $tenant->id],
+            ['user_id' => $user->id, 'tenant_id' => $tenant->id, 'id_token_hint' => $claims['_id_token_hint'] ?? null, 'sid' => $claims['sid'] ?? null],
             (int) config('optientry.optinexus.sso.ticket_ttl_seconds'),
         );
 
@@ -54,6 +54,6 @@ class SsoLoginService
             ? TenantUser::withoutGlobalScopes()->where('tenant_id', $tenant->id)->where('user_id', $user->id)->where('status', TenantUser::ACTIVE)->exists()
             : false;
 
-        return ($user?->isActive() && $tenant?->isActive() && $member) ? ['user' => $user, 'tenant' => $tenant] : null;
+        return ($user?->isActive() && $tenant?->isActive() && $member) ? ['user' => $user, 'tenant' => $tenant, 'id_token_hint' => $data['id_token_hint'] ?? null, 'sid' => $data['sid'] ?? null] : null;
     }
 }
