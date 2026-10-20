@@ -21,6 +21,27 @@ class BackchannelLogoutTest extends OptinexusTestCase
         return $this->post(self::URL, ['logout_token' => $token], ['Accept' => 'application/json']);
     }
 
+    public function test_session_snapshot_preserves_a_new_sign_in_in_the_same_second(): void
+    {
+        $session = $this->signedIn();
+        $old = $session['user']->createToken('old', ['oidc-session:old-session'])->accessToken;
+        $new = $session['user']->createToken('new', ['oidc-session:new-session'])->accessToken;
+        $this->logout($this->nexusLogoutToken(['session_ids' => ['old-session'], 'logout_at' => now()->toIso8601String()]))->assertOk();
+        $this->assertDatabaseMissing('personal_access_tokens', ['id' => $old->id]);
+        $this->assertDatabaseHas('personal_access_tokens', ['id' => $new->id]);
+    }
+
+    public function test_delayed_password_change_logout_preserves_sessions_created_after_the_event(): void
+    {
+        $session = $this->signedIn();
+        DB::table('personal_access_tokens')->where('tokenable_id', $session['user']->id)->update(['created_at' => now()->subMinutes(2)]);
+        $fresh = $session['user']->createToken('new-password-session', ['tenant:'.$session['tenant']->id])->accessToken;
+        $this->logout($this->nexusLogoutToken(['logout_at' => now()->subMinute()->toIso8601String()]))->assertOk();
+        $this->assertDatabaseHas('personal_access_tokens', ['id' => $fresh->id]);
+        $this->assertSame(1, DB::table('personal_access_tokens')->where('tokenable_id', $session['user']->id)->count());
+        $this->assertSame(User::ACTIVE, $session['user']->fresh()->status);
+    }
+
     public function test_a_logout_ends_every_session_of_the_user_and_nothing_else(): void
     {
         $session = $this->signedIn();

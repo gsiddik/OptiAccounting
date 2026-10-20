@@ -111,10 +111,10 @@ class SsoController extends Controller
         }
 
         ['user' => $user, 'tenant' => $tenant] = $session;
-        $issued = $this->auth->issueToken($user, "tenant:{$tenant->id}");
+        $issued = $this->auth->issueToken($user, "tenant:{$tenant->id}", isset($session['sid']) ? ['oidc-session:'.$session['sid']] : []);
 
         try {
-            $logoutUrl = $this->oidc->logoutUrl();
+            $logoutUrl = $this->oidc->logoutUrl($session['id_token_hint'] ?? null);
         } catch (IdentityProviderUnavailable) {
             $logoutUrl = null;
         }
