@@ -91,6 +91,7 @@ trait FakesOptinexus
     /** Give a user permissions (default: every tenant permission of the catalog) in a tenant. */
     protected function nexusGrant(string $sub = self::NEXUS_USER, string $tenant = self::NEXUS_TENANT, string|array $permissions = '*', string $scope = 'TENANT'): void
     {
+        $this->nexus['tenants'][$tenant] ??= $this->nexusTenantState();
         $codes = $permissions === '*' ? DB::table('permissions')->where('scope', 'tenant')->pluck('code')->all() : (array) $permissions;
         $this->nexus['grants']["{$sub}|{$tenant}"] = array_fill_keys($codes, $scope);
     }
@@ -313,12 +314,16 @@ trait FakesOptinexus
             return Http::response(['success' => false, 'error' => ['code' => 'APPLICATION_MISMATCH']], 403);
         }
 
+        $tenant = $this->nexus['tenants'][$body['tenant_id'] ?? ''] ?? null;
+        $commercial = $tenant && $tenant['status'] === 'ACTIVE'
+            && in_array('optiaccounting', (array) ($tenant['applications'] ?? []), true)
+            && collect((array) ($tenant['subscriptions'] ?? []))->contains(fn ($sub) => is_array($sub) && ($sub['status'] ?? null) === 'ACTIVE');
         $grants = $this->nexus['grants'][($body['user_id'] ?? '').'|'.($body['tenant_id'] ?? '')] ?? [];
         $rows = array_map(fn ($code, $scope) => ['permission' => "optiaccounting.{$code}", 'scope' => $scope], array_keys($grants), $grants);
 
         return Http::response(['success' => true, 'data' => ($this->nexus['bulk_answer'] ?? []) + [
             'schema_version' => '1.0', 'user_id' => $body['user_id'] ?? null, 'tenant_id' => $body['tenant_id'] ?? null, 'application_code' => 'optiaccounting',
-            'allowed' => $rows !== [], 'deny_reason' => $rows === [] ? 'PERMISSION_NOT_GRANTED' : null,
+            'allowed' => $commercial && $rows !== [], 'deny_reason' => ! $commercial ? 'SUBSCRIPTION_INACTIVE' : ($rows === [] ? 'PERMISSION_NOT_GRANTED' : null),
             'permissions' => [...$rows, ...($this->nexus['extra_rows'] ?? [])], 'evaluated_at' => now()->toIso8601String(), 'ttl_seconds' => 300,
         ]]);
     }

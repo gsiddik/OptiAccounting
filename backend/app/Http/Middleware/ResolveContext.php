@@ -5,6 +5,9 @@ namespace App\Http\Middleware;
 use App\Domain\AccessControl\AccessDecision;
 use App\Domain\AccessControl\AccessRequest;
 use App\Domain\AccessControl\Services\EffectiveAccess;
+use App\Domain\Identity\Models\Tenant;
+use App\Domain\Identity\Models\TenantUser;
+use App\Domain\Integration\Optinexus\OptinexusSettings;
 use App\Support\TenantContext;
 use Closure;
 use Illuminate\Http\JsonResponse;
@@ -55,6 +58,19 @@ class ResolveContext
             $decision = $this->access->evaluate(new AccessRequest($user, $tenantId));
             if (! $decision->allowed) {
                 return $this->deny($decision->code, $decision->httpStatus(), $decision->message());
+            }
+            // This session-only endpoint obtains its own central verdict and ends refused sessions.
+            // Let it preserve the documented denial reason instead of masking it with a permission lookup.
+            $revalidatingSession = $request->isMethod('GET') && $request->is('api/v1/app/product-context');
+            if (OptinexusSettings::active() && ! $revalidatingSession) {
+                $tenant = Tenant::find($tenantId);
+                $membership = TenantUser::withoutGlobalScopes()
+                    ->where('tenant_id', $tenantId)->where('user_id', $user->id)->first();
+                // Reuse the versioned central permission answer for every tenant session.
+                if (! $tenant?->optinexus_tenant_id || ! $user->optinexus_subject
+                    || ! $membership || $this->access->tenantPermissions($tenantId, $membership->id) === []) {
+                    return $this->deny(AccessDecision::USER_INACTIVE, 403, 'Your central application access is suspended.');
+                }
             }
             $this->context->setTenant($tenantId);
         } elseif ($kind === 'platform' || ($kind === 'any' && $isPlatform)) {

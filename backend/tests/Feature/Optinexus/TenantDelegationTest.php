@@ -85,8 +85,8 @@ class TenantDelegationTest extends OptinexusTestCase
         $operator = $this->member($tenant)[0];
         $this->assertNull($operator->optinexus_subject);
 
-        // Without a subject OptiNexus grants such a person nothing, so the route gate already refuses ...
-        $this->as($this->tenantToken($operator, $tenant))->getJson(self::BASE.'/users')->assertStatus(403)->assertJsonPath('code', 'PERMISSION_DENIED');
+        // Without a central identity the session access gate refuses before delegation permission checks.
+        $this->as($this->tenantToken($operator, $tenant))->getJson(self::BASE.'/users')->assertStatus(403)->assertJsonPath('code', 'USER_INACTIVE');
         $this->assertSame([], $this->delegationCalls());
 
         // ... and the service refuses on its own too: no acting user can be named.
@@ -593,16 +593,16 @@ class TenantDelegationTest extends OptinexusTestCase
         $this->assertSame([], array_filter($this->delegationCalls(), fn ($c) => $c['method'] !== 'GET'));
     }
 
-    public function test_a_read_only_subscription_refuses_every_change(): void
+    public function test_an_inactive_subscription_refuses_changes_and_reads(): void
     {
         $this->nexus['tenants'][self::NEXUS_TENANT]['subscriptions'] = [['id' => 'sub-1', 'status' => 'PAST_DUE']];
         app(EntitlementProjector::class)->sync($this->session['tenant']);
 
-        $this->api('post', '/users', $this->newPerson())->assertStatus(403)->assertJsonPath('code', 'SUBSCRIPTION_READ_ONLY');
-        $this->api('post', '/roles', ['name' => 'Xy', 'permissions' => ['accounting.gl.view']])->assertStatus(403)->assertJsonPath('code', 'SUBSCRIPTION_READ_ONLY');
+        $this->api('post', '/users', $this->newPerson())->assertStatus(403)->assertJsonPath('code', 'USER_INACTIVE');
+        $this->api('post', '/roles', ['name' => 'Xy', 'permissions' => ['accounting.gl.view']])->assertStatus(403)->assertJsonPath('code', 'USER_INACTIVE');
         $this->api('delete', '/users/'.self::NEXUS_USER)->assertStatus(403);
         $this->assertSame([], array_filter($this->delegationCalls(), fn ($c) => $c['method'] !== 'GET'));
-        $this->api('get', '/users')->assertOk();
+        $this->api('get', '/users')->assertForbidden();
     }
 
     public function test_a_member_of_another_tenant_never_appears_in_the_list(): void

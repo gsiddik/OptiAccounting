@@ -39,6 +39,7 @@ class ProductContextTest extends OptinexusTestCase
 
     public function test_it_lists_what_optinexus_returns_and_builds_the_launch_links_on_the_server(): void
     {
+        $permissionCallsBefore = count($this->nexusRequests('/authorization/effective-permissions'));
         $answer = $this->ask()->assertOk()->json();
 
         $this->assertTrue($answer['available']);
@@ -48,6 +49,7 @@ class ProductContextTest extends OptinexusTestCase
         $this->assertSame(['optiaccounting', 'optifleet', 'optiradar'], array_column($answer['products'], 'code'));
         $this->assertSame('nexus', $answer['source']);
         $this->assertSame(300, $answer['ttl_seconds']);
+        $this->assertCount($permissionCallsBefore, $this->nexusRequests('/authorization/effective-permissions'), 'session revalidation uses its own central verdict');
 
         [$entry, $fleet, $radar] = $answer['products'];
         $this->assertTrue($entry['current']);

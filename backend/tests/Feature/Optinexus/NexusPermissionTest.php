@@ -19,6 +19,13 @@ use Illuminate\Support\Sleep;
 /** OA0-N: in optinexus mode OptiNexus decides what a member may do; the answer is cached briefly and fails closed. */
 class NexusPermissionTest extends OptinexusTestCase
 {
+    public function test_explicit_central_denial_ignores_any_permissions_in_the_response(): void
+    {
+        $this->nexusGrant(permissions: ['organization.view']);
+        $this->nexus['bulk_answer'] = ['allowed' => false, 'deny_reason' => 'SUBSCRIPTION_INACTIVE'];
+        $this->assertSame([], app(NexusPermissionSource::class)->pull(self::NEXUS_TENANT, self::NEXUS_USER)['permissions']);
+    }
+
     public function test_the_mode_only_picks_the_source_of_permissions(): void
     {
         $this->assertInstanceOf(NexusPermissionSource::class, app(PermissionSource::class));
@@ -51,7 +58,7 @@ class NexusPermissionTest extends OptinexusTestCase
         $catalog = DB::table('permissions')->where('scope', 'tenant')->count();
 
         $this->assertGreaterThan(120, $catalog);
-        $this->assertCount(1, $asked, 'one request for the whole catalog');
+        $this->assertCount(2, $asked, 'one catalog request at callback and a fresh authorization check at ticket redemption');
         $this->assertSame([], $this->nexusRequests('/authorization/check'), 'no request per permission');
         $this->assertSame(['user_id' => self::NEXUS_USER, 'tenant_id' => self::NEXUS_TENANT, 'application_code' => 'optiaccounting'], $asked[0]['body']);
         $this->assertSame('Bearer service-token-1', $asked[0]['auth']);

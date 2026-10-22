@@ -17,14 +17,13 @@ use Illuminate\Support\Str;
  *
  * OptiNexus capability codes equal the local module and feature codes. A module entitlement carries all of the
  * module's active features unless OptiNexus names a feature explicitly as false (same as a local bundle). A module
- * whose required modules are not granted is dropped. Subscription: the most restrictive live OptiNexus subscription
- * wins (PAST_DUE => READ_ONLY), because the machine API does not say which product a subscription belongs to.
+ * whose required modules are not granted is dropped. Subscription: an ACTIVE subscription for this application grants access; prefer the application-scoped Nexus contract.
  * One OPTINEXUS row per tenant+module/feature changes state ACTIVE/DISABLED instead of being deleted (no overlapping
  * windows; the change history is in the audit log). Idempotent: a run that finds nothing to change writes nothing.
  */
 class EntitlementProjector
 {
-    private const LIVE = ['TRIAL', 'ACTIVE', 'GRACE_PERIOD', 'PAST_DUE'];
+    private const LIVE = ['ACTIVE'];
 
     public function __construct(
         private readonly NexusApi $api,
@@ -145,10 +144,10 @@ class EntitlementProjector
             }
         }
 
-        // Subscription: the most restrictive live one.
+        // Any ACTIVE subscription for the application keeps access available.
         $subscription = null;
         if ($enabled) {
-            foreach ((array) ($context['subscriptions'] ?? []) as $sub) {
+            foreach ((array) ($context['application_subscriptions'] ?? $context['subscriptions'] ?? []) as $sub) {
                 $status = (string) ($sub['status'] ?? '');
                 if (! in_array($status, self::LIVE, true)) {
                     continue;

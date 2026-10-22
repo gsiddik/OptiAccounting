@@ -146,22 +146,23 @@ class EntitlementProjectionTest extends OptinexusTestCase
         $this->assertFalse($this->snapshot($tenant)['features']['OPENING_BALANCE']['enabled']);
     }
 
-    public function test_subscription_states_map_to_full_read_only_or_none(): void
+    public function test_only_active_subscriptions_grant_access_and_expired_history_is_preserved(): void
     {
         $tenant = $this->linkedTenant();
         $projector = app(EntitlementProjector::class);
 
-        foreach (['ACTIVE' => 'FULL', 'TRIAL' => 'FULL', 'GRACE_PERIOD' => 'FULL', 'PAST_DUE' => 'READ_ONLY'] as $status => $mode) {
+        foreach (['ACTIVE' => 'FULL', 'TRIAL' => 'NONE', 'GRACE_PERIOD' => 'NONE', 'PAST_DUE' => 'NONE'] as $status => $mode) {
             $this->nexusTenant(['subscriptions' => [['id' => 's', 'status' => $status]]]);
             $projector->sync($tenant);
             $this->assertSame($mode, $this->snapshot($tenant)['subscription']['mode'], $status);
         }
 
-        // The most restrictive live subscription wins.
+        // Any ACTIVE subscription for this application keeps access available.
         $this->nexusTenant(['subscriptions' => [['id' => 'a', 'status' => 'ACTIVE'], ['id' => 'b', 'status' => 'PAST_DUE']]]);
         $projector->sync($tenant);
-        $this->assertSame('READ_ONLY', $this->snapshot($tenant)['subscription']['mode']);
-        $this->assertSame(AccessDecision::SUBSCRIPTION_READ_ONLY, $this->decide($tenant, 'x', 'ACCOUNTING_CORE', mutating: true)->code);
+        $this->assertSame('FULL', $this->snapshot($tenant)['subscription']['mode']);
+        $this->assertSame(1, DB::table('subscriptions')->where('tenant_id', $tenant->id)->where('status', 'ACTIVE')->count());
+        $this->assertTrue($this->decide($tenant, 'x', 'ACCOUNTING_CORE', mutating: true)->allowed);
         $this->assertTrue($this->decide($tenant, 'x', 'ACCOUNTING_CORE')->allowed, 'reads stay open');
 
         // Nothing live any more: the local subscription ends and access stops.
@@ -169,7 +170,8 @@ class EntitlementProjectionTest extends OptinexusTestCase
         $projector->sync($tenant);
         $this->assertSame('EXPIRED', DB::table('subscriptions')->where('tenant_id', $tenant->id)->value('status'));
         $this->assertSame(AccessDecision::SUBSCRIPTION_INACTIVE, $this->decide($tenant, 'x', 'ACCOUNTING_CORE')->code);
-        $this->assertSame(1, DB::table('subscriptions')->where('tenant_id', $tenant->id)->count());
+        $this->assertSame(2, DB::table('subscriptions')->where('tenant_id', $tenant->id)->count(), 'the previous expired subscription remains as history');
+        $this->assertSame(0, DB::table('subscriptions')->where('tenant_id', $tenant->id)->where('status', 'ACTIVE')->count());
     }
 
     public function test_an_application_that_is_not_enabled_in_optinexus_grants_nothing(): void
