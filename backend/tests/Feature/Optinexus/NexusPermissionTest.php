@@ -58,7 +58,7 @@ class NexusPermissionTest extends OptinexusTestCase
         $catalog = DB::table('permissions')->where('scope', 'tenant')->count();
 
         $this->assertGreaterThan(120, $catalog);
-        $this->assertCount(1, $asked, 'one request for the whole catalog');
+        $this->assertCount(2, $asked, 'one catalog request at callback and a fresh authorization check at ticket redemption');
         $this->assertSame([], $this->nexusRequests('/authorization/check'), 'no request per permission');
         $this->assertSame(['user_id' => self::NEXUS_USER, 'tenant_id' => self::NEXUS_TENANT, 'application_code' => 'optiaccounting'], $asked[0]['body']);
         $this->assertSame('Bearer service-token-1', $asked[0]['auth']);
