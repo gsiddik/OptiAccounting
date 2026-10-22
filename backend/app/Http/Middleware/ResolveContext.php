@@ -5,6 +5,9 @@ namespace App\Http\Middleware;
 use App\Domain\AccessControl\AccessDecision;
 use App\Domain\AccessControl\AccessRequest;
 use App\Domain\AccessControl\Services\EffectiveAccess;
+use App\Domain\Identity\Models\Tenant;
+use App\Domain\Identity\Models\TenantUser;
+use App\Domain\Integration\Optinexus\OptinexusSettings;
 use App\Support\TenantContext;
 use Closure;
 use Illuminate\Http\JsonResponse;
@@ -56,9 +59,9 @@ class ResolveContext
             if (! $decision->allowed) {
                 return $this->deny($decision->code, $decision->httpStatus(), $decision->message());
             }
-            if (\App\Domain\Integration\Optinexus\OptinexusSettings::active()) {
-                $tenant = \App\Domain\Identity\Models\Tenant::find($tenantId);
-                $membership = \App\Domain\Identity\Models\TenantUser::withoutGlobalScopes()
+            if (OptinexusSettings::active()) {
+                $tenant = Tenant::find($tenantId);
+                $membership = TenantUser::withoutGlobalScopes()
                     ->where('tenant_id', $tenantId)->where('user_id', $user->id)->first();
                 // Reuse the versioned central permission answer for every tenant session.
                 if (! $tenant?->optinexus_tenant_id || ! $user->optinexus_subject

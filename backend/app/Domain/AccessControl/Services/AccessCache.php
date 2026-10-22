@@ -45,6 +45,11 @@ class AccessCache
         return Cache::remember($key, min($ttl, self::TTL_SECONDS), $compute);
     }
 
+    public function forgetForTenant(string $tenantId, string $name): void
+    {
+        Cache::forget("t:{$tenantId}:v{$this->tenantVersion($tenantId)}:{$name}");
+    }
+
     public function rememberForPlatform(string $name, callable $compute): mixed
     {
         return Cache::remember("platform:v{$this->platformVersion()}:{$name}", self::TTL_SECONDS, $compute);

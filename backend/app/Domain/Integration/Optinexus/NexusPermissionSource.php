@@ -34,7 +34,7 @@ class NexusPermissionSource implements PermissionSource
 
     public function tenantGrants(string $tenantId, string $tenantUserId): array
     {
-        return $this->cache->rememberForTenant(
+        $grants = $this->cache->rememberForTenant(
             $tenantId,
             "nexus-grants:{$tenantUserId}",
             function () use ($tenantId, $tenantUserId) {
@@ -53,12 +53,18 @@ class NexusPermissionSource implements PermissionSource
             },
             (int) config('optientry.optinexus.permission_ttl_seconds'),
         );
+        if ($grants === []) {
+            $this->cache->forgetForTenant($tenantId, "nexus-grants:{$tenantUserId}");
+        }
+
+        return $grants;
     }
 
     /** Stores an answer that was just pulled (sign-in) so the first requests of the session do not ask again. @param array<string,string> $grants code => scope */
     public function prime(string $tenantId, string $tenantUserId, array $grants): void
     {
         $ttl = (int) config('optientry.optinexus.permission_ttl_seconds');
+        $this->cache->forgetForTenant($tenantId, "nexus-grants:{$tenantUserId}");
         $this->cache->rememberForTenant($tenantId, "nexus-grants:{$tenantUserId}", fn () => $grants, $ttl);
     }
 
