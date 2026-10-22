@@ -85,8 +85,8 @@ class TenantDelegationTest extends OptinexusTestCase
         $operator = $this->member($tenant)[0];
         $this->assertNull($operator->optinexus_subject);
 
-        // Without a subject OptiNexus grants such a person nothing, so the route gate already refuses ...
-        $this->as($this->tenantToken($operator, $tenant))->getJson(self::BASE.'/users')->assertStatus(403)->assertJsonPath('code', 'PERMISSION_DENIED');
+        // Without a central identity the session access gate refuses before delegation permission checks.
+        $this->as($this->tenantToken($operator, $tenant))->getJson(self::BASE.'/users')->assertStatus(403)->assertJsonPath('code', 'USER_INACTIVE');
         $this->assertSame([], $this->delegationCalls());
 
         // ... and the service refuses on its own too: no acting user can be named.
