@@ -46,7 +46,7 @@ jobs:
         env:
           DB_DATABASE: optiaccounting_test
       - name: Central subscription and SSO regression first
-        run: vendor/bin/phpunit --filter 'NexusPermissionTest|SsoSignInTest|EntitlementProjectionTest|test_an_inactive_subscription_refuses_changes_and_reads'
+        run: vendor/bin/phpunit --filter 'NexusPermissionTest|SsoSignInTest|EntitlementProjectionTest|ProductContextTest|ProductContextContractTest|test_an_inactive_subscription_refuses_changes_and_reads'
       - run: php artisan test
 
   frontend:

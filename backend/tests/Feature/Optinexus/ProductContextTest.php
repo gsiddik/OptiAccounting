@@ -48,6 +48,7 @@ class ProductContextTest extends OptinexusTestCase
         $this->assertSame(['optiaccounting', 'optifleet', 'optiradar'], array_column($answer['products'], 'code'));
         $this->assertSame('nexus', $answer['source']);
         $this->assertSame(300, $answer['ttl_seconds']);
+        $this->assertCount(0, $this->nexusRequests('/authorization/effective-permissions'), 'session revalidation uses its own central verdict');
 
         [$entry, $fleet, $radar] = $answer['products'];
         $this->assertTrue($entry['current']);

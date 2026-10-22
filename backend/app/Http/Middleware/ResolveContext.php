@@ -59,7 +59,10 @@ class ResolveContext
             if (! $decision->allowed) {
                 return $this->deny($decision->code, $decision->httpStatus(), $decision->message());
             }
-            if (OptinexusSettings::active()) {
+            // This session-only endpoint obtains its own central verdict and ends refused sessions.
+            // Let it preserve the documented denial reason instead of masking it with a permission lookup.
+            $revalidatingSession = $request->isMethod('GET') && $request->is('api/v1/app/product-context');
+            if (OptinexusSettings::active() && ! $revalidatingSession) {
                 $tenant = Tenant::find($tenantId);
                 $membership = TenantUser::withoutGlobalScopes()
                     ->where('tenant_id', $tenantId)->where('user_id', $user->id)->first();
