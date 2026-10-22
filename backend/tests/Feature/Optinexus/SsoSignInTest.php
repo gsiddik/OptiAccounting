@@ -470,4 +470,15 @@ class SsoSignInTest extends TestCase
 
         $this->get('/api/v1/auth/sso/callback')->assertStatus(429);
     }
+
+    public function test_verified_email_change_preserves_the_existing_identity_and_history(): void
+    {
+        $this->nexusSignIn()->assertOk();
+        $user = User::where('optinexus_subject', self::NEXUS_USER)->firstOrFail();
+        $this->nexusSignIn(['email' => 'changed@example.test', 'email_verified' => true])->assertOk();
+        $this->assertSame('changed@example.test', $user->fresh()->email);
+        $this->assertSame(1, User::where('optinexus_subject', self::NEXUS_USER)->count());
+        $this->nexusCallback(['email' => 'unverified@example.test', 'email_verified' => false])->assertRedirectContains('sso_error=email_not_verified');
+        $this->assertSame('changed@example.test', $user->fresh()->email);
+    }
 }

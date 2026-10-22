@@ -169,6 +169,21 @@ class AccountLinker
             }
         }
 
+        // Keep the local projection attached to the immutable subject when Nexus changes an email.
+        $newEmail = Str::lower(trim((string) ($claims['email'] ?? '')));
+        if ($newEmail !== '' && Str::lower($user->email) !== $newEmail) {
+            if (($claims['email_verified'] ?? false) !== true) {
+                throw new SsoException('email_not_verified');
+            }
+            if (User::whereKeyNot($user->id)->whereRaw('lower(email) = ?', [$newEmail])->exists()) {
+                throw new SsoException('account_conflict');
+            }
+            if (ReservedAddress::matches($newEmail)) {
+                throw new SsoException('email_reserved');
+            }
+            $user->forceFill(['email' => $newEmail])->save();
+        }
+
         // OptiNexus has just let this person in: undo exactly what an earlier OptiNexus event switched off.
         if ($user->status === User::INACTIVE && $user->optinexus_deactivated_at !== null) {
             $user->forceFill(['status' => User::ACTIVE, 'optinexus_deactivated_at' => null])->save();
