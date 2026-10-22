@@ -56,6 +56,16 @@ class ResolveContext
             if (! $decision->allowed) {
                 return $this->deny($decision->code, $decision->httpStatus(), $decision->message());
             }
+            if (\App\Domain\Integration\Optinexus\OptinexusSettings::active()) {
+                $tenant = \App\Domain\Identity\Models\Tenant::find($tenantId);
+                $membership = \App\Domain\Identity\Models\TenantUser::withoutGlobalScopes()
+                    ->where('tenant_id', $tenantId)->where('user_id', $user->id)->first();
+                // Reuse the versioned central permission answer for every tenant session.
+                if (! $tenant?->optinexus_tenant_id || ! $user->optinexus_subject
+                    || ! $membership || $this->access->tenantPermissions($tenantId, $membership->id) === []) {
+                    return $this->deny(AccessDecision::USER_INACTIVE, 403, 'Your central application access is suspended.');
+                }
+            }
             $this->context->setTenant($tenantId);
         } elseif ($kind === 'platform' || ($kind === 'any' && $isPlatform)) {
             if (! $isPlatform) {

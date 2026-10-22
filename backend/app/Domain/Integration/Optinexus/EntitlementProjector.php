@@ -24,7 +24,7 @@ use Illuminate\Support\Str;
  */
 class EntitlementProjector
 {
-    private const LIVE = ['TRIAL', 'ACTIVE', 'GRACE_PERIOD', 'PAST_DUE'];
+    private const LIVE = ['ACTIVE'];
 
     public function __construct(
         private readonly NexusApi $api,
@@ -148,7 +148,7 @@ class EntitlementProjector
         // Subscription: the most restrictive live one.
         $subscription = null;
         if ($enabled) {
-            foreach ((array) ($context['subscriptions'] ?? []) as $sub) {
+            foreach ((array) ($context['application_subscriptions'] ?? $context['subscriptions'] ?? []) as $sub) {
                 $status = (string) ($sub['status'] ?? '');
                 if (! in_array($status, self::LIVE, true)) {
                     continue;

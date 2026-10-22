@@ -151,17 +151,17 @@ class EntitlementProjectionTest extends OptinexusTestCase
         $tenant = $this->linkedTenant();
         $projector = app(EntitlementProjector::class);
 
-        foreach (['ACTIVE' => 'FULL', 'TRIAL' => 'FULL', 'GRACE_PERIOD' => 'FULL', 'PAST_DUE' => 'READ_ONLY'] as $status => $mode) {
+        foreach (['ACTIVE' => 'FULL', 'TRIAL' => 'NONE', 'GRACE_PERIOD' => 'NONE', 'PAST_DUE' => 'NONE'] as $status => $mode) {
             $this->nexusTenant(['subscriptions' => [['id' => 's', 'status' => $status]]]);
             $projector->sync($tenant);
             $this->assertSame($mode, $this->snapshot($tenant)['subscription']['mode'], $status);
         }
 
-        // The most restrictive live subscription wins.
+        // Any ACTIVE subscription for this application keeps access available.
         $this->nexusTenant(['subscriptions' => [['id' => 'a', 'status' => 'ACTIVE'], ['id' => 'b', 'status' => 'PAST_DUE']]]);
         $projector->sync($tenant);
-        $this->assertSame('READ_ONLY', $this->snapshot($tenant)['subscription']['mode']);
-        $this->assertSame(AccessDecision::SUBSCRIPTION_READ_ONLY, $this->decide($tenant, 'x', 'ACCOUNTING_CORE', mutating: true)->code);
+        $this->assertSame('FULL', $this->snapshot($tenant)['subscription']['mode']);
+        $this->assertTrue($this->decide($tenant, 'x', 'ACCOUNTING_CORE', mutating: true)->allowed);
         $this->assertTrue($this->decide($tenant, 'x', 'ACCOUNTING_CORE')->allowed, 'reads stay open');
 
         // Nothing live any more: the local subscription ends and access stops.

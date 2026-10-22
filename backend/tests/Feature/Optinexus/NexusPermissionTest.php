@@ -19,6 +19,13 @@ use Illuminate\Support\Sleep;
 /** OA0-N: in optinexus mode OptiNexus decides what a member may do; the answer is cached briefly and fails closed. */
 class NexusPermissionTest extends OptinexusTestCase
 {
+    public function test_explicit_central_denial_ignores_any_permissions_in_the_response(): void
+    {
+        $this->nexusGrant(permissions: ['organization.view']);
+        $this->nexus['bulk_answer'] = ['allowed' => false, 'deny_reason' => 'SUBSCRIPTION_INACTIVE'];
+        $this->assertSame([], app(NexusPermissionSource::class)->pull(self::NEXUS_TENANT, self::NEXUS_USER)['permissions']);
+    }
+
     public function test_the_mode_only_picks_the_source_of_permissions(): void
     {
         $this->assertInstanceOf(NexusPermissionSource::class, app(PermissionSource::class));

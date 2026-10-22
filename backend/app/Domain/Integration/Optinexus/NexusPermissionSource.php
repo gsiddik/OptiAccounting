@@ -92,6 +92,11 @@ class NexusPermissionSource implements PermissionSource
             throw new IdentityProviderUnavailable('Unusable answer from effective-permissions (schema or subject mismatch).');
         }
 
+        // An explicit refusal always wins, even if a malformed/stale response also carries grants.
+        if (($data['allowed'] ?? false) !== true) {
+            return ['permissions' => [], 'grants' => [], 'scope' => null];
+        }
+
         $catalog = array_flip(DB::table('permissions')->where('scope', 'tenant')->pluck('code')->all());
         $prefix = "{$application}.";
         $grants = [];

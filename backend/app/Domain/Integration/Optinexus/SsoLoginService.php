@@ -54,6 +54,13 @@ class SsoLoginService
             ? TenantUser::withoutGlobalScopes()->where('tenant_id', $tenant->id)->where('user_id', $user->id)->where('status', TenantUser::ACTIVE)->exists()
             : false;
 
+        if ($user && $tenant && OptinexusSettings::active()) {
+            $access = app(NexusPermissionSource::class)->pull((string) $tenant->optinexus_tenant_id, (string) $user->optinexus_subject);
+            if ($access['permissions'] === []) {
+                return null;
+            }
+        }
+
         return ($user?->isActive() && $tenant?->isActive() && $member) ? ['user' => $user, 'tenant' => $tenant, 'id_token_hint' => $data['id_token_hint'] ?? null, 'sid' => $data['sid'] ?? null] : null;
     }
 }
