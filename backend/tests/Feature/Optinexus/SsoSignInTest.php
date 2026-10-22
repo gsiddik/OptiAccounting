@@ -27,6 +27,25 @@ class SsoSignInTest extends TestCase
         $this->nexusGrant();
     }
 
+    public function test_a_ticket_is_refused_when_central_access_ends_before_redemption(): void
+    {
+        $callback = $this->nexusCallback();
+        parse_str((string) parse_url($callback->headers->get('Location'), PHP_URL_QUERY), $query);
+        $this->nexus['bulk_answer'] = ['allowed' => false, 'deny_reason' => 'SUBSCRIPTION_INACTIVE'];
+        $this->postJson('/api/v1/auth/sso/exchange', ['ticket' => $query['ticket']])->assertUnprocessable();
+        $this->assertDatabaseCount('personal_access_tokens', 0);
+    }
+
+    public function test_redeeming_a_ticket_replaces_the_earlier_permission_snapshot(): void
+    {
+        $this->nexusGrant(permissions: ['organization.view', 'audit.view']);
+        $callback = $this->nexusCallback();
+        parse_str((string) parse_url($callback->headers->get('Location'), PHP_URL_QUERY), $query);
+        $this->nexusGrant(permissions: ['organization.view']);
+        $token = $this->postJson('/api/v1/auth/sso/exchange', ['ticket' => $query['ticket']])->assertOk()->json('token');
+        $this->withToken($token)->getJson('/api/v1/app/capabilities')->assertOk()->assertJsonPath('permissions', ['organization.view']);
+    }
+
     public function test_first_sign_in_provisions_tenant_user_and_membership_and_the_session_works(): void
     {
         $response = $this->nexusSignIn()->assertOk()
