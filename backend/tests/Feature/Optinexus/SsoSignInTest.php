@@ -43,7 +43,7 @@ class SsoSignInTest extends TestCase
         parse_str((string) parse_url($callback->headers->get('Location'), PHP_URL_QUERY), $query);
         $this->nexusGrant(permissions: ['organization.view']);
         $token = $this->postJson('/api/v1/auth/sso/exchange', ['ticket' => $query['ticket']])->assertOk()->json('token');
-        $this->withToken($token)->getJson('/api/v1/app/capabilities')->assertOk()->assertJsonPath('permissions', ['organization.view']);
+        $this->as($token)->getJson('/api/v1/app/capabilities')->assertOk()->assertJsonPath('permissions', ['organization.view']);
     }
 
     public function test_first_sign_in_provisions_tenant_user_and_membership_and_the_session_works(): void

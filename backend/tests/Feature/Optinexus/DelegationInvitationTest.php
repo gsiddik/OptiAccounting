@@ -510,17 +510,17 @@ class DelegationInvitationTest extends OptinexusTestCase
         $this->as($nobody)->getJson(self::BASE.'/invitations')->assertForbidden()->assertJsonPath('code', 'PERMISSION_DENIED');
     }
 
-    public function test_a_read_only_subscription_refuses_every_change_but_still_lists(): void
+    public function test_an_inactive_subscription_refuses_changes_and_reads(): void
     {
         $id = $this->nexusSeedInvitation();
         $this->nexus['tenants'][self::NEXUS_TENANT]['subscriptions'] = [['id' => 'sub-1', 'status' => 'PAST_DUE']];
         app(EntitlementProjector::class)->sync($this->session['tenant']);
 
-        $this->api('post', '/invitations', $this->person())->assertStatus(403)->assertJsonPath('code', 'SUBSCRIPTION_READ_ONLY');
-        $this->api('post', "/invitations/{$id}/resend")->assertStatus(403)->assertJsonPath('code', 'SUBSCRIPTION_READ_ONLY');
-        $this->api('post', "/invitations/{$id}/revoke")->assertStatus(403)->assertJsonPath('code', 'SUBSCRIPTION_READ_ONLY');
+        $this->api('post', '/invitations', $this->person())->assertStatus(403)->assertJsonPath('code', 'USER_INACTIVE');
+        $this->api('post', "/invitations/{$id}/resend")->assertStatus(403)->assertJsonPath('code', 'USER_INACTIVE');
+        $this->api('post', "/invitations/{$id}/revoke")->assertStatus(403)->assertJsonPath('code', 'USER_INACTIVE');
         $this->assertSame([], $this->invitationCalls('POST'));
-        $this->api('get', '/invitations')->assertOk()->assertJsonCount(1, 'data');
+        $this->api('get', '/invitations')->assertForbidden();
     }
 
     public function test_in_standalone_mode_the_invitation_routes_refuse_and_ask_nobody(): void

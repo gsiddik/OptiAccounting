@@ -5,6 +5,10 @@ on:
   push:
     branches: [main]
 
+concurrency:
+  group: entry-ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   backend:
     runs-on: ubuntu-latest
@@ -41,6 +45,8 @@ jobs:
         run: php artisan migrate:fresh --seed --force
         env:
           DB_DATABASE: optiaccounting_test
+      - name: Central subscription and SSO regression first
+        run: vendor/bin/phpunit --filter 'NexusPermissionTest|SsoSignInTest|EntitlementProjectionTest|test_an_inactive_subscription_refuses_changes_and_reads'
       - run: php artisan test
 
   frontend:
