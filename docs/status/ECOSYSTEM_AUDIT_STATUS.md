@@ -68,6 +68,14 @@ A28) and its OA6 UI (A26); A12/A15 (error boundaries, lazy loading, bundle) are 
   `account/usage` omits `USER_LIMIT`. UI: seats banner on Users and Invitations (used, reserved, available, limit, over-limit, undecided), `SEAT_*` texts EN-ID.
 - Tests: `tests/Feature/Optinexus` 260 passed (fake Nexus emits `meta.seats` and the refusals); frontend 57 files / 1237 passed, `tsc -b`, `oxlint` clean.
 
+## OptiDeli connector (wave 5 part B, owner approval of the feed contract 2026-10-24)
+- Second source system on the feed platform: AR invoice, AP bill, customer receipt, vendor payment and void from the OptiDeli sub-ledger feed; tax is
+  computed here with INCLUSIVE tax codes (settings). Design: `INTEGRATION_ARCHITECTURE.md` section 12. Needs feature `OPTIDELI_CONNECTOR` and principal kind
+  `OPTIDELI_INTEGRATION` (operator-issued). No migration.
+- Tests: `OptiDeliAdapterTest` 9 (feed faked from the contract); `tests/Feature/Integration` + `ServicePrincipalTest` + `SeederAndBootstrapTest` 195 passed before the
+  last BookStatus edit, 22 targeted re-run passed after it; pint clean. Run with PHPUnit of a sibling checkout (dependency download blocked in the sandbox).
+  Full suite and frontend: NOT RUN. Live OptiDeli + OptiEntry pair: NOT RUN.
+
 ## Not done yet / NOT RUN
 - Production image build (Alpine) and a Windows Podman run: NOT RUN here (Alpine mirror blocked, no Podman).
 - Live two-backend Fleet->Entry pull against a real OptiNexus: NOT RUN (no OptiNexus/OptiFleet stack reachable for the Entry worker); wire and contract
