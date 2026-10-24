@@ -305,3 +305,33 @@ is never touched by any of it.
 - **Live test checklist (Entry side).** Tenant linked to its OptiNexus tenant (`tenants.optinexus_tenant_id`); `optientry:service-principal:issue <tenant>`;
   `optientry:nexus:check`; connection with base URL, `ofaf_...` credential, source tenant reference, cutover date and settings; activate; then
   `integration:pull`, `integration:process`, `integration:health --json`.
+
+## 12. OptiDeli connector (wave 5, owner decision 2026-10-24)
+
+OptiDeli is the second source system. The contract is **Opti Integration Feed v1** (OptiDeli `docs/integration/OPTI_INTEGRATION_FEED_V1.md`, approved by
+the owner): a gap-free, append-only, per-tenant stream of sub-ledger facts that OptiEntry pulls. It reuses the whole platform of §7-§11 (cursor, inbox,
+gaps, pairing, quarantine, health); only the source-specific parts are new.
+
+- **Wire.** `GET {base_url}/api/v1/integration/feed` (`FeedClient::PATHS`; OptiFleet keeps `/accounting-feed`), bearer `odfd_...`, same page shape, same
+  `pairing` block, errors `{message, code}` with `FEED_*` codes. Envelope `source_tenant_reference` = the OptiDeli tenant id. The feed carries gross amounts
+  as decimal strings; **tax is computed here, never in OptiDeli**.
+- **Events** (`OptiDeliAdapter`, schema major 1, `DeliBooking`):
+  `optideli.customer_invoice.issued` -> AR invoice (customer resolved by name, `OptiDeliCustomers`: mapping, then external id, then the one customer of that
+  name, else created); `optideli.vendor_bill.recorded` -> AP invoice (vendor by `dimensions.vendor_id` through `OptiFleetVendors`, now source-agnostic);
+  `optideli.payment.recorded` -> `RECEIPT`: customer receipt allocated to the AR invoice, `DISBURSEMENT`: vendor payment allocated to the AP invoice;
+  `optideli.document.voided` -> the document is reversed (posted) or cancelled (never posted). The document a payment or void concerns is found through
+  `external_source_links` (`ledger_document`, id = the event's `correlation_id`); a payment is linked as `ledger_payment`.
+  A payment before its document waits in NEEDS_REVIEW `INVOICE_NOT_FOUND`; before it is posted, `INVOICE_NOT_POSTED`; both succeed on retry.
+  A void of a document with an applied payment is `PAYMENT_ALREADY_APPLIED` (OptiDeli itself refuses to void a paid document).
+- **Settings** (`ConnectorRequirements`): required `receipts_cash_bank_account_id`, `payables_cash_bank_account_id`, `expense_category_id`; optional
+  `revenue_account_id` (REVENUE account; otherwise the posting rules decide), `output_tax_code_id` and `input_tax_code_id` (active **INCLUSIVE** codes:
+  the stated gross stays the document total and OptiEntry derives the tax; a total that would differ is `TOTAL_MISMATCH`).
+- **Entitlement and identity.** Feature `OPTIDELI_CONNECTOR` (module ACCOUNTING_INTEGRATION), AR and AP writable, and the operator-issued service principal
+  kind `OPTIDELI_INTEGRATION` (`optientry:service-principal:issue <tenant> OPTIDELI_INTEGRATION`), same rules as the OptiFleet principal (`OptiDeliActor`).
+- **Books state.** `BookStatus` also reads `ar_invoices` and `customer_receipts`.
+- **Not handled yet:** foreign currency (`CURRENCY_NOT_SUPPORTED`), payment reversal and credit notes (v1.1 events `optideli.payment.reversed`,
+  `optideli.credit_note.issued`; until then compensation is booked by a person), tax split without a configured code.
+- **Operator steps.** OptiDeli: `php artisan optideli:feed:issue-credential <tenant> --output=<file>` (tenant linked to OptiNexus where pairing is required;
+  the OptiDeli service account in OptiNexus needs scope `commercial.read`). OptiEntry: issue the principal, create a connection with source system
+  `optideli`, base URL, the credential, the OptiDeli tenant id as source tenant reference, cutover date and settings; activate; `integration:pull`.
+  Not run against a live pair of installations (NOT RUN); both sides are covered by tests built from the contract.

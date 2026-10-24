@@ -16,7 +16,7 @@ data-driven compositions of these modules and are never hardcoded.
 | `ACCOUNTING_TAX` | Tax codes, effective-dated rates, tax postings and reports | CORE | `TAX_CONFIGURATION`, `TAX_REPORT` | OA4 |
 | `ACCOUNTING_MULTI_CURRENCY` | Currencies, rates, FX gain/loss, revaluation | CORE | `EXCHANGE_RATE`, `FX_REVALUATION` | OA4 |
 | `ACCOUNTING_REPORTING` | Financial statements, report mapping, comparative reports, closing, reconciliation | CORE | `FINANCIAL_STATEMENTS`, `PERIOD_CLOSING`, `RECONCILIATION` | OA5 |
-| `ACCOUNTING_INTEGRATION` | Integration connections, canonical events, adapters (OptiFleet first) | CORE | `INTEGRATION_CONNECTION`, `OPTIFLEET_CONNECTOR` | OA6 |
+| `ACCOUNTING_INTEGRATION` | Integration connections, canonical events, adapters (OptiFleet, OptiDeli) | CORE | `INTEGRATION_CONNECTION`, `OPTIFLEET_CONNECTOR`, `OPTIDELI_CONNECTOR` | OA6 |
 | `ACCOUNTING_ANALYTICS` | Management accounting, KPIs, analytical projections | CORE, REPORTING | `FINANCIAL_KPI`, `COST_ANALYSIS` | OA7 |
 
 Notes:

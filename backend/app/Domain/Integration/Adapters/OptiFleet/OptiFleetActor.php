@@ -26,13 +26,19 @@ use App\Support\TenantContext;
  */
 class OptiFleetActor
 {
-    public function __construct(private readonly TenantContext $context, private readonly ServicePrincipalRegistry $registry) {}
+    public function __construct(protected readonly TenantContext $context, protected readonly ServicePrincipalRegistry $registry) {}
+
+    /** The kind of service principal this actor looks up; the OptiDeli connector uses the same rules with its own kind. */
+    protected function kind(): string
+    {
+        return ServicePrincipalKinds::OPTIFLEET_INTEGRATION;
+    }
 
     /** The integration user of the tenant in the context. @throws DomainException when the operator has not issued it, or a person disabled it */
     public function resolve(): User
     {
         $tenantId = (string) $this->context->tenantId();
-        $principal = $this->registry->live($tenantId, ServicePrincipalKinds::OPTIFLEET_INTEGRATION);
+        $principal = $this->registry->live($tenantId, $this->kind());
         if ($principal === null) {
             throw new DomainException('The integration user of this organization has not been issued by the platform operator, or was revoked.', 'INTEGRATION_ACTOR_MISSING', 409);
         }
@@ -52,6 +58,6 @@ class OptiFleetActor
     /** Whether the operator has issued the integration user (a precondition for the connector). */
     public function issued(string $tenantId): bool
     {
-        return $this->registry->hasLive($tenantId, ServicePrincipalKinds::OPTIFLEET_INTEGRATION);
+        return $this->registry->hasLive($tenantId, $this->kind());
     }
 }

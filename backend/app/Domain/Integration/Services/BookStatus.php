@@ -27,7 +27,7 @@ class BookStatus
     public const STATES = ['IN_LEDGER', 'AWAITING_APPROVAL', 'DRAFT', 'REVERSED', 'VOID', 'INFORMATIONAL', 'NO_EFFECT', 'UNCLASSIFIED'];
 
     /** document_type of a source link => table of the document (both carry `status` and `journal_entry_id`). */
-    private const DOCUMENTS = ['ap_invoice' => 'ap_invoices', 'vendor_payment' => 'vendor_payments'];
+    private const DOCUMENTS = ['ap_invoice' => 'ap_invoices', 'vendor_payment' => 'vendor_payments', 'ar_invoice' => 'ar_invoices', 'customer_receipt' => 'customer_receipts'];
 
     public function __construct(private readonly TenantContext $context) {}
 
@@ -126,7 +126,7 @@ class BookStatus
         $tenant = (string) $this->context->tenantId();
         $counts = array_fill_keys(self::STATES, 0);
         $rows = DB::select(<<<'SQL'
-            SELECT x.accounting_outcome AS outcome, x.has_journal, x.journal_status, coalesce(inv.status, pay.status) AS doc_status, count(*) AS n
+            SELECT x.accounting_outcome AS outcome, x.has_journal, x.journal_status, coalesce(inv.status, pay.status, ari.status, rcp.status) AS doc_status, count(*) AS n
             FROM (
                 SELECT DISTINCT ON (e.id) e.id, e.accounting_outcome, e.resulting_journal_id IS NOT NULL AS has_journal, j.status AS journal_status, l.document_type, l.document_id
                 FROM external_events e
@@ -137,8 +137,10 @@ class BookStatus
             ) x
             LEFT JOIN ap_invoices inv ON x.document_type = 'ap_invoice' AND inv.tenant_id = ? AND inv.id = x.document_id
             LEFT JOIN vendor_payments pay ON x.document_type = 'vendor_payment' AND pay.tenant_id = ? AND pay.id = x.document_id
+            LEFT JOIN ar_invoices ari ON x.document_type = 'ar_invoice' AND ari.tenant_id = ? AND ari.id = x.document_id
+            LEFT JOIN customer_receipts rcp ON x.document_type = 'customer_receipt' AND rcp.tenant_id = ? AND rcp.id = x.document_id
             GROUP BY 1, 2, 3, 4
-        SQL, [$tenant, $connectionId, $tenant, $tenant]);
+        SQL, [$tenant, $connectionId, $tenant, $tenant, $tenant, $tenant]);
 
         foreach ($rows as $row) {
             $state = match (true) {

@@ -34,6 +34,9 @@ class FeedClient
 {
     public const PATH = '/api/v1/integration/accounting-feed';
 
+    /** Sources whose feed lives elsewhere (docs/architecture/INTEGRATION_ARCHITECTURE.md §12); every other source serves PATH. */
+    private const PATHS = ['optideli' => '/api/v1/integration/feed'];
+
     public const PAGE_SIZE = 100;
 
     public const TIMEOUT_SECONDS = 15;
@@ -54,7 +57,7 @@ class FeedClient
 
         try {
             $response = Http::withToken((string) $connection->credential)->acceptJson()->timeout(self::TIMEOUT_SECONDS)->withoutRedirecting()
-                ->get($connection->base_url.self::PATH, array_filter(['after' => $after, 'limit' => $limit], fn ($value) => $value !== null));
+                ->get($connection->base_url.(self::PATHS[$connection->source_system] ?? self::PATH), array_filter(['after' => $after, 'limit' => $limit], fn ($value) => $value !== null));
         } catch (ConnectionException $e) {
             throw new FeedException('The source could not be reached: '.Str::limit($e->getMessage(), 200, ''), FeedException::UNAVAILABLE, 'SOURCE_UNREACHABLE');
         }

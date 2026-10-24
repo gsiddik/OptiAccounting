@@ -9,7 +9,7 @@ use App\Domain\Payables\Services\VendorService;
 use App\Domain\Shared\DomainException;
 
 /**
- * The vendor of a workshop invoice in OptiEntry's own vendor master. The workshop partner of the source is only a reference (an
+ * The vendor of a workshop invoice in OptiEntry's own vendor master. The partner of the source (a workshop, a haulage vendor) is only a reference (an
  * `external_dimensions` row of type VENDOR whose metadata names our vendor); resolution never trusts a name alone:
  *
  *   1. the reference recorded earlier (or by a person) for this source vendor id;
@@ -24,6 +24,9 @@ class OptiFleetVendors
 {
     private const ENTITY = 'VENDOR';
 
+    /** Prefix of a generated vendor code, by source system. */
+    private const PREFIXES = ['optifleet' => 'OF', 'optideli' => 'OD'];
+
     public function __construct(private readonly VendorService $vendors) {}
 
     /** @param array<string,mixed>|null $source payload.vendor of the event: {id, code, name, tax_id} */
@@ -34,7 +37,7 @@ class OptiFleetVendors
             throw new DomainException('The workshop invoice names no vendor.', 'VENDOR_MISSING', 422, ['field' => 'vendor.id']);
         }
 
-        $vendor = $this->mapped($connection, $id) ?? $this->matched($id, $source) ?? $this->create($id, $source);
+        $vendor = $this->mapped($connection, $id) ?? $this->matched($connection->source_system, $id, $source) ?? $this->create($connection->source_system, $id, $source);
         ExternalDimension::record($connection, self::ENTITY, $id, $this->text($source, 'code', 80), $this->text($source, 'name', 200), ['vendor_id' => $vendor->id]);
 
         return $vendor;
@@ -52,9 +55,9 @@ class OptiFleetVendors
     }
 
     /** @param array<string,mixed> $source */
-    private function matched(string $id, array $source): ?Vendor
+    private function matched(string $sourceSystem, string $id, array $source): ?Vendor
     {
-        $vendor = Vendor::query()->where('external_source', OptiFleetAdapter::SOURCE)->where('external_id', $id)->first();
+        $vendor = Vendor::query()->where('external_source', $sourceSystem)->where('external_id', $id)->first();
         $taxId = $this->normalized($this->text($source, 'tax_id', 50));
         if ($vendor === null && $taxId !== '') {
             $byTax = Vendor::query()->whereRaw("lower(regexp_replace(coalesce(tax_id, ''), '[^0-9A-Za-z]', '', 'g')) = ?", [$taxId])->limit(2)->get();
@@ -73,16 +76,16 @@ class OptiFleetVendors
     }
 
     /** @param array<string,mixed> $source */
-    private function create(string $id, array $source): Vendor
+    private function create(string $sourceSystem, string $id, array $source): Vendor
     {
         $code = mb_strtoupper((string) $this->text($source, 'code', 40));
         if ($code === '' || Vendor::query()->where('code', $code)->exists()) {
-            $code = 'OF-'.mb_strtoupper(substr(preg_replace('/[^A-Za-z0-9]/', '', $id), 0, 12));
+            $code = (self::PREFIXES[$sourceSystem] ?? 'EX').'-'.mb_strtoupper(substr(preg_replace('/[^A-Za-z0-9]/', '', $id), 0, 12));
         }
 
         return $this->vendors->create([
             'code' => $code, 'name' => $this->text($source, 'name', 255) ?? $code, 'tax_id' => $this->text($source, 'tax_id', 50),
-            'external_source' => OptiFleetAdapter::SOURCE, 'external_id' => mb_substr($id, 0, 100),
+            'external_source' => $sourceSystem, 'external_id' => mb_substr($id, 0, 100),
         ]);
     }
 

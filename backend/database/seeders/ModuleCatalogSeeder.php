@@ -34,8 +34,8 @@ class ModuleCatalogSeeder extends Seeder
             'EXCHANGE_RATE' => 'Exchange rate', 'FX_REVALUATION' => 'FX revaluation']],
         'ACCOUNTING_REPORTING' => ['Reporting & Closing', 'Financial statements, report mapping, closing and reconciliation', ['ACCOUNTING_CORE'], [
             'FINANCIAL_STATEMENTS' => 'Financial statements', 'PERIOD_CLOSING' => 'Period closing', 'RECONCILIATION' => 'Reconciliation']],
-        'ACCOUNTING_INTEGRATION' => ['Integration', 'Integration connections, canonical events and adapters (OptiFleet first)', ['ACCOUNTING_CORE'], [
-            'INTEGRATION_CONNECTION' => 'Integration connection', 'OPTIFLEET_CONNECTOR' => 'OptiFleet connector']],
+        'ACCOUNTING_INTEGRATION' => ['Integration', 'Integration connections, canonical events and adapters (OptiFleet, OptiDeli)', ['ACCOUNTING_CORE'], [
+            'INTEGRATION_CONNECTION' => 'Integration connection', 'OPTIFLEET_CONNECTOR' => 'OptiFleet connector', 'OPTIDELI_CONNECTOR' => 'OptiDeli connector']],
         'ACCOUNTING_ANALYTICS' => ['Analytics', 'Management accounting, KPIs and analytical projections', ['ACCOUNTING_CORE', 'ACCOUNTING_REPORTING'], [
             'FINANCIAL_KPI' => 'Financial KPI', 'COST_ANALYSIS' => 'Cost analysis']],
     ];
