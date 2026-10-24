@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Domain\AccessControl\Services\LocalPermissionSource;
 use App\Domain\AccessControl\Services\PermissionSource;
+use App\Domain\Integration\Adapters\OptiDeli\OptiDeliAdapter;
 use App\Domain\Integration\Adapters\OptiFleet\OptiFleetAdapter;
 use App\Domain\Integration\Optinexus\NexusPermissionSource;
 use App\Domain\Integration\Optinexus\OptinexusSettings;
@@ -27,8 +28,8 @@ class AppServiceProvider extends ServiceProvider
             ? $app->make(NexusPermissionSource::class)
             : $app->make(LocalPermissionSource::class));
 
-        // Source-system adapters of the integration platform are tagged AdapterRegistry::TAG (OptiFleet today; a source without one ends in NEEDS_REVIEW).
-        $this->app->tag([OptiFleetAdapter::class], AdapterRegistry::TAG);
+        // Source-system adapters of the integration platform are tagged AdapterRegistry::TAG (OptiFleet and OptiDeli; a source without one ends in NEEDS_REVIEW).
+        $this->app->tag([OptiFleetAdapter::class, OptiDeliAdapter::class], AdapterRegistry::TAG);
         $this->app->singleton(AdapterRegistry::class, fn ($app) => new AdapterRegistry($app->tagged(AdapterRegistry::TAG)));
     }
 

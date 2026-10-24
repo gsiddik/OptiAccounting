@@ -13,8 +13,11 @@ final class ServicePrincipalKinds
 {
     public const OPTIFLEET_INTEGRATION = 'OPTIFLEET_INTEGRATION';
 
+    public const OPTIDELI_INTEGRATION = 'OPTIDELI_INTEGRATION';
+
     private const DEFINITIONS = [
         self::OPTIFLEET_INTEGRATION => ['source_system' => 'optifleet', 'local_part' => 'optifleet.integration', 'name' => 'Integrasi OptiFleet'],
+        self::OPTIDELI_INTEGRATION => ['source_system' => 'optideli', 'local_part' => 'optideli.integration', 'name' => 'Integrasi OptiDeli'],
     ];
 
     /** @return list<string> */
