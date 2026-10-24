@@ -16,7 +16,7 @@ use App\Support\IdentityMode;
  *   required   `OPTIENTRY_FEED_PAIRING=required`, or `auto` (the default) while OptiNexus is the identity authority: an organization that is
  *              not linked to OptiNexus, a page without `pairing`, another OptiNexus tenant or another producer / consumer application is
  *              refused (FeedException REFUSED) and nothing from that page is stored.
- *   off        `OPTIENTRY_FEED_PAIRING=off`, or `auto` in a standalone installation (legacy: no OptiNexus to pair with).
+ *   off        `OPTIENTRY_FEED_PAIRING=off`, or `auto` in a standalone installation (no OptiNexus to pair with).
  */
 final class FeedPairing
 {

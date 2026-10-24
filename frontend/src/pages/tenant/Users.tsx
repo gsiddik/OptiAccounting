@@ -29,15 +29,14 @@ function useOrganizationLists(enabled: boolean) {
 
 /**
  * Settings > Users. With OptiNexus as the identity authority an Admin Tenant manages people from here through the delegation API
- * (`DelegatedUsers`); the page below is the original, local one, which is the whole page for `standalone` installations (legacy,
- * docs/architecture/LEGACY_IDENTITY_MIGRATION.md) and the read-only fallback while delegation is not set up.
+ * (`DelegatedUsers`); the page below is the original, local one, which is the whole page for `standalone` installations (a full mode, K1) and the read-only fallback while delegation is not set up.
  */
 export default function Users() {
   const { managedExternally } = useCapabilities()
-  return managedExternally ? <DelegatedUsers fallback={<LegacyUsers />} /> : <LegacyUsers />
+  return managedExternally ? <DelegatedUsers fallback={<LocalUsers />} /> : <LocalUsers />
 }
 
-function LegacyUsers() {
+function LocalUsers() {
   const { can, canEdit } = useCapabilities()
   const { t } = useI18n()
   const { state } = useAuth()

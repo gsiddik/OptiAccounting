@@ -19,7 +19,7 @@ A28) and its OA6 UI (A26); A12/A15 (error boundaries, lazy loading, bundle) are 
   `environment:` block, no bind-mounted source, ports 8200/5190 on 127.0.0.1, required `APP_KEY`/`DB_PASSWORD`, `VITE_ALLOWED_HOSTS`.
 - E1 (R08/A25/A02): in `optinexus` mode an Admin Tenant manages users and custom roles from Entry through the OptiNexus delegation API
   (`/app/delegation/*`); no second authority (live Nexus lists, local rows are a projection), seat precheck + compensation, every Nexus error code
-  translated, manifest v2 with the explicit delegable set (101/136). Standalone is labelled legacy; plan `LEGACY_IDENTITY_MIGRATION.md`.
+  translated, manifest v2 with the explicit delegable set (101/136). Standalone was labelled legacy; K1 (2026-10-24) made it a full mode again, see below.
   Frontend: i18n layer (`frontend/src/i18n`, `{id, en}` per key, default `id`, switch in the top bar), Settings > Users / Roles in `pages/tenant/delegation/`.
 - E2 (A29): `GET /app/product-context` (cache <= 300 s, fail closed, refusals never cached, foreign answers rejected), `allowed=false` ends the session,
   `tenant_hint` validated on SSO start, product switcher. Design: ADAPTER section 11.
@@ -75,6 +75,12 @@ A28) and its OA6 UI (A26); A12/A15 (error boundaries, lazy loading, bundle) are 
 - Tests: `OptiDeliAdapterTest` 9 (feed faked from the contract); `tests/Feature/Integration` + `ServicePrincipalTest` + `SeederAndBootstrapTest` 195 passed before the
   last BookStatus edit, 22 targeted re-run passed after it; pint clean. Run with PHPUnit of a sibling checkout (dependency download blocked in the sandbox).
   Full suite and frontend: NOT RUN. Live OptiDeli + OptiEntry pair: NOT RUN.
+
+## K1: standalone is a full mode again (owner decision 2026-10-24)
+- The local Superadmin already existed (`optientry:bootstrap-platform-admin`, Platform Portal: tenants, subscriptions, entitlements, users, roles). K1 removes
+  the "legacy" label from CLAUDE.md, `SAAS_ARCHITECTURE.md` §1, `OPTINEXUS_ADAPTER.md` §9, `LEGACY_IDENTITY_MIGRATION.md` (now an optional plan, file name kept),
+  config and UI component names. No behaviour or migration change. Test: `StandaloneFullModeTest` (Superadmin -> tenant -> subscription -> local roles/users) passed.
+  Frontend lint/tests and full backend suite: see PR checks.
 
 ## Not done yet / NOT RUN
 - Production image build (Alpine) and a Windows Podman run: NOT RUN here (Alpine mirror blocked, no Podman).

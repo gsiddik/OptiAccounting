@@ -55,7 +55,7 @@ only when registered on the OIDC client; otherwise OptiNexus shows its own
   local, later sign-ins never overwrite it).
 - Seats are not counted here. OptiNexus alone counts and enforces them per tenant and application (`GOVERNANCE_CONTRACTS.md` §2d); it lets a
   person sign in only when it has given them the access, so the sign-in does no local `USER_LIMIT` reserve (it used to answer `capacity_exceeded`).
-  The legacy `standalone` mode keeps its local `CapacityService`.
+  The `standalone` mode uses its local `CapacityService`.
 
 ## 4. Permissions
 
@@ -85,11 +85,11 @@ by `optientry:nexus:check`. The individual endpoint stays available in OptiNexus
 Compatibility: this release of OptiEntry needs an OptiNexus release that has `POST /authorization/effective-permissions` and a service
 account with `application_id` set (see OPTINEXUS_ONBOARDING.md); the service account scope stays `authorization.check`.
 
-The local role, permission-grant and member lifecycle endpoints (`/app/users`, `/app/roles`, status, role assignment) are the **legacy
-local authority** and answer `409 MANAGED_BY_OPTINEXUS` in this mode; an Admin Tenant administers users and custom roles through the
+The local role, permission-grant and member lifecycle endpoints (`/app/users`, `/app/roles`, status, role assignment) are the **local
+authority** of `standalone` and answer `409 MANAGED_BY_OPTINEXUS` in this mode; an Admin Tenant administers users and custom roles through the
 delegation routes of section 10 instead. Data scopes stay editable.
-Platform permissions remain local (platform operators are local break-glass
-accounts; OptiNexus-authenticated platform operators are out of scope).
+Platform permissions remain local (platform operators are the local Superadmin of `standalone` and break-glass
+accounts in `optinexus`; OptiNexus-authenticated platform operators are out of scope).
 
 ## 5. Entitlements
 
@@ -149,12 +149,12 @@ the catalog yet) is retried, other 4xx fail at once. Initial event types:
 
 ## 9. Mode status (owner decisions R01-R08, 2026-10-12)
 
-`optinexus` is the target: OptiNexus is the authority for tenant, user, membership, role, permission, subscription and entitlement, for
-single-product use as well. `standalone` (local users, roles, permissions, subscriptions) is **legacy**: it keeps working and keeps its
-tests so existing installations are not broken, but it does not satisfy R01-R08. Everything that is local authority is marked in code
-and docs: `LocalPermissionSource`, `MemberController`/`RoleController` writes, `Platform\*` subscription and entitlement writes,
-`RequireLocalIdentity`. Moving a legacy installation to the target is a planned, mapped, operator-run migration, never an automatic one:
-`docs/architecture/LEGACY_IDENTITY_MIGRATION.md`.
+`optinexus` is the choice when OptiNexus governs identity: it is then the authority for tenant, user, membership, role, permission,
+subscription and entitlement (R01-R08). Owner decision K1 (2026-10-24) restores `standalone` as a **full, supported mode** with a local
+Superadmin: local users, roles, permissions, subscriptions and entitlements are its design, not a legacy path, and keep their tests
+(`StandaloneFullModeTest`). Local authority code is marked as such (`LocalPermissionSource`, `MemberController`/`RoleController` writes,
+`Platform\*` subscription and entitlement writes, `RequireLocalIdentity`) and stays inert in `optinexus` mode. Moving an installation to
+`optinexus` is an optional, planned, operator-run migration, never automatic: `docs/architecture/LEGACY_IDENTITY_MIGRATION.md`.
 
 ## 10. Tenant delegation: users and custom roles from the OptiEntry UI (R08 / audit A25)
 

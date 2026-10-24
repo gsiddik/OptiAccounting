@@ -11,7 +11,7 @@ return [
 
     /*
     | Identity mode of this installation (docs/architecture/SAAS_ARCHITECTURE.md).
-    | "standalone": local users, tenants, roles and permissions.
+    | "standalone": full mode: a local Superadmin, with local users, tenants, roles, permissions and subscriptions.
     | "optinexus": OptiNexus is the authority for tenant, user, membership,
     |              role, permission, subscription and events.
     */
@@ -71,7 +71,7 @@ return [
 
     /*
     | Integration feeds (OA6). `feed_pairing`: whether a pulled feed must be proven to belong to the same OptiNexus tenant as the organization
-    | (audit A19). auto = required while identity_mode is optinexus; required = always; off = never (legacy standalone only).
+    | (audit A19). auto = required while identity_mode is optinexus; required = always; off = never (standalone only).
     */
     'integration' => [
         'feed_pairing' => in_array($pairing = strtolower((string) env('OPTIENTRY_FEED_PAIRING', 'auto')), ['auto', 'required', 'off'], true) ? $pairing : 'auto',

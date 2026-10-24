@@ -4,10 +4,12 @@ Status: MASTER baseline. OA0 implements it (`docs/specs/OA0.md`).
 
 ## 1. Two identity modes, one codebase
 
-> **Update (owner decisions R01-R08, 2026-10-12).** `optinexus` is the target for every installation, single-product use included;
-> `standalone` is **legacy**: it keeps working so existing installations are not broken, but it does not meet R01-R08. A legacy
-> installation moves to the target by the mapped, operator-run plan in `LEGACY_IDENTITY_MIGRATION.md`, never automatically. This
-> supersedes the "two equal modes" wording below and in CLAUDE.md; the table stays accurate as a description of both paths.
+> **Update (owner decision K1, 2026-10-24; supersedes the R01-R08 "legacy" label of 2026-10-12).** `standalone` is a **full, supported
+> mode** again: a local Superadmin (platform operator, `optientry:bootstrap-platform-admin`) owns tenants, subscriptions, entitlements,
+> users and roles, and a tenant administrator manages people and custom roles locally. `optinexus` stays the choice when the ecosystem
+> governs identity centrally (R01-R08 apply there). An installation may move from `standalone` to `optinexus` by the mapped,
+> operator-run plan in `LEGACY_IDENTITY_MIGRATION.md` (file name kept), never automatically, and never has to. Test:
+> `StandaloneFullModeTest`.
 
 Project instruction: in SaaS mode, tenant, user, role, permission and events are
 managed in **OptiNexus**; in standalone mode OptiEntry uses its own user,
@@ -20,7 +22,7 @@ OptiNexus existed) describe the standalone model. Both are kept:
 | Login | Local password (Sanctum) | OIDC (authorization code + PKCE) against OptiNexus; local password only as break-glass for platform admins |
 | Tenants | Created in the local Platform Portal | Authority: OptiNexus. Local `tenants` row is a projection linked by `optinexus_tenant_id`, created by an admin link or provisioning, never from an unverified claim |
 | Users / memberships | Local | Authority: OptiNexus (`sub`, `tenant_id` claims). Local rows are projections linked by `optinexus_subject`; deactivation via Back-Channel Logout `access-revoked` |
-| Roles / permissions | Local Role Editor | OptiEntry registers its permission catalog as OptiNexus application capabilities; role composition and assignment happen in OptiNexus; effective permissions are pulled in one request (`POST /authorization/effective-permissions`) and cached per user+tenant with short TTL and event-driven invalidation. The local Role Editor is the legacy path; an Admin Tenant creates people and custom roles from OptiEntry through the OptiNexus delegation API (`OPTINEXUS_ADAPTER.md` §10) |
+| Roles / permissions | Local Role Editor | OptiEntry registers its permission catalog as OptiNexus application capabilities; role composition and assignment happen in OptiNexus; effective permissions are pulled in one request (`POST /authorization/effective-permissions`) and cached per user+tenant with short TTL and event-driven invalidation. The local Role Editor is the full path of `standalone`; in `optinexus` an Admin Tenant creates people and custom roles from OptiEntry through the OptiNexus delegation API (`OPTINEXUS_ADAPTER.md` §10) |
 | Subscription / module entitlement | Local subscription + entitlements | Authority: OptiNexus subscriptions/entitlements (`/entitlements/check`), projected into local entitlement rows with `source = OPTINEXUS` |
 | Data scope (branch/BU/cost center) | Local | Local (accounting-specific organizational scope), unless OptiNexus later exposes an equivalent scope contract |
 | Business events | Local outbox (consumers: integrations) | Local outbox relayed to OptiNexus `POST /api/v1/events` (`optiaccounting.*` keys), like OptiFleet D9 |
