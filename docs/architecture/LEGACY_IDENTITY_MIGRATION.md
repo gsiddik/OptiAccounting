@@ -1,12 +1,12 @@
-# Legacy local identity -> central governance (plan)
+# Standalone identity -> central governance (optional plan)
 
 Status: plan for operators. Nothing here runs automatically; no user database is migrated without a mapping and a decision.
-Context: owner decisions R01-R08 (2026-10-12). `optinexus` identity mode is the target; `standalone` (local users, roles,
-permissions, subscriptions) is **legacy**. It still works and is still tested, but it does not satisfy R01-R08
-(`OPTINEXUS_ADAPTER.md` §9). Switching a running installation in place is not supported (`SAAS_ARCHITECTURE.md` §1): the
+Context: owner decision K1 (2026-10-24) keeps `standalone` (local Superadmin, users, roles, permissions, subscriptions) a full, supported
+mode; this plan is only for an installation that chooses to join OptiNexus governance (R01-R08, `OPTINEXUS_ADAPTER.md` §9). The file name
+keeps the former "legacy" wording so existing links stay valid. Switching a running installation in place is not supported (`SAAS_ARCHITECTURE.md` §1): the
 local tenant keeps its local subscription and the projection skips it with a warning. The steps below move one tenant at a time.
 
-## What is local authority today (labelled legacy)
+## What is local authority in `standalone`
 
 | Concern | Tables / code | In `optinexus` mode |
 |---|---|---|

@@ -6,13 +6,13 @@ import { DelegatedRoles } from './delegation/DelegatedRoles'
 
 type Tab = 'roles' | 'permissions'
 
-/** Settings > Roles: delegated to OptiNexus when it is the identity authority, local (legacy standalone) otherwise. */
+/** Settings > Roles: delegated to OptiNexus when it is the identity authority, local (`standalone`) otherwise. */
 export default function Roles() {
   const { managedExternally } = useCapabilities()
-  return managedExternally ? <DelegatedRoles fallback={<LegacyRoles />} /> : <LegacyRoles />
+  return managedExternally ? <DelegatedRoles fallback={<LocalRoles />} /> : <LocalRoles />
 }
 
-function LegacyRoles() {
+function LocalRoles() {
   const { can } = useCapabilities()
   const [tab, setTab] = useState<Tab>('roles')
   const tabs: { id: Tab; label: string }[] = [{ id: 'roles', label: 'Peran' }, ...(can('access.permission.view') ? [{ id: 'permissions' as const, label: 'Izin' }] : [])]
