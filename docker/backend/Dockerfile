@@ -26,7 +26,8 @@ COPY backend/. .
 RUN composer dump-autoload --optimize --no-dev --no-interaction
 
 COPY docker/backend/entrypoint.sh /usr/local/bin/entrypoint.sh
-RUN chmod +x /usr/local/bin/entrypoint.sh \
+# sed: a Windows checkout with core.autocrlf=true gives the script CRLF line ends, which /bin/sh cannot run.
+RUN sed -i 's/\r$//' /usr/local/bin/entrypoint.sh && chmod +x /usr/local/bin/entrypoint.sh \
     && mkdir -p storage/app/private storage/app/public storage/framework/cache/data \
         storage/framework/sessions storage/framework/views storage/logs bootstrap/cache \
     && chown -R www-data:www-data storage bootstrap/cache
