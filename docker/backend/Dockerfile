@@ -23,7 +23,7 @@ COPY backend/composer.json backend/composer.lock ./
 RUN composer install --no-dev --no-scripts --no-autoloader --no-interaction ${COMPOSER_INSTALL_FLAGS}
 
 COPY backend/. .
-RUN composer dump-autoload --optimize --no-dev --no-interaction
+RUN mkdir -p bootstrap/cache && composer dump-autoload --optimize --no-dev --no-interaction
 
 COPY docker/backend/entrypoint.sh /usr/local/bin/entrypoint.sh
 # sed: a Windows checkout with core.autocrlf=true gives the script CRLF line ends, which /bin/sh cannot run.
