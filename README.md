@@ -58,7 +58,7 @@ Console on `http://localhost:5190` (it serves `/api` on the same origin), API on
 `127.0.0.1` only (`BIND_ADDRESS`). One `bootstrap` job migrates and seeds the catalogs; `api`, `worker` and `scheduler` start after it and
 never migrate. Hot-reload development: `docker compose --profile dev up ui-dev` (`http://localhost:5173`). Upgrading an installation that
 used the former ports (8000/5173) or the former default database password: set `DB_PASSWORD` to the password already in use; the project
-name and volumes are unchanged, so no data moves. To run next to OptiNexus and OptiFleet use `deploy/ecosystem` in the OptiNexus repository.
+name and volumes are unchanged, so no data moves. To run next to OptiNexus and the other Opti products use `deploy/optiecosystem` (OptiEcosystem, Podman Desktop guide in Indonesian) in the OptiNexus repository.
 
 ## Seeders
 
