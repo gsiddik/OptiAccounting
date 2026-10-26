@@ -24,8 +24,13 @@ use Illuminate\Support\Str;
  *   optideli.vendor_bill.recorded      -> an AP invoice (the vendor by source id / tax id / code, see OptiFleetVendors)
  *   optideli.payment.recorded          -> RECEIPT: a customer receipt allocated to the AR invoice, DISBURSEMENT: a vendor payment allocated to the AP invoice
  *   optideli.document.voided           -> the document is reversed (or cancelled when it never posted)
+ *   optideli.cash.disbursed            -> driver cash paid out of a cashbox: a cash payment (Dr driver advance, Cr cash/bank)
+ *   optideli.cash.settled              -> the driver's spending: a journal (Dr trip cost, Cr driver advance), the cash given back (a cash receipt)
+ *                                         and what was paid above the advance (a cash payment), all on the driver advance account
  *
- * Connection settings (ConnectorRequirements): `receipts_cash_bank_account_id` (debited by customer receipts), `payables_cash_bank_account_id`
+ * Driver cash needs two more settings, `driver_cash_cash_bank_account_id` (the cash on hand the cashboxes stand for) and
+ * `driver_advance_account_id` (an asset account for cash held by drivers); without them those events wait in NEEDS_REVIEW and succeed on
+ * retry once the settings exist. The trip cost is classified by the connection's `expense_category_id`. Connection settings (ConnectorRequirements): `receipts_cash_bank_account_id` (debited by customer receipts), `payables_cash_bank_account_id`
  * (credited by vendor payments) and `expense_category_id` (classifies the vendor bill) are required; `revenue_account_id` (a REVENUE account;
  * without it the posting rules decide), `output_tax_code_id` and `input_tax_code_id` (INCLUSIVE tax codes applied to the invoice and bill: the
  * amounts of the feed are gross) are optional. The connector needs the OPTIDELI_CONNECTOR feature, and the integration, AR and AP modules writable.
@@ -48,13 +53,18 @@ class OptiDeliAdapter implements ConnectorRequirements, IntegrationAdapter
 
     public const INPUT_TAX = 'input_tax_code_id';
 
+    public const DRIVER_CASH_BANK = 'driver_cash_cash_bank_account_id';
+
+    public const DRIVER_ADVANCE = 'driver_advance_account_id';
+
     private const REQUIRED = [self::RECEIPTS_BANK, self::PAYABLES_BANK, self::CATEGORY];
 
-    private const OPTIONAL = [self::REVENUE, self::OUTPUT_TAX, self::INPUT_TAX];
+    private const OPTIONAL = [self::REVENUE, self::OUTPUT_TAX, self::INPUT_TAX, self::DRIVER_CASH_BANK, self::DRIVER_ADVANCE];
 
     private const EVENTS = [
         'optideli.customer_invoice.issued' => 'customerInvoice', 'optideli.vendor_bill.recorded' => 'vendorBill',
         'optideli.payment.recorded' => 'payment', 'optideli.document.voided' => 'voided',
+        'optideli.cash.disbursed' => 'cashDisbursed', 'optideli.cash.settled' => 'cashSettled',
     ];
 
     public function sourceSystem(): string
@@ -97,13 +107,16 @@ class OptiDeliAdapter implements ConnectorRequirements, IntegrationAdapter
         }
 
         // The tenant scope of every lookup is what makes another organization's id "not found".
-        foreach ([self::RECEIPTS_BANK, self::PAYABLES_BANK] as $key) {
+        foreach ([self::RECEIPTS_BANK, self::PAYABLES_BANK, self::DRIVER_CASH_BANK] as $key) {
             if (isset($clean[$key])) {
                 app(CashBankAccountService::class)->usable($clean[$key], false, "settings.{$key}");
             }
         }
         if (isset($clean[self::CATEGORY]) && ExpenseCategory::query()->where('status', 'ACTIVE')->whereKey($clean[self::CATEGORY])->doesntExist()) {
             throw new DomainException('The expense category does not exist or is inactive.', 'CONNECTION_SETTINGS_INVALID', 422, ['field' => 'settings.'.self::CATEGORY]);
+        }
+        if (isset($clean[self::DRIVER_ADVANCE])) {
+            app(AccountGuard::class)->usable($clean[self::DRIVER_ADVANCE], ['ASSET'], false, 'settings.'.self::DRIVER_ADVANCE);
         }
         if (isset($clean[self::REVENUE])) {
             app(AccountGuard::class)->usable($clean[self::REVENUE], ['REVENUE'], false, 'settings.'.self::REVENUE);

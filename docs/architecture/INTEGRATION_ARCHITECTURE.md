@@ -323,6 +323,13 @@ gaps, pairing, quarantine, health); only the source-specific parts are new.
   `external_source_links` (`ledger_document`, id = the event's `correlation_id`); a payment is linked as `ledger_payment`.
   A payment before its document waits in NEEDS_REVIEW `INVOICE_NOT_FOUND`; before it is posted, `INVOICE_NOT_POSTED`; both succeed on retry.
   A void of a document with an applied payment is `PAYMENT_ALREADY_APPLIED` (OptiDeli itself refuses to void a paid document).
+- **Driver cash** (feed addendum 2026-10-27): `optideli.cash.disbursed` -> a cash **payment** (Dr driver advance, Cr cash on hand): cash held by the driver is an
+  asset, not a cost. `optideli.cash.settled` -> a manual journal (Dr trip cost on the connection's `expense_category_id` account, Cr driver advance) for the
+  spending, a cash **receipt** for the cash given back (Dr cash, Cr advance) and a cash **payment** for what was spent above the advance (Dr advance, Cr cash),
+  so the advance account holds exactly what the driver still has. The lines must add up to `actual` (`TOTAL_MISMATCH`). Links: `cash_voucher` (disbursement),
+  `cash_voucher_expense`, `cash_voucher_return`, `cash_voucher_reimburse`. Settings `driver_cash_cash_bank_account_id` and `driver_advance_account_id` (an ASSET,
+  non-control account) are optional for the connection but needed by these events: without them they wait in NEEDS_REVIEW `CONNECTION_SETTINGS_MISSING` and
+  succeed on retry. The approval and segregation-of-duties rules are never weakened: cash documents are posted only when the policy lets the integration post.
 - **Settings** (`ConnectorRequirements`): required `receipts_cash_bank_account_id`, `payables_cash_bank_account_id`, `expense_category_id`; optional
   `revenue_account_id` (REVENUE account; otherwise the posting rules decide), `output_tax_code_id` and `input_tax_code_id` (active **INCLUSIVE** codes:
   the stated gross stays the document total and OptiEntry derives the tax; a total that would differ is `TOTAL_MISMATCH`).

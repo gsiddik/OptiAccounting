@@ -2,9 +2,15 @@
 
 namespace App\Domain\Integration\Adapters\OptiDeli;
 
+use App\Domain\Accounting\Models\JournalEntry;
 use App\Domain\Accounting\Services\DocumentWorkflow;
+use App\Domain\Accounting\Services\JournalService;
+use App\Domain\Accounting\Services\JournalWorkflow;
 use App\Domain\Accounting\Services\SegregationOfDuties;
 use App\Domain\Accounting\Support\Money;
+use App\Domain\CashBank\Models\CashTransaction;
+use App\Domain\CashBank\Services\CashTransactionService;
+use App\Domain\Expense\Models\ExpenseCategory;
 use App\Domain\Identity\Models\User;
 use App\Domain\Integration\Adapters\OptiFleet\OptiFleetVendors;
 use App\Domain\Integration\Models\ExternalEvent;
@@ -44,6 +50,8 @@ class DeliBooking
 
     public const PAYMENT = 'ledger_payment';
 
+    public const VOUCHER = 'cash_voucher';
+
     private const METHODS = ['BANK_TRANSFER' => 'TRANSFER', 'CASH' => 'CASH', 'CHEQUE' => 'CHEQUE'];
 
     public function __construct(
@@ -55,6 +63,9 @@ class DeliBooking
         private readonly OptiFleetVendors $vendors,
         private readonly DocumentWorkflow $workflow,
         private readonly SegregationOfDuties $sod,
+        private readonly CashTransactionService $cash,
+        private readonly JournalService $journals,
+        private readonly JournalWorkflow $journalWorkflow,
     ) {}
 
     // ------------------------------------------------------------------------------------------------ documents
@@ -186,6 +197,130 @@ class DeliBooking
         }
 
         return $this->outcome($result, [$this->link(self::PAYMENT, $source['id'], $reference, $type, $result)]);
+    }
+
+    // ------------------------------------------------------------------------------------------------ driver cash
+
+    /**
+     * Driver cash paid out of a cashbox. The cash leaves the cash on hand and is held by the driver, so it is booked to the driver advance
+     * account (an asset), not to a cost: the cost comes with the settlement.
+     */
+    public function cashDisbursed(ExternalEvent $event, User $actor): ProcessOutcome
+    {
+        $source = $this->source($event, self::VOUCHER);
+        $payload = $this->payload($event);
+        [$cashAccountId, $advanceId] = $this->driverCashSettings($event);
+        $this->assertFunctional($payload);
+        $amount = $this->amount($payload['amount'] ?? null, 'amount');
+        $date = $this->occurredOn($event);
+
+        $transaction = $this->postCash($this->cash->create(CashTransaction::PAYMENT, $this->cashBody($source, $payload, $cashAccountId, $advanceId, $amount, $date, 'Uang jalan'), $actor), $actor);
+
+        return $this->outcome($transaction, [$this->link(self::VOUCHER, $source['id'], $source['number'], CashTransaction::DOCUMENT_TYPE, $transaction)]);
+    }
+
+    /**
+     * The settlement of a voucher: what the driver spent becomes a trip cost against the advance; cash given back is a receipt into the cash on
+     * hand; spending above the advance is a payment to the driver. After all three the advance account holds exactly what the driver still has.
+     */
+    public function cashSettled(ExternalEvent $event, User $actor): ProcessOutcome
+    {
+        $source = $this->source($event, self::VOUCHER);
+        $payload = $this->payload($event);
+        $settings = $this->settings($event);
+        [$cashAccountId, $advanceId] = $this->driverCashSettings($event);
+        $this->assertFunctional($payload);
+        $date = $this->occurredOn($event);
+        $actual = Money::parse($payload['actual'] ?? null, (int) $this->workflow->profile()->currency_scale, 'actual');
+        $returned = Money::parse($payload['returned'] ?? '0', (int) $this->workflow->profile()->currency_scale, 'returned');
+        $reimbursed = Money::parse($payload['reimbursed'] ?? '0', (int) $this->workflow->profile()->currency_scale, 'reimbursed');
+        $links = [];
+        $journalId = null;
+        $outcome = null;
+
+        if ($actual->isGreaterThan(0)) {
+            $category = ExpenseCategory::query()->find($settings[OptiDeliAdapter::CATEGORY]);
+            if ($category?->account_id === null) {
+                throw new DomainException('The expense category of the connection has no account to book the trip costs to.', 'CATEGORY_ACCOUNT_MISSING', 409);
+            }
+            $lines = [];
+            foreach ((array) ($payload['lines'] ?? []) as $line) {
+                $value = Money::parse($line['amount'] ?? '0', (int) $this->workflow->profile()->currency_scale, 'lines.amount');
+                if ($value->isGreaterThan(0)) {
+                    $lines[] = ['account_id' => $category->account_id, 'debit' => Money::str($value), 'credit' => '0',
+                        'description' => Str::limit('Biaya perjalanan '.($line['charge_code'] ?? '').(! empty($line['receipt_ref']) ? ' — '.$line['receipt_ref'] : ''), 250, '')];
+                }
+            }
+            $this->assertTotal(Money::str(collect($lines)->reduce(fn (BigDecimal $c, $l) => $c->plus($l['debit']), BigDecimal::zero())), $actual, 'cash voucher lines');
+            $lines[] = ['account_id' => $advanceId, 'debit' => '0', 'credit' => Money::str($actual), 'description' => Str::limit("Penggunaan uang jalan {$source['number']}", 250, '')];
+            $journal = $this->journals->createManual([
+                'document_date' => $date, 'posting_date' => $date, 'description' => Str::limit("Realisasi uang jalan {$source['number']}", 480, ''), 'reference' => $source['number'], 'lines' => $lines,
+            ], $actor);
+            $journal = $this->advanceJournal($journal, $actor);
+            $links[] = ['source_type' => 'cash_voucher_expense', 'source_id' => $source['id'], 'source_document_number' => $source['number'], 'journal_id' => $journal->id];
+            $journalId = $journal->id;
+            $outcome = $journal->status === 'POSTED' ? ProcessOutcome::JOURNAL_POSTED : ($journal->status === 'SUBMITTED' ? ProcessOutcome::AWAITING_APPROVAL : ProcessOutcome::DRAFT_DOCUMENT);
+        }
+        if ($returned->isGreaterThan(0)) {
+            $receipt = $this->postCash($this->cash->create(CashTransaction::RECEIPT, $this->cashBody($source, $payload, $cashAccountId, $advanceId, $returned, $date, 'Pengembalian uang jalan'), $actor), $actor);
+            $links[] = $this->link('cash_voucher_return', $source['id'], $source['number'], CashTransaction::DOCUMENT_TYPE, $receipt);
+            $journalId ??= $receipt->journal_entry_id;
+            $outcome ??= $this->outcome($receipt, [])->outcome;
+        }
+        if ($reimbursed->isGreaterThan(0)) {
+            $payment = $this->postCash($this->cash->create(CashTransaction::PAYMENT, $this->cashBody($source, $payload, $cashAccountId, $advanceId, $reimbursed, $date, 'Pengganti kelebihan uang jalan'), $actor), $actor);
+            $links[] = $this->link('cash_voucher_reimburse', $source['id'], $source['number'], CashTransaction::DOCUMENT_TYPE, $payment);
+            $journalId ??= $payment->journal_entry_id;
+            $outcome ??= $this->outcome($payment, [])->outcome;
+        }
+
+        // Nothing was spent, returned or paid: the advance simply stays with the driver and there is nothing to book.
+        return new ProcessOutcome($journalId, $links, $outcome ?? ProcessOutcome::INFORMATIONAL);
+    }
+
+    /** @return array{0:string,1:string} the cash/bank account of the cash on hand and the driver advance account */
+    private function driverCashSettings(ExternalEvent $event): array
+    {
+        $settings = (array) $event->connection->settings;
+        $missing = array_values(array_filter([OptiDeliAdapter::DRIVER_CASH_BANK, OptiDeliAdapter::DRIVER_ADVANCE], fn ($k) => ! is_string($settings[$k] ?? null) || $settings[$k] === ''));
+        if ($missing !== []) {
+            throw new DomainException('The OptiDeli connection lacks '.implode(', ', $missing).' to book driver cash.', 'CONNECTION_SETTINGS_MISSING', 409, ['missing' => $missing]);
+        }
+
+        return [$settings[OptiDeliAdapter::DRIVER_CASH_BANK], $settings[OptiDeliAdapter::DRIVER_ADVANCE]];
+    }
+
+    /** @param array{id:string,number:?string} $source @return array<string,mixed> */
+    private function cashBody(array $source, array $payload, string $cashAccountId, string $advanceId, BigDecimal $amount, string $date, string $purpose): array
+    {
+        $driver = is_array($payload['driver'] ?? null) ? ($payload['driver']['name'] ?? null) : null;
+
+        return array_filter([
+            'cash_bank_account_id' => $cashAccountId, 'counter_account_id' => $advanceId, 'amount' => Money::str($amount), 'transaction_date' => $date, 'posting_date' => $date,
+            'purpose' => $purpose, 'description' => Str::limit("{$purpose} {$source['number']}".($driver ? " — {$driver}" : ''), 480, ''), 'reference' => $source['number'],
+            'counterparty_name' => is_string($driver) ? Str::limit($driver, 120, '') : null,
+        ], fn ($v) => $v !== null);
+    }
+
+    /** A cash transaction has no approval step: it is posted when the policy lets the integration post, else it waits as a draft. */
+    private function postCash(CashTransaction $transaction, User $actor): CashTransaction
+    {
+        return $this->sod->documentAllowed($transaction, $actor->id, $this->workflow->profile())['post'] ? $this->cash->post($transaction, $actor) : $transaction;
+    }
+
+    private function advanceJournal(JournalEntry $journal, User $actor): JournalEntry
+    {
+        $profile = $this->workflow->profile();
+        if ($profile->approval_required) {
+            return $this->journalWorkflow->submit($journal, $actor);
+        }
+
+        return $this->sod->documentAllowed($journal, $actor->id, $profile)['post'] ? $this->journalWorkflow->post($journal, $actor) : $journal;
+    }
+
+    private function occurredOn(ExternalEvent $event): string
+    {
+        return $event->occurred_at->copy()->setTimezone($event->connection->tenant->timezone)->toDateString();
     }
 
     // ------------------------------------------------------------------------------------------------ shared
