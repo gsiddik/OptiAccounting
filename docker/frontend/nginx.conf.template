@@ -2,6 +2,10 @@
 server {
     listen ${LISTEN_PORT};
     server_name _;
+    # Resolve the upstream name on every request (cached 5 s) instead of once at start: containers get new addresses when they are
+    # recreated or the machine restarts, and a name resolved at start then points nowhere (502). NGINX_LOCAL_RESOLVERS is set by the
+    # nginx image from the container's resolv.conf.
+    resolver ${NGINX_LOCAL_RESOLVERS} valid=5s ipv6=off;
     root /usr/share/nginx/html;
     index index.html;
 
@@ -12,7 +16,8 @@ server {
     }
 
     location /api/ {
-        proxy_pass ${API_UPSTREAM};
+        set $api_upstream ${API_UPSTREAM};
+        proxy_pass $api_upstream;
         proxy_set_header Host $http_host;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;

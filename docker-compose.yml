@@ -133,6 +133,7 @@ services:
         condition: service_healthy
     environment:
       BACKEND_HOST: api
+      NGINX_ENTRYPOINT_LOCAL_RESOLVERS: "1"
       LISTEN_PORT: ${ENTRY_API_PORT:-8200}
       CLIENT_MAX_BODY_SIZE: ${CLIENT_MAX_BODY_SIZE:-20m}
     volumes:
@@ -161,6 +162,7 @@ services:
     environment:
       LISTEN_PORT: ${ENTRY_UI_PORT:-5190}
       API_UPSTREAM: http://web:${ENTRY_API_PORT:-8200}
+      NGINX_ENTRYPOINT_LOCAL_RESOLVERS: "1"
     ports:
       - "${BIND_ADDRESS:-127.0.0.1}:${ENTRY_UI_PORT:-5190}:${ENTRY_UI_PORT:-5190}"
     healthcheck:
