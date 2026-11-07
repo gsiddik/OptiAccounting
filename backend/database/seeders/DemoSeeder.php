@@ -151,6 +151,27 @@ class DemoSeeder extends Seeder
         });
     }
 
+    /**
+     * Demo books for a tenant that is not one of the fixed demo tenants (used by `ecosystem:demo-data`): the definition of the first demo
+     * tenant under another code, name and e-mail domain, on the all-modules bundle. Does nothing when the code exists.
+     */
+    public function seedLinked(string $code, string $name, string $emailDomain, string $password): void
+    {
+        $this->password = $password;
+        $d = self::TENANTS[0];
+        $d['code'] = $code;
+        $d['name'] = $name;
+        $d['bundle'] = 'ENTERPRISE';
+        $d['admin'] = [$d['admin'][0], 'admin@'.$emailDomain];
+        $d['users'] = array_map(fn (array $u) => [$u[0], strstr($u[1], '@', true).'@'.$emailDomain, $u[2], $u[3]], $d['users']);
+        $d['accounting'] = ['akuntan@'.$emailDomain, 'manajer@'.$emailDomain];
+
+        DB::transaction(function () use ($d) {
+            $this->bundles();
+            $this->tenant($d);
+        });
+    }
+
     private function bundles(): void
     {
         foreach (self::BUNDLES as $code => [$name, $modules, $capacities]) {
